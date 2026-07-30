@@ -66,8 +66,9 @@ Measured on this machine. Do not "tidy" these away:
 1. **Only `_monitor` publishes a terminal status and sets `Task.done`**, after process exit *and*
    pipe drain. Cancellation sets `cancel_requested` and lets the monitor decide. The one status it
    must *not* publish is one for a process still alive: on its own `CancelledError` the server is
-   being torn down, not the run, so it leaves the task `running` and re-raises. See "When the client
-   restarts the server".
+   being torn down, not the run, so it leaves the task `running` and re-raises — unless a
+   cancellation is already in flight, whose intent nothing on disk could reconstruct. See "When the
+   client restarts the server".
 2. **Bookkeeping must never change an outcome.** A stale attribute in a *log line* once turned a
    successful run into `failed`, because the exception escaped into the monitor's handler. That log
    call is now individually guarded.
@@ -112,6 +113,11 @@ exit code. Reversing those two turns a deliberate cancellation into `completed` 
 reproduced, now pinned by a test). For the same reason `cancel_recovered` waits for the SIGKILL to
 land: `resolve_status` rechecks liveness on a `cancelled` record, so returning early would answer a
 cancellation with "running".
+
+Everything that asks "has this settled?" must go through `resolve_status`, never read
+`record.status` directly. `_poll_recovered` did the latter and so ended a 55s wait after one 5s tick
+on a poisoned record — then reported that the full timeout had elapsed. A wait that returns early
+while claiming otherwise is worse than one that blocks.
 
 **What this does not fix.** The orphan's output is gone regardless: its pipes died with the server,
 so the raw log stops at the teardown and no summary can ever arrive for the rest of that run — the
