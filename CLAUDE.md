@@ -16,8 +16,14 @@ uv run pytest                                  # unit: fast, no auth, no tokens
 PB_INTEGRATION=1 uv run pytest -m integration   # spawns real agent runs; costs real money
 uv run mcp dev src/polybridge/server.py         # MCP Inspector
 ./install.sh                                    # install + register with the desktop app
-uv tool install . --force                       # reinstall the console scripts after changes
+uv tool install . --force --no-cache             # reinstall after changes; --no-cache is required
 ```
+
+**`uv tool install --force` alone reinstalls stale code.** The version never changes, so uv reuses its
+cached wheel: it prints `Installed 1 package` and leaves the old `.py` files in place, mtimes and all
+(measured — a fix was "installed" three times before anyone checked). Always pass `--no-cache`, and
+verify by grepping the installed copy under
+`~/.local/share/uv/tools/<tool>/lib/python*/site-packages/`, not by trusting the output.
 
 ## Architecture: everything agent-specific lives behind `Backend`
 
@@ -58,7 +64,10 @@ Measured on this machine. Do not "tidy" these away:
 ## Invariants — break these and the design stops holding
 
 1. **Only `_monitor` publishes a terminal status and sets `Task.done`**, after process exit *and*
-   pipe drain. Cancellation sets `cancel_requested` and lets the monitor decide.
+   pipe drain. Cancellation sets `cancel_requested` and lets the monitor decide. The one status it
+   must *not* publish is one for a process still alive: on its own `CancelledError` the server is
+   being torn down, not the run, so it leaves the task `running` and re-raises. See "When the client
+   restarts the server".
 2. **Bookkeeping must never change an outcome.** A stale attribute in a *log line* once turned a
    successful run into `failed`, because the exception escaped into the monitor's handler. That log
    call is now individually guarded.
@@ -72,6 +81,46 @@ Measured on this machine. Do not "tidy" these away:
    `tasks._identity_markers`.
 7. **One live run per session**, checked against disk so two server processes cannot both resume it.
 8. **`task_id` is validated before becoming a path** — it arrives from a caller.
+
+## When the client restarts the server
+
+The desktop app tears down and respawns the stdio server mid-conversation — `main.log` shows
+`[LocalMcpServerManager] Closing <server>` followed by `Connecting` a second later. Nothing here
+times a run out, so **every "the run died at ~N minutes" report is really this**, and the giveaway is
+two tasks whose `finished_at` match to the second.
+
+The agent survives it (`start_new_session=True`, so it reparents to pid 1 and keeps working), but
+nothing reads its stdout any more, so its output is lost from that point on.
+
+Three places conspired to turn that into a permanent lie, and all three now agree on one test —
+`store.outcome_unobserved`: *a terminal status with no exit code was never observed.*
+
+- `_monitor`'s `finally` backstop caught its own `CancelledError` and wrote `failed`.
+- `store.write` refuses to move a task backwards, so that `failed` could never be corrected.
+- `resolve_status` and `live_session_ids` only checked liveness for `status == "running"`, so every
+  later server believed the record.
+
+Measured on claude-code-bridge before the fix: two runs recorded `failed`, still alive ten minutes
+later with live API connections, invisible to every tool — and because `live_session_ids` had written
+them off, the session-busy guard let duplicates start against the same working trees. Do not
+"simplify" the `abandoned` flag away.
+
+One precedence rule falls out of this and is easy to get backwards. An unobserved **`failed`** is the
+only status the run's own output may overrule, because it is the one the backstop *guesses*. Every
+other status records something the bridge *did* — `cancelled` above all — so it stands even with no
+exit code. Reversing those two turns a deliberate cancellation into `completed` (caught in review,
+reproduced, now pinned by a test). For the same reason `cancel_recovered` waits for the SIGKILL to
+land: `resolve_status` rechecks liveness on a `cancelled` record, so returning early would answer a
+cancellation with "running".
+
+**What this does not fix.** The orphan's output is gone regardless: its pipes died with the server,
+so the raw log stops at the teardown and no summary can ever arrive for the rest of that run — the
+recovery note says so in as many words. Fixing that properly means durable spooling (spawn stdout
+straight into the append-only log and have servers tail the file, rather than owning the pipe), which
+would also make an orphan finish normally. Until then, judge a recovered-alive run by what it changed
+on disk. Also still open, both pre-existing: `session_has_live_run` → spawn is check-then-act, so two
+servers can still race a resume, and process identity is pid + marker substring matching in `ps`
+output rather than pid + start time.
 
 ## Enforcement must never overclaim
 
