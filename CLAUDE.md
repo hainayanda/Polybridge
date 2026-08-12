@@ -14,8 +14,9 @@ here; fixes worth having in both should be applied to both.
 uv sync
 uv run pytest                                  # unit: fast, no auth, no tokens
 PB_INTEGRATION=1 uv run pytest -m integration   # spawns real agent runs; costs real money
+PB_CLI_INTEGRATION=1 uv run pytest -m cli_integration  # drives real client CLIs; free but binary-dependent
 uv run mcp dev src/polybridge/server.py         # MCP Inspector
-./install.sh                                    # install + register with the desktop app
+./install.sh                                    # install + register with the desktop app + each CLI found
 uv tool install . --force --no-cache             # reinstall after changes; --no-cache is required
 ```
 
@@ -40,6 +41,22 @@ tests. If your fourth backend needs more, the seam is missing a method.
 `Capabilities` exists so callers are told, not surprised. Unsupported requests **fail loudly**:
 `max_turns` on Codex raises rather than being dropped, checked both in `server.py` and again in the
 backend itself.
+
+## Installing is a second seam: `clients/`
+
+`backends/` is *who we dispatch to*. `clients/` is *who can launch us* — the Claude desktop app,
+Claude Code, Codex, opencode. Same rule: nothing outside `clients/` branches on a client's name, and
+adding one should mean one module plus a registry entry.
+
+The two kinds share only the interface. The desktop app has no CLI, so `desktop.py` edits its JSON
+(merge, back up, atomic replace). The other three own config formats we have no business
+reformatting — 78 KB of application state, hand-commented TOML, JSONC — so they are driven through
+their own `mcp add`, which stores the entry in each one's own shape.
+
+`Result.status` is five values, not two, for the same reason `Enforcement` is strict: `unknown` exists
+because a CLI that times out may already have written the config, so `failed` there would be a guess
+stated as a fact. And success is reported as "add command succeeded", never "registered" — exiting
+zero is all that was observed.
 
 ## Verified CLI facts
 
@@ -84,6 +101,30 @@ Measured on this machine. Do not "tidy" these away:
   that run establishes — it does *not* show what `build` permits in general, nor that `--auto` never
   matters, since per its help it auto-approves whatever would otherwise be *asked*. `--agent plan`
   *declined* to write — model restraint, not a layer refusing it. All enforcement booleans are False.
+
+**Registering with them as MCP clients (`mcp add`, measured 2026-08-12)**
+- All three accept `--` and run headless with stdin closed. `stdin=DEVNULL` still matters:
+  `opencode mcp add` is prompt-capable.
+- **Only Claude Code refuses to overwrite.** Re-adding exits **1** with
+  `MCP server <name> already exists in user config` and writes nothing, and there is no
+  `--force`/`--replace` on `add` or `add-json`. So an update means `remove` first — which is why a
+  failed replacement must tell the user to *assume* nothing is registered (a failed `add` is not proof
+  it wrote nothing) and print the restoring command.
+- `claude mcp remove` also exits **1** for a name that was absent
+  (`No MCP server named "<name>" in user scope`). Tolerate that signature and *only* that one:
+  reading every exit 1 as "wasn't there" turns a permission error into licence to delete.
+- **Match those signatures whole, with the name delimited.** `<name> already exists` also matches
+  `MCP server not-polybridge already exists…`, so a *different* server's collision would make us
+  delete ours; the leading `mcp server ` and the quotes around the name in the not-found form are what
+  make the checks safe.
+- `claude mcp get` is not a readback. It prints human prose, not JSON, and **launches the server** to
+  health-check it.
+- Codex and opencode `mcp add` **overwrite**, and each preserved comments elsewhere in its own config
+  (`config.toml`, `opencode.jsonc`). That is a property of the versions measured, not a promise.
+- `codex mcp add` refuses an explicit `CODEX_HOME` that does not exist, but **creates** its default
+  `~/.codex`. Only a sandboxed test needs to make the directory first.
+- Run these from `$HOME`: a project-local `opencode.jsonc` in whatever directory the installer was
+  run from would otherwise capture a registration meant to be global.
 
 ## Invariants — break these and the design stops holding
 
