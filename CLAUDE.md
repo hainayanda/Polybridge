@@ -1,7 +1,7 @@
 # polybridge
 
-MCP server (stdio) that dispatches coding tasks to headless agents — Claude Code and Codex — without
-blocking the caller. See README.md for the tool surface; this file is what you need to change it
+MCP server (stdio) that dispatches coding tasks to headless agents — Claude Code, Codex and
+opencode — without blocking the caller. See README.md for the tool surface; this file is what you need to change it
 safely.
 
 Sibling project: `~/Code/claude-code-bridge` is the single-agent version. Its hardened core
@@ -27,13 +27,15 @@ verify by grepping the installed copy under
 
 ## Architecture: everything agent-specific lives behind `Backend`
 
-`backends/base.py` defines the contract; `backends/claude.py` and `backends/codex.py` implement it.
-**Nothing outside `backends/` may branch on a backend's name.** If you find yourself writing
-`if backend == "codex"`, the seam is missing a method.
+`backends/base.py` defines the contract; `backends/claude.py`, `backends/codex.py` and
+`backends/opencode.py` implement it. **Nothing outside `backends/` may branch on a backend's name.**
+If you find yourself writing `if backend == "codex"`, the seam is missing a method.
 
 Each backend supplies: argv builders, `assert_safe`, `enforcement`, `ingest` (normalise its stream
-into `Accumulator`), and `classify` (decide the terminal status from its own signals). Adding
-`opencode` should mean one new module plus a registry entry — nothing else.
+into `Accumulator`), and `classify` (decide the terminal status from its own signals). Adding a
+backend should mean one new module plus a registry entry — nothing else. That held when `opencode`
+was added: the only non-`backends/` changes were docs, the places that enumerated the two names, and
+tests. If your fourth backend needs more, the seam is missing a method.
 
 `Capabilities` exists so callers are told, not surprised. Unsupported requests **fail loudly**:
 `max_turns` on Codex raises rather than being dropped, checked both in `server.py` and again in the
@@ -60,6 +62,28 @@ Measured on this machine. Do not "tidy" these away:
 - An `item.type == "error"` was observed in a *successful* run — error **items** are notices. A
   **top-level** `{"type": "error"}` event is a real failure. Do not conflate them.
 - `workspace-write` permits `[workdir, /tmp, $TMPDIR]` — it is **not** repo-only.
+
+**opencode (1.18.3)**
+- `run --format json` emits clean JSONL — `step_start`, `tool_use`, `text`, `step_finish`, `error` —
+  with `sessionID` on every event, so the id is known from the first line.
+- **`cost` on `step_finish` is per step, not cumulative.** A three-step run reported 0.0583 / 0.0149
+  / 0.0148; the run cost 0.0881. Assigning instead of accumulating understates it fourfold. Token
+  counts are per step for the same reason.
+- `step_finish.reason` is `tool-calls` mid-run and `stop` on the last step. That is the *only*
+  end-of-run signal — a `text` part can appear at any step, so "saw some text" cannot tell a finished
+  run from one killed mid-flight.
+- A top-level `error` event comes with exit code 1. There is no terminal success event.
+- `--` is honoured; `-s <id>` resumes into the same session id (both verified).
+- Its parser also accepts `--flag=value` and compact `-sID`, and **a later value wins**: appending
+  `--format=default` after `--format json` disabled the JSON stream outright (measured). So
+  `assert_safe` walks the option region and refuses any non-canonical token instead of searching for
+  flags — a search sees one `--format` and passes while opencode honours the other one.
+- No grandchild process: the server runs in-process, so the CLI leader is the only pid.
+- **`--agent build` writes and runs commands without `--auto`** (measured: it created a file and ran
+  `git status` unprompted). So `--auto` is not what separates writing from not writing. That is all
+  that run establishes — it does *not* show what `build` permits in general, nor that `--auto` never
+  matters, since per its help it auto-approves whatever would otherwise be *asked*. `--agent plan`
+  *declined* to write — model restraint, not a layer refusing it. All enforcement booleans are False.
 
 ## Invariants — break these and the design stops holding
 
