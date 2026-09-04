@@ -62,14 +62,19 @@ zero is all that was observed.
 
 Measured on this machine. Do not "tidy" these away:
 
-**Claude Code (2.1.220)**
+**Claude Code (2.1.260)**
 - `-p --output-format stream-json` refuses to start without `--verbose`.
 - `--disallowedTools` is variadic — patterns must be one comma-separated value.
 - `--max-turns` works but is undocumented in `--help`.
 - Never symlink-resolve the `claude` path: `~/.local/bin/claude` points into a versioned directory,
   so resolving it pins `PATH` to today's version and breaks at the next update.
+- `--effort <level>` accepts `low, medium, high, xhigh, max`. **An invalid value is silently
+  degraded**: stderr gets `Warning: Unknown --effort value '<v>' — ignoring it and using the default
+  effort`, and the run proceeds anyway — the CLI never refuses to start. This is why polybridge
+  validates `reasoning_effort` itself rather than passing an unrecognised value through: a dropped
+  request would otherwise look like a run that honoured it.
 
-**Codex (codex-cli 0.145.0)**
+**Codex (codex-cli 0.153.2)**
 - **`codex exec` blocks forever reading stdin.** `stdin=DEVNULL` is mandatory, not tidiness.
 - An approval prompt would hang a headless run equally, hence pinned `-c approval_policy="never"`.
 - Prompt goes after `--`, so prompt text can never be parsed as an option.
@@ -79,8 +84,15 @@ Measured on this machine. Do not "tidy" these away:
 - An `item.type == "error"` was observed in a *successful* run — error **items** are notices. A
   **top-level** `{"type": "error"}` event is a real failure. Do not conflate them.
 - `workspace-write` permits `[workdir, /tmp, $TMPDIR]` — it is **not** repo-only.
+- `-c model_reasoning_effort="<level>"` is not validated by the CLI at all; an unsupported value
+  reaches the API as a mid-run `400`/`turn.failed` rather than being rejected up front. Confirmed
+  honoured end to end: a run at `"ultra"` (outside polybridge's four-level vocabulary) recorded
+  `"reasoning_effort":"ultra"` in its own session rollout.
+- `codex -C <dir>` into an untrusted directory now fails outright (0.153.2), where it previously
+  worked — a behaviour change to account for, not a regression to chase, if a sandboxed test starts
+  failing on a fresh `-C` target.
 
-**opencode (1.18.3)**
+**opencode (1.18.18)**
 - `run --format json` emits clean JSONL — `step_start`, `tool_use`, `text`, `step_finish`, `error` —
   with `sessionID` on every event, so the id is known from the first line.
 - **`cost` on `step_finish` is per step, not cumulative.** A three-step run reported 0.0583 / 0.0149
@@ -101,6 +113,27 @@ Measured on this machine. Do not "tidy" these away:
   that run establishes — it does *not* show what `build` permits in general, nor that `--auto` never
   matters, since per its help it auto-approves whatever would otherwise be *asked*. `--agent plan`
   *declined* to write — model restraint, not a layer refusing it. All enforcement booleans are False.
+- `--variant <level>` **is honoured, but silently ignored with no warning at all** on a value it
+  doesn't recognise — worse than claude's stderr notice. Verified on
+  `opencode/muse-spark-1.3-contributor-free`, one prompt, three paired runs per level: reasoning
+  tokens rose monotonically with the variant — 75/95/99 at `minimal`, 172/201/230 at `low`,
+  239/254/308 at `xhigh`. Non-overlapping, but note the low-to-xhigh margin is narrow (230 vs 239);
+  the wide, unambiguous separation is `minimal` against `xhigh`, and `minimal` is deliberately
+  outside polybridge's vocabulary. So the flag is directional, not a calibrated dial. Support is
+  **per model**:
+  `opencode models --verbose` lists each model's accepted `variants`; `muse-spark-1.2/1.3` accept
+  `minimal, low, medium, high, xhigh`, `ling-3.0-flash-fin` accepts only `low, medium, high`, and
+  `big-pickle`, `mimo-v2.5` and both `nemotron` models declare **no** `variants`, so `--variant` is a
+  silent no-op on them. `max` — the value opencode's own `--help` gives as an example — appears in no
+  model's variant list.
+
+All three CLIs mishandle an unsupported reasoning effort differently, which is exactly why polybridge
+validates against its own closed `EFFORTS` vocabulary before any of them see a value: claude degrades
+silently with a stderr warning, opencode ignores it silently with no warning at all, and codex alone
+fails loudly — as a mid-run API `400`. Because that vocabulary is only four literals
+(`low`/`medium`/`high`/`xhigh`), none containing a quote or `=`, TOML-quoting codex's
+`-c model_reasoning_effort="<v>"` value is a non-issue — no encoder needed, just the literal
+interpolated between quotes.
 
 **Registering with them as MCP clients (`mcp add`, measured 2026-08-12)**
 - All three accept `--` and run headless with stdin closed. `stdin=DEVNULL` still matters:
