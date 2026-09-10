@@ -1,8 +1,8 @@
 # polybridge
 
-MCP server (stdio) that dispatches coding tasks to headless agents — Claude Code, Codex and
-opencode — without blocking the caller. See README.md for the tool surface; this file is what you need to change it
-safely.
+MCP server (stdio) that dispatches coding tasks to headless agents — Claude Code, Codex, opencode and
+vibe — without blocking the caller. See README.md for the tool surface; this file is what you need to
+change it safely.
 
 Sibling project: `~/Code/claude-code-bridge` is the single-agent version. Its hardened core
 (registry, persistence, drainers, cancellation, progress-aware waiting, config editing) was ported
@@ -28,15 +28,19 @@ verify by grepping the installed copy under
 
 ## Architecture: everything agent-specific lives behind `Backend`
 
-`backends/base.py` defines the contract; `backends/claude.py`, `backends/codex.py` and
-`backends/opencode.py` implement it. **Nothing outside `backends/` may branch on a backend's name.**
-If you find yourself writing `if backend == "codex"`, the seam is missing a method.
+`backends/base.py` defines the contract; `backends/claude.py`, `backends/codex.py`,
+`backends/opencode.py` and `backends/vibe.py` implement it. **Nothing outside `backends/` may branch
+on a backend's name.** If you find yourself writing `if backend == "codex"`, the seam is missing a
+method.
 
 Each backend supplies: argv builders, `assert_safe`, `enforcement`, `ingest` (normalise its stream
 into `Accumulator`), and `classify` (decide the terminal status from its own signals). Adding a
 backend should mean one new module plus a registry entry — nothing else. That held when `opencode`
 was added: the only non-`backends/` changes were docs, the places that enumerated the two names, and
-tests. If your fourth backend needs more, the seam is missing a method.
+tests. It held again for `vibe`: no change to the `Backend` protocol was needed, even though vibe
+rejects both `model` and `reasoning_effort` outright — that only needed a `supports_model_selection`
+capability field beside the existing `reasoning_effort` one, not a protocol change. If your fifth
+backend needs more than a module and a registry entry, the seam is missing a method.
 
 `Capabilities` exists so callers are told, not surprised. Unsupported requests **fail loudly**:
 `max_turns` on Codex raises rather than being dropped, checked both in `server.py` and again in the
@@ -45,13 +49,13 @@ backend itself.
 ## Installing is a second seam: `clients/`
 
 `backends/` is *who we dispatch to*. `clients/` is *who can launch us* — the Claude desktop app,
-Claude Code, Codex, opencode. Same rule: nothing outside `clients/` branches on a client's name, and
-adding one should mean one module plus a registry entry.
+Claude Code, Codex, opencode, vibe. Same rule: nothing outside `clients/` branches on a client's name,
+and adding one should mean one module plus a registry entry.
 
 The two kinds share only the interface. The desktop app has no CLI, so `desktop.py` edits its JSON
-(merge, back up, atomic replace). The other three own config formats we have no business
-reformatting — 78 KB of application state, hand-commented TOML, JSONC — so they are driven through
-their own `mcp add`, which stores the entry in each one's own shape.
+(merge, back up, atomic replace). The other four own config formats we have no business
+reformatting — 78 KB of application state, hand-commented TOML, JSONC, and TOML again — so they are
+driven through their own `mcp add`, which stores the entry in each one's own shape.
 
 `Result.status` is five values, not two, for the same reason `Enforcement` is strict: `unknown` exists
 because a CLI that times out may already have written the config, so `failed` there would be a guess
@@ -127,17 +131,65 @@ Measured on this machine. Do not "tidy" these away:
   silent no-op on them. `max` — the value opencode's own `--help` gives as an example — appears in no
   model's variant list.
 
-All three CLIs mishandle an unsupported reasoning effort differently, which is exactly why polybridge
-validates against its own closed `EFFORTS` vocabulary before any of them see a value: claude degrades
-silently with a stderr warning, opencode ignores it silently with no warning at all, and codex alone
-fails loudly — as a mid-run API `400`. Because that vocabulary is only four literals
-(`low`/`medium`/`high`/`xhigh`), none containing a quote or `=`, TOML-quoting codex's
-`-c model_reasoning_effort="<v>"` value is a non-issue — no encoder needed, just the literal
-interpolated between quotes.
+**vibe (Mistral Vibe CLI 2.25.1)**
+- `get_prompt_from_stdin()` (`vibe/cli/cli.py:54-67`) runs unconditionally before mode dispatch and
+  calls `sys.stdin.read()` whenever stdin is **not a tty** — a pipe that never closes blocks forever.
+  `stdin=DEVNULL` is mandatory, same reason as codex's.
+- Programmatic mode is `-p/--prompt TEXT` with `--output streaming` for newline-delimited JSON.
+- **The `PROMPT` positional is ignored in programmatic mode.** `cli.py:172` reads
+  `args.prompt or stdin_prompt`; the positional serves interactive mode and worktree naming only
+  (`entrypoint.py:233`). So there is **no working `--` separator** of the kind codex and opencode
+  rely on — the prompt must ride on `--prompt`, and `-p` is `nargs="?", const=""`, so a prompt
+  starting with `-` is not taken as its value (it falls through to stdin and dies with
+  `Error: No prompt provided for programmatic mode`, exit 1 — loud, not silent, but it rules out the
+  space-separated form for such prompts). Hence the single canonical token `--prompt=<text>`, last in
+  argv. Measured: a prompt beginning with `--max-turns` reached the model verbatim at exit 0,
+  unparsed as a flag.
+- `sessionId` is a UUID vibe mints itself, present on **every** stream entry including the first, so
+  the id is known from line one — `chooses_session_id=False`.
+- **No terminal event, no dollar cost, no token counts at all.** `--output streaming` emits only
+  `PublicHistoryEntry` objects with `generation_status == COMPLETED`. Classification is
+  exit-code-authoritative with the closing assistant message as corroboration, same shape as
+  codex/opencode.
+- **History replay on resume, measured.** A `--resume` run emitted, in order: the prior user message,
+  the prior `reasoning`, the prior assistant message, a `checkpoint`, and only then the live turn.
+  Replayed entries carry `turnId: null` and `source: "harness"`; the live turn's entries carry a real
+  `turnId`, and its user message carries `source: "turn_start"`. Ingest must key off that
+  `turn_start`/`turnId` marker, not off "first assistant message seen," or the replayed prefix leaks
+  into the summary of a resumed task.
+- **Turn-cap breach reads as failure, not a clean stop — unlike claude.** Hitting
+  `--max-turns`/`--max-price`/`--max-tokens` raises `ProgrammaticLimitError` → exit 1. Measured with
+  `--max-turns 1` on a prompt needing a tool call: exit **1**, stderr
+  `<vibe_stop_event>Turn limit of 1 reached</vibe_stop_event>`. **The trap is in the stream, not just
+  stderr:** the run also emits a *live-turn* `assistant` message whose text is that same
+  `<vibe_stop_event>…</vibe_stop_event>` marker, so a naive ingest reports the marker itself as the
+  agent's answer. `supports_turn_cap=True`, with that caveat attached.
+- **Effort is unsupported outright, and the reason is config precedence, not the missing flag alone.**
+  vibe has no `--model` and no reasoning-effort flag — both are config-only
+  (`[[models]].thinking`, vocabulary `off/low/medium/high/max`). Its layer precedence, quoted from
+  `default_orchestrator.py:30-33`, is *lowest to highest*: schema defaults, GrowthBook experiments,
+  **user TOML, project TOML, `VIBE_*` env vars**, runtime overrides, agent profile overrides, enforced
+  admin config. A *trusted* project `.vibe/config.toml` (and polybridge passes `--trust`) outranks the
+  user TOML and can repoint `active_model`, so an env override keyed off the user config would apply
+  to the **wrong model and silently no-op** — the agent-profile layer (polybridge always passes
+  `--agent`) and any org admin layer both outrank an env var too, and neither is inspectable from
+  here. That silent-no-op failure mode is exactly what this repo exists to prevent, so `model` and
+  `reasoning_effort` are both declared unsupported and raised loudly rather than passed through best-
+  effort.
 
-**Registering with them as MCP clients (`mcp add`, measured 2026-08-12)**
-- All three accept `--` and run headless with stdin closed. `stdin=DEVNULL` still matters:
-  `opencode mcp add` is prompt-capable.
+All four CLIs mishandle an unsupported reasoning effort differently, which is exactly why polybridge
+validates against its own closed `EFFORTS` vocabulary before any of them see a value: claude degrades
+silently with a stderr warning, opencode ignores it silently with no warning at all, codex alone fails
+loudly — as a mid-run API `400` — and vibe has no flag to mishandle at all: its equivalent
+(`[[models]].thinking`) is config-only, several layers removed from anything on the command line, and
+an unsupported value there would surface (if it ever did) as a config-resolution problem, not a CLI
+error. Because that vocabulary is only four literals (`low`/`medium`/`high`/`xhigh`), none containing
+a quote or `=`, TOML-quoting codex's `-c model_reasoning_effort="<v>"` value is a non-issue — no
+encoder needed, just the literal interpolated between quotes.
+
+**Registering with them as MCP clients (`mcp add`, measured 2026-08-12; vibe measured 2026-09-10)**
+- All four accept `--` and run headless with stdin closed. `stdin=DEVNULL` still matters:
+  `opencode mcp add` is prompt-capable, and so is `vibe mcp add`.
 - **Only Claude Code refuses to overwrite.** Re-adding exits **1** with
   `MCP server <name> already exists in user config` and writes nothing, and there is no
   `--force`/`--replace` on `add` or `add-json`. So an update means `remove` first — which is why a
@@ -158,6 +210,36 @@ interpolated between quotes.
   `~/.codex`. Only a sandboxed test needs to make the directory first.
 - Run these from `$HOME`: a project-local `opencode.jsonc` in whatever directory the installer was
   run from would otherwise capture a registration meant to be global.
+- **vibe is a fourth, distinct behaviour — it neither overwrites (codex, opencode) nor refuses
+  outright (Claude Code). Its collision has _two_ shapes, and only one of them exits 0.** Measured
+  against a sandboxed `VIBE_HOME`:
+  - `vibe mcp add <new>` → `` Added MCP server `<name>`. ``, exit 0.
+  - `vibe mcp add` with a **byte-for-byte identical** entry → `` MCP server `<name>` is already
+    configured. ``, **exit 0, nothing written** — an idempotent no-op.
+  - `vibe mcp add` with the **same name but different settings** — i.e. what an update actually is —
+    → an argparse failure: a `usage:` block plus
+    `` vibe mcp: error: MCP server name `<name>` is already configured. ``, **exit 2, nothing
+    written**. Note the extra word **name**, which is what keeps the two signatures distinguishable.
+  - `vibe mcp remove <existing>` → `` Removed MCP server `<name>`. ``, exit 0.
+  - `vibe mcp remove <absent>` → `` MCP server `<name>` is not configured in the user config. ``,
+    **exit 0** — unlike `claude mcp remove`, which exits 1 for the same case.
+  - remove-then-add **does** update correctly (verified: the stored command changed). There is no
+    `--force`/`--replace` on `add`, so that is the only way to replace an existing entry, and both
+    collision signatures must route to it.
+  - **A cautionary tale about measuring the easy case.** The first measurement here re-added an
+    *identical* entry, saw exit 0, and recorded "silently skips at exit 0" as the general rule. The
+    conflicting case — the only one an update ever hits — exits 2, so a client that treated any
+    non-zero exit as fatal turned every update into a hard failure while leaving the stale entry in
+    place. A real `PB_CLI_INTEGRATION=1` run against the binary is what caught it, not the unit
+    tests written from the wrong fact. When measuring an idempotent-looking command, vary the
+    payload, not just repeat the call.
+  - Because every case *except* that conflict exits 0, **the exit code alone cannot tell success
+    from a no-op for vibe** — the stdout message is the signal, and the exit code only narrows which
+    message to expect. Match it whole, with the name delimited by its backticks, per the narrow
+    signature rule above.
+  - `vibe mcp add` also **rewrites the whole `config.toml` and destroys hand-written comments in it**
+    (measured: a `# hand-written comment` was gone afterwards, and `args` was reformatted) — unlike
+    codex's and opencode's own `add`, which preserved comments elsewhere in their configs.
 
 ## Invariants — break these and the design stops holding
 
