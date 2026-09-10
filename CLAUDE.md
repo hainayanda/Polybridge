@@ -149,8 +149,9 @@ Measured on this machine. Do not "tidy" these away:
   the id is known from line one — `chooses_session_id=False`.
 - **No terminal event, no dollar cost, no token counts at all.** `--output streaming` emits only
   `PublicHistoryEntry` objects with `generation_status == COMPLETED`. Classification is
-  exit-code-authoritative with the closing assistant message as corroboration, same shape as
-  codex/opencode.
+  exit-code-authoritative with the closing assistant message as corroboration — the same shape as
+  codex, and codex only. opencode looks similar but is not: its `step_finish(reason="stop")` is a
+  real end-of-run signal, so it can complete without an observed exit where codex and vibe cannot.
 - **History replay on resume, measured.** A `--resume` run emitted, in order: the prior user message,
   the prior `reasoning`, the prior assistant message, a `checkpoint`, and only then the live turn.
   Replayed entries carry `turnId: null` and `source: "harness"`; the live turn's entries carry a real
@@ -293,6 +294,30 @@ exit code. Reversing those two turns a deliberate cancellation into `completed` 
 reproduced, now pinned by a test). For the same reason `cancel_recovered` waits for the SIGKILL to
 land: `resolve_status` rechecks liveness on a `cancelled` record, so returning early would answer a
 cancellation with "running".
+
+A second, quieter overclaim lived in the same code path and is now fixed. `resolve_status`
+reconstructed a status by calling `classify(state, exit_code if exit_code is not None else 0)` —
+**fabricating a clean exit for a process nothing saw exit.** For the backends with no terminal event
+of their own (codex, vibe) that turned "the agent said something" into `completed`, on no evidence at
+all. `classify` now takes `exit_code: int | None`, and what `None` is worth is each backend's own
+business:
+
+- **claude** completes on its `result` event alone — that is a real terminal event — and only an
+  *observed* non-zero exit overrules it. Note the trap: passing `None` through without also changing
+  claude's `exit_code != 0` to `exit_code is not None and exit_code != 0` would have *regressed*
+  claude, turning every recovered success into a failure.
+- **opencode** likewise, on `step_finish(reason="stop")`.
+- **codex** and **vibe** require an *observed* zero exit; with `None` they report `failed`. Their old
+  `exit_code != 0` already rejected `None` by accident of Python comparison — it is now spelled out
+  so the behaviour is intentional rather than incidental.
+
+The recovery note had to change with it: "The run reported this result itself" is false for a codex
+or vibe record whose `failed` is an inference from *missing* evidence rather than a reported failure.
+It is now chosen from the accumulator and the resulting status — never from the backend's name, which
+nothing outside `backends/` may branch on. `record.exit_code` was already nullable on disk, so there
+is no migration; the intended behavioural change is that old unobserved codex/vibe records carrying a
+final message now read `failed` instead of `completed`, which corrects a false claim rather than
+losing data.
 
 Everything that asks "has this settled?" must go through `resolve_status`, never read
 `record.status` directly. `_poll_recovered` did the latter and so ended a 55s wait after one 5s tick
