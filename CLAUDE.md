@@ -119,9 +119,13 @@ Measured on this machine. Do not "tidy" these away:
   reaches the API as a mid-run `400`/`turn.failed` rather than being rejected up front. Confirmed
   honoured end to end: a run at `"ultra"` (outside polybridge's four-level vocabulary) recorded
   `"reasoning_effort":"ultra"` in its own session rollout.
-- `codex -C <dir>` into an untrusted directory now fails outright (0.153.2), where it previously
-  worked — a behaviour change to account for, not a regression to chase, if a sandboxed test starts
-  failing on a fresh `-C` target.
+- `codex -C <dir>` into an untrusted directory was recorded here as failing outright on 0.153.2.
+  **Re-measured on the same version and it does not, at least for `codex exec`:** a fresh
+  `/tmp` directory, `git init`-ed and never trusted (absent from `~/.codex/config.toml`), ran
+  normally under `-s read-only`, and a second fresh directory ran under `-s workspace-write` too.
+  So a sandboxed test on a fresh `-C` target is not expected to fail for trust reasons. The
+  original note may have been about the interactive CLI rather than `exec`, which was not
+  re-tested — so this narrows the claim rather than deleting it.
 - **`workspace-write` defers network to the user's own config; `sandbox_workspace_write.network_access`
   is the switch.** Measured with one `curl https://example.com` per sandbox, on a config that does
   not set the key: `read-only` → blocked (`curl: (6) Could not resolve host`); `workspace-write` →
