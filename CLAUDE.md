@@ -77,6 +77,26 @@ Measured on this machine. Do not "tidy" these away:
   effort`, and the run proceeds anyway — the CLI never refuses to start. This is why polybridge
   validates `reasoning_effort` itself rather than passing an unrecognised value through: a dropped
   request would otherwise look like a run that honoured it.
+- **Dropping the deny patterns does NOT let a run commit — the lever is `--allowedTools`.** This was
+  the plan's assumed mechanism and it is wrong. Measured, three paired runs in a scratch repo with a
+  local bare remote:
+  - with `--disallowedTools "Bash(git commit:*),Bash(git push:*)"`: both refused,
+    `Permission to use Bash with command ... has been denied.`
+  - with those patterns simply **omitted**: still refused, but a *different* message —
+    `This command requires approval`. `acceptEdits` auto-approves *edits*, not arbitrary Bash, and
+    headless `-p` has nobody to approve, so the command dies either way.
+  - with `--permission-mode acceptEdits --allowedTools "Bash(git commit:*),Bash(git push:*)"`: both
+    **succeeded**, `permission_denials` empty, and the commit landed in the bare remote.
+  So the `publish` freedom drops the git denies *and* adds the allow entries; passing both would be
+  self-defeating, since deny beats allow. `--allowedTools` is variadic exactly like
+  `--disallowedTools`, so its patterns are likewise one comma-separated value.
+- **The approval layer refuses a chained command citing each part separately** — a run that bundled
+  `git commit -am wip` with `echo "EXIT: $?"` was refused naming both — so an allow-listed command
+  is still refused when it arrives chained to something else.
+- `bypassPermissions` with the denies dropped permits commit and push (measured the same way:
+  empty denials, commit in the remote). Note this makes `unrestricted` a **behaviour change** —
+  before the `publish` work the denies were passed at every level, and deny beats bypass, so
+  `unrestricted` did *not* permit an ordinary `git commit` despite its name.
 
 **Codex (codex-cli 0.153.2)**
 - **`codex exec` blocks forever reading stdin.** `stdin=DEVNULL` is mandatory, not tidiness.
@@ -95,6 +115,20 @@ Measured on this machine. Do not "tidy" these away:
 - `codex -C <dir>` into an untrusted directory now fails outright (0.153.2), where it previously
   worked — a behaviour change to account for, not a regression to chase, if a sandboxed test starts
   failing on a fresh `-C` target.
+- **`workspace-write` blocks network, and `sandbox_workspace_write.network_access` is what opens
+  it.** Measured with one `curl https://example.com` per sandbox: `read-only` → blocked
+  (`curl: (6) Could not resolve host`); `workspace-write` → blocked, same error; `workspace-write`
+  plus `-c sandbox_workspace_write.network_access=true` → **HTTP 200**; `danger-full-access` →
+  HTTP 200. That is what makes `publish` a genuine tier on codex rather than a relabelling: without
+  it a push cannot reach a remote at all.
+  The key name came from the binary's own strings — it carries both `[sandbox_workspace_write]` and
+  the sentence *"In `workspace-write`, network access still depends on your Codex configuration (for
+  example `[sandbox_workspace_write] network_access = true`)"* — which mattered, because **codex does
+  not validate `-c` keys at all** (see `model_reasoning_effort` above): a guessed key would have been
+  silently ignored, and "network still blocked" would have been indistinguishable from "wrong key".
+  The switch opens **general** network access, not git or `gh` specifically — anything inside the
+  sandbox can reach the network — so the enforcement block says that rather than implying it only
+  unlocks pushing.
 
 **opencode (1.18.18)**
 - `run --format json` emits clean JSONL — `step_start`, `tool_use`, `text`, `step_finish`, `error` —
@@ -165,6 +199,14 @@ Measured on this machine. Do not "tidy" these away:
   stderr:** the run also emits a *live-turn* `assistant` message whose text is that same
   `<vibe_stop_event>…</vibe_stop_event>` marker, so a naive ingest reports the marker itself as the
   agent's answer. `supports_turn_cap=True`, with that caveat attached.
+- **`publish` on vibe needs `--agent auto-approve`, and so is no narrower than `unrestricted`.**
+  Measured: under `--agent accept-edits`, `git commit -am wip` in a throwaway repo emitted a
+  `callback` (`detail.kind: "approval"`, `title: "Allow bash?"`), was auto-denied, produced an
+  `effect` with `state.status: "cancelled"`, and **no commit landed** — `accept-edits` auto-approves
+  `write_file`/`edit` only, leaving `bash` governed by the user's own `[tools.bash]` allowlist, which
+  did not cover `git commit`. `auto-approve` is the only profile that can publish, and it sets
+  `bypass_tool_permissions: true`, removing every *other* restriction with it. So on vibe the
+  `publish` level is a relabelling of `unrestricted`, and `Enforcement` says exactly that.
 - **Effort is unsupported outright, and the reason is config precedence, not the missing flag alone.**
   vibe has no `--model` and no reasoning-effort flag — both are config-only
   (`[[models]].thinking`, vocabulary `off/low/medium/high/max`). Its layer precedence, quoted from
@@ -345,6 +387,22 @@ Worked example: Claude's deny patterns refuse `git commit` but are evaded by `gi
 temp dirs, so `writes_confined: True` is paired with `writable_roots` naming them — never
 "confined to the repo".
 
+**`freedom` is a requested ordering, not four distinct strengths everywhere.** Backends may collapse
+adjacent levels, and two do: on opencode `publish` is byte-identical to `write_in_repo` (nothing was
+ever enforced there), and on vibe it is byte-identical to `unrestricted` (only `auto-approve` can
+publish). Where two levels produce the same argv, `assert_safe(argv, freedom)` genuinely cannot
+refuse a mismatched freedom — there is no difference to detect — so those pairs are listed
+explicitly, excluded from the cross-freedom refusal test, and covered by a test asserting they
+really are identical. A collapse that is pinned by a test is a documented property; one that is
+merely true is a hole waiting to be mistaken for enforcement.
+
+The two fields `publish` added are named for what they assert. `publish_attempts_allowed_by_polybridge`
+is deliberately **not** `publishing_permitted`: polybridge can say it removed the barriers under its
+own control, and nothing more — credentials, remote permissions, branch protection, hooks, an
+unauthenticated `gh`, and the agent's own behaviour all sit outside it. `network_access` is separate
+because network is the material difference for pushing, and `not_controlled` (claude, opencode, vibe)
+means the environment decides — which is not the same claim as `blocked`.
+
 If you add a backend or a freedom level, re-measure rather than reasoning about it, and update the
 tables in README.md. `tests/test_backends.py::test_enforcement_never_overclaims` enforces the shape;
 it cannot check whether your claim is true.
@@ -355,6 +413,25 @@ The caller is usually a model, and it only knows what the tool surface says. Sta
 infer belong **in the payload**: `enforcement` on every task, `recovered: true` plus a `note` on
 tasks from an earlier process, `next_step` when a wait returns still-running, `notices` for non-fatal
 messages, and errors that say what to do instead of just what failed.
+
+A dispatch at `publish` or `unrestricted` also checks whether the checkout is on the repository's
+default branch, and says so on `bridge_notices` — a channel separate from `Accumulator.notices`
+precisely because vibe's `ingest` resets those per turn and would discard a dispatch-level notice on
+a resumed run. Three rules keep that honest:
+
+- It is **disclosure, not a guard.** `start_task` returns after the process has spawned, so the
+  notice cannot gate anything; it says to cancel the task, never implies the run was held. It also
+  says the branch was read once, at spawn — the agent may switch branches later.
+- The default branch is only ever what a remote's own locally recorded `HEAD` says. **Never fall
+  back to "the branch is named `main` or `master`"** — a feature branch can be called `main` while
+  the real default is something else, which is a test. No fetch, no `ls-remote`, no
+  `remote set-head`.
+- **Not being able to tell is reported too.** For a run authorized to publish, "which branch this
+  would land on could not be determined" is material, so silence would be the wrong answer. Every
+  failure mode — missing `git`, a timeout, a detached HEAD, several remotes with no `origin` — is
+  absorbed into that notice rather than escaping, per the invariant that bookkeeping must never
+  change an outcome. The probes run off the event loop, since they are blocking calls inside an
+  async `_spawn`.
 
 `wait_for_task`'s default stays under 60s because MCP clients time out requests around there and
 report `-32001` while the run continues unharmed.
