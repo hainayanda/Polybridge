@@ -90,6 +90,13 @@ Measured on this machine. Do not "tidy" these away:
   So the `publish` freedom drops the git denies *and* adds the allow entries; passing both would be
   self-defeating, since deny beats allow. `--allowedTools` is variadic exactly like
   `--disallowedTools`, so its patterns are likewise one comma-separated value.
+- **`-p` is a boolean flag and the prompt is a separate positional**, so a prompt token equal to a
+  real option name is parsed by claude as that option. The prompt therefore rides after a `--`
+  separator, as on codex and opencode. Measured both ways: without `--`, a prompt of
+  `--dangerously-skip-permissions` reached claude's own parser and aborted for lack of a prompt;
+  with it, the same text was delivered literally. Also measured on **resume** —
+  `--resume <id> -- "<option-shaped prompt>"` preserved the session id and delivered the text
+  verbatim, so the separator holds on both paths.
 - **The approval layer refuses a chained command citing each part separately** — a run that bundled
   `git commit -am wip` with `echo "EXIT: $?"` was refused naming both — so an allow-listed command
   is still refused when it arrives chained to something else.
@@ -115,11 +122,18 @@ Measured on this machine. Do not "tidy" these away:
 - `codex -C <dir>` into an untrusted directory now fails outright (0.153.2), where it previously
   worked — a behaviour change to account for, not a regression to chase, if a sandboxed test starts
   failing on a fresh `-C` target.
-- **`workspace-write` blocks network, and `sandbox_workspace_write.network_access` is what opens
-  it.** Measured with one `curl https://example.com` per sandbox: `read-only` → blocked
-  (`curl: (6) Could not resolve host`); `workspace-write` → blocked, same error; `workspace-write`
-  plus `-c sandbox_workspace_write.network_access=true` → **HTTP 200**; `danger-full-access` →
-  HTTP 200. That is what makes `publish` a genuine tier on codex rather than a relabelling: without
+- **`workspace-write` defers network to the user's own config; `sandbox_workspace_write.network_access`
+  is the switch.** Measured with one `curl https://example.com` per sandbox, on a config that does
+  not set the key: `read-only` → blocked (`curl: (6) Could not resolve host`); `workspace-write` →
+  blocked, same error; `workspace-write` plus `-c sandbox_workspace_write.network_access=true` →
+  **HTTP 200**; `danger-full-access` → HTTP 200.
+  **That "blocked at workspace-write" is a property of the config, not the sandbox** — measured
+  again with `[sandbox_workspace_write] network_access = true` in the user's own `config.toml`, a
+  plain `workspace-write` run reached the network (HTTP 200). So polybridge passes an explicit
+  `...=false` wherever it reports `blocked` (measured: that returns it to exit 6), and names the
+  override in the `Enforcement.mechanism` string. `read-only` was measured immune to the key even
+  with it set true, so it takes no override. The first version of this note generalised from one
+  clean machine — the same mistake as the vibe `mcp add` measurement below. That is what makes `publish` a genuine tier on codex rather than a relabelling: without
   it a push cannot reach a remote at all.
   The key name came from the binary's own strings — it carries both `[sandbox_workspace_write]` and
   the sentence *"In `workspace-write`, network access still depends on your Codex configuration (for
