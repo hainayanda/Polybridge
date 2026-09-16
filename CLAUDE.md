@@ -14,7 +14,7 @@ here; fixes worth having in both should be applied to both.
 uv sync
 uv run pytest                                  # unit: fast, no auth, no tokens
 PB_INTEGRATION=1 uv run pytest -m integration   # spawns real agent runs; costs real money
-PB_CLI_INTEGRATION=1 uv run pytest -m cli_integration  # drives real client CLIs; free but binary-dependent
+PB_CLI_INTEGRATION=1 uv run pytest -m cli_integration  # real client and agent CLIs; no model calls in the measured cases, binary-dependent
 uv run mcp dev src/polybridge/server.py         # MCP Inspector
 ./install.sh                                    # install + register with the desktop app + each CLI found
 uv tool install . --force --no-cache             # reinstall after changes; --no-cache is required
@@ -147,6 +147,17 @@ Measured on this machine. Do not "tidy" these away:
   The switch opens **general** network access, not git or `gh` specifically — anything inside the
   sandbox can reach the network — so the enforcement block says that rather than implying it only
   unlocks pushing.
+- **`codex exec resume` rejects `-C`/`-s`: they are global `codex exec` options, absent from `codex
+  exec resume --help`.** Measured on codex-cli **0.154.0**, 2026-09-16 (the rest of this Codex
+  section was measured on 0.153.2 and was not re-measured here). Using a bogus thread id so a parse
+  success shows up as `no rollout found for thread id …` rather than an option error:
+  `codex exec --json -C <dir> -s read-only -c approval_policy="never" resume -- <id> <prompt>`
+  parses; `codex exec resume --json -C <dir> …` (the shape polybridge shipped) does not — `error:
+  unexpected argument '-C' found`, exit 2, before any model call. So `build_resume_argv` places the
+  option region *before* `resume`, with `resume` as the region's own last token, immediately before
+  `--`. The shipped shape was never observed to work: it failed this way in the field (a reported
+  resume, exit 2 in 0.119s), it fails on 0.154.0 here, and the same rejection was recorded for `-s`
+  on 0.145.0 — three points, not a proof about every version in between.
 
 **opencode (1.18.18)**
 - `run --format json` emits clean JSONL — `step_start`, `tool_use`, `text`, `step_finish`, `error` —
@@ -318,8 +329,10 @@ encoder needed, just the literal interpolated between quotes.
    `DRAIN_GRACE_SECONDS` (a grandchild can hold stdout open forever).
 5. **Persist a session id the moment it is disclosed.** Codex only reveals its `thread_id` mid-run;
    waiting until exit means a server that dies first loses any chance of resuming.
-6. **Identity markers, not session ids, decide liveness.** Codex never receives its id on the command
-   line, so `store.process_alive` matches backend-supplied markers instead. See
+6. **Identity markers, not session ids, decide liveness.** On a fresh run codex never receives its id
+   on the command line, so `store.process_alive` matches backend-supplied markers instead. (A
+   *resume* is the one exception — the thread id rides as a positional there, see `backends/codex.py`
+   — but the marker-matching logic itself does not branch on that; it is unaffected.) See
    `tasks._identity_markers`.
 7. **One live run per session**, checked against disk so two server processes cannot both resume it.
 8. **`task_id` is validated before becoming a path** — it arrives from a caller.
