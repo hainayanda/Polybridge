@@ -228,6 +228,25 @@ Measured on this machine. Do not "tidy" these away:
   stderr:** the run also emits a *live-turn* `assistant` message whose text is that same
   `<vibe_stop_event>…</vibe_stop_event>` marker, so a naive ingest reports the marker itself as the
   agent's answer. `supports_turn_cap=True`, with that caveat attached.
+- **A denial can end a run that already spoke, and that used to read as `completed`.** The refusal
+  above is not only a `publish` concern: at *any* freedom, a dispatch whose next command falls
+  outside the user's `[tools.bash]` config is auto-denied and frequently stops there. Measured
+  2026-09-22 on two real dispatches replayed through `ingest`: one narrated its next step, had bash
+  denied, **changed zero files**, and exited 0 — reported `completed` with that narration as its
+  `summary`, because `saw_final_message` had already latched on a message that preceded the refusal.
+  So `ingest` now **withdraws** the close when it records a denial, exactly as the stop-event branch
+  does — but **without latching**, which is the whole distinction: a turn cap is terminal, a refusal
+  is not, so a later assistant message in the same turn re-establishes the close and only a run that
+  never speaks again reports `failed`. The denial stays on `acc.denials` either way.
+  **What this does not fix**, and the limits are worth stating precisely. The second dispatch simply
+  ended mid-work with no denial at all, and nothing in the stream distinguishes that from a short
+  legitimate answer — it still reads `completed`. A denial followed by a further assistant message
+  also re-establishes `completed`, and that message can itself be progress rather than an answer;
+  vibe's stream offers no structural way to tell them apart, so neither can polybridge. **For an
+  editing task, then, a vibe `completed` does not establish that the requested changes landed —
+  check the resulting worktree and run the tests.** Not stated as "the diff is the only reliable
+  signal", which overclaims in the other direction: a diff attributes nothing to a particular
+  dispatch, and says nothing at all about a read-only or analysis task.
 - **`publish` on vibe needs `--agent auto-approve`, and so is no narrower than `unrestricted`.**
   Measured: under `--agent accept-edits`, `git commit -am wip` in a throwaway repo emitted a
   `callback` (`detail.kind: "approval"`, `title: "Allow bash?"`), was auto-denied, produced an
