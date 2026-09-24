@@ -33,8 +33,11 @@ verify by grepping the installed copy under
 on a backend's name.** If you find yourself writing `if backend == "codex"`, the seam is missing a
 method.
 
-Each backend supplies: argv builders, `assert_safe`, `enforcement`, `ingest` (normalise its stream
-into `Accumulator`), and `classify` (decide the terminal status from its own signals). Adding a
+Each backend supplies: argv builders (returning an `Invocation` — argv plus stdin wiring and any
+initial stdin bytes), `assert_safe` (over the whole `Invocation`), `enforcement`, `ingest` (normalise
+its stream into `Accumulator`), `normalize`, `classify` (decide the terminal status from its own
+signals), and `encode_live_message` (one message in its CLI's live-input format, or
+`UnsupportedCapability`). Adding a
 backend should mean one new module plus a registry entry — nothing else. That held when `opencode`
 was added: the only non-`backends/` changes were docs, the places that enumerated the two names, and
 tests. It held again for `vibe`: no change to the `Backend` protocol was needed, even though vibe
@@ -96,7 +99,31 @@ Measured on this machine. Do not "tidy" these away:
   `--dangerously-skip-permissions` reached claude's own parser and aborted for lack of a prompt;
   with it, the same text was delivered literally. Also measured on **resume** —
   `--resume <id> -- "<option-shaped prompt>"` preserved the session id and delivered the text
-  verbatim, so the separator holds on both paths.
+  verbatim, so the separator holds on both paths. That is the **classic** shape, which claude now
+  uses only when `max_turns` is set (see live input below).
+- **Live input: `--input-format stream-json`, a stdin pipe, and the prompt as the first stdin
+  line** — `{"type":"user","message":{"role":"user","content":[{"type":"text","text":…}]}}`.
+  Measured on 2.1.281 (`tests/test_live_input_real.py`): next to `--input-format stream-json` **a
+  positional prompt is silently ignored** (exit 0, no model call), so the live shape has no `--` and
+  no positional at all. A message written mid-turn is folded into that turn (one `result`); after a
+  `result` the process idles until more input or EOF; EOF after a result exits 0 in ~1.2 s; a
+  message written just before EOF still runs as its own turn; `--resume` takes the same shape.
+  `total_cost_usd` is cumulative per process, `num_turns`/`usage`/`permission_denials` per result.
+  `--max-turns` with live input is unmeasured, so a capped run stays classic.
+  **`assert_safe` accepts exactly these two shapes and validates each completely**: classic is `--`
+  plus one positional, no `--input-format`, stdin DEVNULL, no initial input; live is no `--`, every
+  token a known option (so no positional), `--input-format stream-json` exactly once, no
+  `--max-turns`, a pipe, and an `initial_input` that is exactly one well-formed user line. It takes
+  the whole `Invocation`, so a live argv wired to DEVNULL (or a classic one to a pipe) is refused, and
+  a bare argv list is refused outright.
+- **Background tasks (measured, 2.1.281).** `system/task_started` carries `is_backgrounded` — and a
+  *foreground* Bash emits `task_started` too, with `is_backgrounded: false`, plus its own
+  `task_notification`, so only `is_backgrounded: true` counts. On finish: `system/task_updated`
+  with `patch.status: "completed"`, then `system/task_notification` `status: "completed"`; with
+  stdin still open claude then **starts a follow-up turn by itself** and emits another `result`.
+  EOF while one runs kills it: `patch.status: "killed"`, notification `status: "stopped"`, no
+  further result, exit 0 — nobody ever sees that task's output. EOF at the moment of the
+  notification still lets the follow-up turn finish.
 - **The approval layer refuses a chained command citing each part separately** — a run that bundled
   `git commit -am wip` with `echo "EXIT: $?"` was refused naming both — so an allow-listed command
   is still refused when it arrives chained to something else.
@@ -106,7 +133,10 @@ Measured on this machine. Do not "tidy" these away:
   `unrestricted` did *not* permit an ordinary `git commit` despite its name.
 
 **Codex (codex-cli 0.153.2)**
-- **`codex exec` blocks forever reading stdin.** `stdin=DEVNULL` is mandatory, not tidiness.
+- **`codex exec` blocks forever reading stdin.** `stdin=DEVNULL` is mandatory, not tidiness. The
+  stdin wiring now comes from each run's own `Invocation` (`stdin_mode`), never from a backend name:
+  only a live-input claude run gets a pipe, and every other backend's `assert_safe` refuses anything
+  but a DEVNULL Invocation with no initial input.
 - An approval prompt would hang a headless run equally, hence pinned `-c approval_policy="never"`.
 - Prompt goes after `--`, so prompt text can never be parsed as an option.
 - The stream is nothing like Claude's: session id is **`thread_id`** on `thread.started`; the final
