@@ -478,8 +478,10 @@ abandoned; an error that arrived meanwhile drops instead of forwarding); the sea
 seal *line* in the inbox itself when the directory refuses the marker, and a close that can do
 neither is retried `CLOSE_RETRY_LIMIT` times, then forced with a notice — a live run that can never
 reach EOF would never settle — and a forced close still tries to seal, counts open background work
-as abandoned, and leaves `inbox_reconciled` false if it could not read the disk inbox, so
-`_finish_pump` accounts for it before the run is published; and after exit, a lock that stays busy for `EXIT_CLOSE_GIVE_UP_SECONDS`
+as abandoned, and leaves `inbox_reconciled` false unless it both read the disk inbox *and* the seal
+landed (an unsealed inbox still looks open to other processes, which can append and be told
+"queued" after that read), so `_finish_pump` does a final read and reports every unread line
+`undelivered` before the run is published; and after exit, a lock that stays busy for `EXIT_CLOSE_GIVE_UP_SECONDS`
 gets `_close_unlocked` (seal first, then read), which senders cover by re-checking the seal after
 appending. A send is also refused once the run's own process is confirmed dead, whatever its record
 still says. A message written after a result persists `input_after_result` on the record, so a
