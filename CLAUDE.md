@@ -57,10 +57,15 @@ The two kinds share only the interface. The desktop app has no CLI, so `desktop.
 reformatting — 78 KB of application state, hand-commented TOML, JSONC, and TOML again — so they are
 driven through their own `mcp add`, which stores the entry in each one's own shape.
 
-`Result.status` is five values, not two, for the same reason `Enforcement` is strict: `unknown` exists
+`Result.status` is seven values, not two, for the same reason `Enforcement` is strict: `unknown` exists
 because a CLI that times out may already have written the config, so `failed` there would be a guess
-stated as a fact. And success is reported as "add command succeeded", never "registered" — exiting
-zero is all that was observed.
+stated as a fact. `removed` and `not_installed` are the two uninstall outcomes that did not go wrong,
+kept apart because only one of them changed anything. And success is reported as "add command
+succeeded", never "registered" — exiting zero is all that was observed.
+
+Every client implements `inspect(key, run)` and `remove(key, run)` as well as `apply`. Both take the
+server's key, not a `Registration`, because neither may need the server binary — an uninstall has to
+work after it is gone. `Inspection.installed is None` means "could not tell", never "not installed".
 
 ## Verified CLI facts
 
