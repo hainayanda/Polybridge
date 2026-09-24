@@ -472,7 +472,16 @@ publishing, so `undelivered` events precede `task_finished`. Every exit from the
 the one close protocol — flock `<id>.inbox.jsonl`, forward or report every queued message, create
 `<id>.inbox.closed`, unlock, close stdin — and every send takes the same lock, so a message is either
 accepted before the close (then written or reported `undelivered`) or refused after it. Nothing is
-awaited while that lock is held. `send` answers "queued", never "delivered".
+awaited while that lock is held. `send` answers "queued", never "delivered". Three edges, each from
+review: the close re-checks its reason under the lock (an idle close whose idleness has passed is
+abandoned; an error that arrived meanwhile drops instead of forwarding); the seal falls back to a
+seal *line* in the inbox itself when the directory refuses the marker, and a close that can do
+neither is retried `CLOSE_RETRY_LIMIT` times, then forced with a notice — a live run that can never
+reach EOF would never settle; and after exit, a lock that stays busy for `EXIT_CLOSE_GIVE_UP_SECONDS`
+gets `_close_unlocked` (seal first, then read), which senders cover by re-checking the seal after
+appending. A send is also refused once the run's own process is confirmed dead, whatever its record
+still says. A message written after a result persists `input_after_result` on the record, so a
+recovered run whose replay shows no later result reads `failed`, not the earlier success.
 
 ## Enforcement must never overclaim
 
