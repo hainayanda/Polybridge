@@ -487,6 +487,15 @@ appending. A send is also refused once the run's own process is confirmed dead, 
 still says. A message written after a result persists `input_after_result` on the record, so a
 recovered run whose replay shows no later result reads `failed`, not the earlier success.
 
+Two accepted limits, documented rather than fixed. **An owner-local "queued" is in memory only**:
+`send_message` on the owning server appends to `task.inbox_queue`, not to disk, so if that server
+dies abruptly before the pump writes it, the message is lost with no event at all (the plan accepts
+restart loss; the non-owner path, via the on-disk inbox, is always accounted for). **A stalled or
+hostile local process holding the inbox `flock` keeps a live idle task from closing stdin** while
+it holds the lock — correctness over liveness, since closing without it could accept a message
+after the last forward. Nothing blocks the event loop (acquisition is `LOCK_NB` retried on it), so
+only that task waits; cancellation still works.
+
 ## Enforcement must never overclaim
 
 This is the point of the abstraction, and the easiest thing to get subtly wrong. Every boolean in
