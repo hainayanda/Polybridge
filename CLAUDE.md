@@ -455,6 +455,25 @@ on disk. Also still open, both pre-existing: `session_has_live_run` → spawn is
 servers can still race a resume, and process identity is pid + marker substring matching in `ps`
 output rather than pid + start time.
 
+**A live-input run across a restart.** The server holds the write end of the agent's stdin, so its
+death is EOF to the agent — per the plan's measurement on claude 2.1.281, the process holding the pipe
+dying mid-turn does not kill claude (own session): the in-flight turn finishes and writes its
+`result`, then the agent exits. What is lost: every message queued with `send_message` that the pump
+had not yet written (the in-memory queue dies with the server, and nothing is left to read the
+on-disk inbox), and any background task still open, which claude kills at EOF (measured) so nobody
+ever sees its result. No `.inbox.closed` marker is written on that path, so a later
+`send_message`/`polybridge-ctl send` is refused by the owner check instead (the owner is dead), and
+the record settles through `resolve_status` like any other recovered run.
+
+**Live input — the rules that keep a message from being lost silently.** The pump (`task.pump`) is a
+dedicated task, deliberately not in `task.watchers`, so `_finish_draining` neither waits on nor
+cancels it; `_monitor` lets it finish its exit-path close (`_finish_pump`, bounded) before
+publishing, so `undelivered` events precede `task_finished`. Every exit from the pump goes through
+the one close protocol — flock `<id>.inbox.jsonl`, forward or report every queued message, create
+`<id>.inbox.closed`, unlock, close stdin — and every send takes the same lock, so a message is either
+accepted before the close (then written or reported `undelivered`) or refused after it. Nothing is
+awaited while that lock is held. `send` answers "queued", never "delivered".
+
 ## Enforcement must never overclaim
 
 This is the point of the abstraction, and the easiest thing to get subtly wrong. Every boolean in
