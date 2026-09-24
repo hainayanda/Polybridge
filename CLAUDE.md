@@ -507,6 +507,10 @@ only that task waits; cancellation still works.
 - **Takeover is humans-only and ctl-only.** Never expose it over MCP. `ctl takeover` and
   `takeover-attach` refuse when `PB_TASK_ID` is set at all or a caller is detected: the interactive
   session runs under the user's own permissions, so an agent reaching it escapes its enforcement.
+  The gate **fails closed**: it uses `lineage.detect_caller_detail`, which tells "positively no
+  caller" from "could not look" (`ps` denied, unreadable ancestry/session, a related task that is
+  neither confirmed alive nor dead), and refuses the latter as `caller_undecidable`. Plain
+  `detect_caller` reads both as None, which is right for lineage and wrong for a gate.
 - **A takeover's `.ready` is terminal for lease purposes.** Its controller (`polybridge-ctl`) exits
   right after writing it, so `control.recover_abandoned` — which reads anything without `.sig`/
   `.failed` as pending — must never be pointed at the takeover family; `begin_takeover` has its own
