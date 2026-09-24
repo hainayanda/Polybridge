@@ -517,7 +517,9 @@ only that task waits; cancellation still works.
   recovery.
 - **The session is busy from `.req`**, via `store.live_session_ids` (records ∪
   `control.takeover_reservations`), until `.failed`, the 120 s window lapsing with no attach (a
-  pending attempt also stays busy while its controller is not provably abandoned), or the attached
+  pending attempt also stays busy while its controller is not provably abandoned — a deliberate,
+  test-pinned divergence from the plan, so a slow cascade cannot let a resume in before `.ready`),
+  or the attached
   process confirmed `dead`. `undecidable` is busy. Retention keeps a task exactly while it is busy.
 - **Lock order is session lock, then `<id>.lock`**, everywhere (`takeover-attach` takes both).
 - The interactive commands were checked against each CLI's `--help` only (2026-09-25,
