@@ -36,8 +36,9 @@ method.
 Each backend supplies: argv builders (returning an `Invocation` — argv plus stdin wiring and any
 initial stdin bytes), `assert_safe` (over the whole `Invocation`), `enforcement`, `ingest` (normalise
 its stream into `Accumulator`), `normalize`, `classify` (decide the terminal status from its own
-signals), and `encode_live_message` (one message in its CLI's live-input format, or
-`UnsupportedCapability`). Adding a
+signals), `encode_live_message` (one message in its CLI's live-input format, or
+`UnsupportedCapability`), and `interactive_resume_argv` (the command a human runs to resume the
+session in the CLI's own UI — built at takeover time, never stored, None when unsafe). Adding a
 backend should mean one new module plus a registry entry — nothing else. That held when `opencode`
 was added: the only non-`backends/` changes were docs, the places that enumerated the two names, and
 tests. It held again for `vibe`: no change to the `Backend` protocol was needed, even though vibe
@@ -495,6 +496,31 @@ hostile local process holding the inbox `flock` keeps a live idle task from clos
 it holds the lock — correctness over liveness, since closing without it could accept a message
 after the last forward. Nothing blocks the event loop (acquisition is `LOCK_NB` retried on it), so
 only that task waits; cancellation still works.
+
+## Takeover, ctl control commands, open-app (A4)
+
+- **Takeover is humans-only and ctl-only.** Never expose it over MCP. `ctl takeover` and
+  `takeover-attach` refuse when `PB_TASK_ID` is set at all or a caller is detected: the interactive
+  session runs under the user's own permissions, so an agent reaching it escapes its enforcement.
+- **A takeover's `.ready` is terminal for lease purposes.** Its controller (`polybridge-ctl`) exits
+  right after writing it, so `control.recover_abandoned` — which reads anything without `.sig`/
+  `.failed` as pending — must never be pointed at the takeover family; `begin_takeover` has its own
+  recovery.
+- **The session is busy from `.req`**, via `store.live_session_ids` (records ∪
+  `control.takeover_reservations`), until `.failed`, the 120 s window lapsing with no attach (a
+  pending attempt also stays busy while its controller is not provably abandoned), or the attached
+  process confirmed `dead`. `undecidable` is busy. Retention keeps a task exactly while it is busy.
+- **Lock order is session lock, then `<id>.lock`**, everywhere (`takeover-attach` takes both).
+- The interactive commands were checked against each CLI's `--help` only (2026-09-25,
+  `tests/test_interactive_resume_real.py`); the table in README.md comes from the plan's
+  measurements. Never run them from a test: they open a TUI, and codex's writes a trust entry to
+  `~/.codex/config.toml`.
+- **`ctl run`/`resume` fork.** The child redirects stdio before anything else (a reader of the
+  parent's stdout must see EOF when the parent exits) and clears the fork-copied
+  `identity.own_identity` cache. Test the fork from a fresh interpreter (`tests/ctl_driver.py`), not
+  from pytest's own process, which carries threads by then.
+- **Opening the Monitor app never changes an outcome**: scheduled synchronously after registration,
+  root tasks only, launcher injectable, every exception a notice. `PB_OPEN_MONITOR=0` in conftest.
 
 ## Enforcement must never overclaim
 
