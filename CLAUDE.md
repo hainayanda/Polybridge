@@ -18,7 +18,9 @@ PB_CLI_INTEGRATION=1 uv run pytest -m cli_integration  # real client and agent C
 uv run mcp dev src/polybridge/server.py         # MCP Inspector
 ./install.sh                                    # install + register with the desktop app + each CLI found
 uv tool install . --force --no-cache             # reinstall after changes; --no-cache is required
-(cd macos/PolybridgeMonitor && swift build && swift test)  # Monitor app: MonitorCore unit tests
+swiftformat macos && swiftlint lint                  # Monitor app: format, then lint (SwiftFormat 0.62.1, SwiftLint 0.65.0)
+scripts/check-private-refs.sh                        # private-reference guard (CI runs it too)
+for p in macos/PbFoundation/* macos/PbCore/* macos/PbFeatures/* macos/PolybridgeMonitor; do (cd "$p" && swift build && swift test); done  # Monitor app: per-package unit tests
 macos/build-app.sh                               # build the .app into macos/build/ (build only)
 ```
 
@@ -541,10 +543,27 @@ only that task waits; cancellation still works.
 and `events.jsonl` v1, and acts only through those two binaries — it never writes a record, phase
 file or inbox itself. So a change to any of those shapes is a contract change on both sides: bump
 `v` (the app refuses any other version with a message rather than guessing), and a new event kind
-means `events.EVENT_KINDS`, README's list and `TaskEvent.Kind` in `MonitorCore/Events.swift`
-together (an unknown kind decodes as `.unknown` and is ignored, so an old app degrades quietly). The
-app's tests use fake `polybridge-ctl`/`polybridge-setup` scripts, never the real binaries. Backend
-names appear in the app only for display styling; every fact it shows comes from polybridge.
+means `events.EVENT_KINDS`, README's list and `TaskEvent.Kind` in
+`macos/PbCore/MonitorCore/Sources/MonitorCore/Events.swift` together (an unknown kind decodes as
+`.unknown` and is ignored, so an old app degrades quietly). The app's tests use fake
+`polybridge-ctl`/`polybridge-setup` scripts, never the real binaries. Backend names appear in the
+app only for display styling; every fact it shows comes from polybridge.
+
+The app's UI layer follows a coordinator/VM/use-case architecture (a SwiftPM package per module, wired by path,
+under `macos/PbFoundation/`, `macos/PbCore/` and `macos/PbFeatures/`, with the root
+`macos/PolybridgeMonitor/` holding only the app shell — `App.swift`, `AppDelegate`,
+`AppCoordinator`, `AppModulesRegistry`) — see `macos/AGENTS.md` for the architecture rules this
+follows and each package's own `AGENTS.md` for what that package specifically owns.
+
+Before finishing any change under `macos/`, run `swiftformat macos && swiftlint lint` (repo-root
+`.swiftformat`, `.swiftlint.yml`; MonitorCore's existing source violations live in
+`.swiftlint-baseline.json`, never touch `macos/PbCore/MonitorCore/Sources` to satisfy a rule) and
+`scripts/check-private-refs.sh`. The guard keeps this open-source tree from naming a private
+project; its patterns are assembled from pieces inside the script, so never quote them elsewhere.
+
+**CI.** `.github/workflows/lint.yml` (Linux) runs SwiftFormat `--lint`, SwiftLint and the guard;
+`.github/workflows/test.yml` (macOS) runs `swift test` per Monitor package, `macos/build-app.sh`, and
+`uv run pytest` with a temporary `HOME`/`CODEX_HOME`. The headless app smoke stays a local gate.
 
 ## Enforcement must never overclaim
 
