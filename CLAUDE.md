@@ -18,6 +18,8 @@ PB_CLI_INTEGRATION=1 uv run pytest -m cli_integration  # real client and agent C
 uv run mcp dev src/polybridge/server.py         # MCP Inspector
 ./install.sh                                    # install + register with the desktop app + each CLI found
 uv tool install . --force --no-cache             # reinstall after changes; --no-cache is required
+(cd macos/PolybridgeMonitor && swift build && swift test)  # Monitor app: MonitorCore unit tests
+macos/build-app.sh                               # build the .app into macos/build/ (build only)
 ```
 
 **`uv tool install --force` alone reinstalls stale code.** The version never changes, so uv reuses its
@@ -532,6 +534,17 @@ only that task waits; cancellation still works.
   from pytest's own process, which carries threads by then.
 - **Opening the Monitor app never changes an outcome**: scheduled synchronously after registration,
   root tasks only, launcher injectable, every exception a notice. `PB_OPEN_MONITOR=0` in conftest.
+
+## The Monitor app is a consumer of three frozen contracts (Stage C)
+
+`macos/PolybridgeMonitor` reads `polybridge-ctl --json`, `polybridge-setup --json` (both `"v": 1`)
+and `events.jsonl` v1, and acts only through those two binaries — it never writes a record, phase
+file or inbox itself. So a change to any of those shapes is a contract change on both sides: bump
+`v` (the app refuses any other version with a message rather than guessing), and a new event kind
+means `events.EVENT_KINDS`, README's list and `TaskEvent.Kind` in `MonitorCore/Events.swift`
+together (an unknown kind decodes as `.unknown` and is ignored, so an old app degrades quietly). The
+app's tests use fake `polybridge-ctl`/`polybridge-setup` scripts, never the real binaries. Backend
+names appear in the app only for display styling; every fact it shows comes from polybridge.
 
 ## Enforcement must never overclaim
 
