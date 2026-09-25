@@ -1,0 +1,58 @@
+name: Lint
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+env:
+  SWIFTLINT_VERSION: "0.65.0"
+  SWIFTFORMAT_VERSION: "0.62.1"
+
+jobs:
+  lint:
+    if: github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Cache lint tools
+        id: tools-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/lint-tools
+          key: lint-tools-swiftlint-${{ env.SWIFTLINT_VERSION }}-swiftformat-${{ env.SWIFTFORMAT_VERSION }}
+
+      - name: Download lint tools
+        if: steps.tools-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/lint-tools
+          cd ~/lint-tools
+          curl -sSfL -o swiftlint.zip "https://github.com/realm/SwiftLint/releases/download/${SWIFTLINT_VERSION}/swiftlint_linux_amd64.zip"
+          unzip -o -q swiftlint.zip swiftlint-static
+          mv swiftlint-static swiftlint
+          curl -sSfL -o swiftformat.zip "https://github.com/nicklockwood/SwiftFormat/releases/download/${SWIFTFORMAT_VERSION}/swiftformat_linux.zip"
+          unzip -o -q swiftformat.zip swiftformat_linux
+          mv swiftformat_linux swiftformat
+          chmod +x swiftlint swiftformat
+          rm -f swiftlint.zip swiftformat.zip
+
+      - name: Put lint tools on PATH
+        run: echo "$HOME/lint-tools" >> "$GITHUB_PATH"
+
+      - name: SwiftFormat
+        run: swiftformat --lint macos --reporter github-actions-log
+
+      - name: SwiftLint
+        run: swiftlint lint --reporter github-actions-logging
+
+      - name: Private reference guard
+        run: scripts/check-private-refs.sh

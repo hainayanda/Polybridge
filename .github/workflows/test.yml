@@ -1,0 +1,95 @@
+name: Test
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+env:
+  XCODE_APP: /Applications/Xcode_26.6.app
+
+jobs:
+  swift:
+    if: github.event.pull_request.draft != true
+    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - macos/PbFoundation/PbCommon
+          - macos/PbFoundation/PbUI
+          - macos/PbFoundation/PbUtilities
+          - macos/PbCore/MonitorCore
+          - macos/PbCore/PbRepository
+          - macos/PbCore/PbTerminal
+          - macos/PbFeatures/MainWindowFeature
+          - macos/PbFeatures/MenuBarFeature
+          - macos/PbFeatures/SettingsFeature
+          - macos/PolybridgeMonitor
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Select Xcode
+        id: xcode
+        run: |
+          sudo xcode-select -s "$XCODE_APP/Contents/Developer"
+          xcodebuild -version
+          swift --version
+          version=$(swift --version 2>&1 | sed -n 's/.*Swift version \([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' | head -1)
+          major=${version%%.*}
+          minor=${version#*.}
+          if [ -z "$version" ] || [ "$major" -lt 6 ] || { [ "$major" -eq 6 ] && [ "$minor" -lt 2 ]; }; then
+            echo "Swift 6.2 or later is required (found '${version}')" >&2
+            exit 1
+          fi
+          echo "xcode=$(xcodebuild -version | tr '\n' ' ' | tr -s ' ' | sed 's/ $//' | tr ' ' '-')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache build
+        uses: actions/cache@v4
+        with:
+          path: ${{ matrix.package }}/.build
+          key: swift-build-${{ runner.arch }}-${{ steps.xcode.outputs.xcode }}-${{ matrix.package }}-${{ hashFiles('macos/**/Package.swift', 'macos/**/Package.resolved') }}
+
+      - name: swift test
+        working-directory: ${{ matrix.package }}
+        run: swift test
+
+  app:
+    if: github.event.pull_request.draft != true
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s "$XCODE_APP/Contents/Developer"
+          xcodebuild -version
+          swift --version
+
+      - name: Build the app bundle
+        run: macos/build-app.sh
+
+  python:
+    if: github.event.pull_request.draft != true
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+
+      - name: pytest
+        run: |
+          test_home=$(mktemp -d)
+          mkdir -p "$test_home/codex"
+          HOME="$test_home" CODEX_HOME="$test_home/codex" uv run pytest -q -p no:cacheprovider
