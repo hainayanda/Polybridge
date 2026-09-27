@@ -198,6 +198,17 @@ Measured on this machine. Do not "tidy" these away:
   `--`. The shipped shape was never observed to work: it failed this way in the field (a reported
   resume, exit 2 in 0.119s), it fails on 0.154.0 here, and the same rejection was recorded for `-s`
   on 0.145.0 — three points, not a proof about every version in between.
+- **`item.started`/`item.completed` `file_change` items are now normalized, not dropped.** The raw
+  item is `{"type":"file_change","changes":[{"path","kind"}],"status":"in_progress"|"completed"}` —
+  previously `_normalize_item_started`/`_normalize_item_completed` handled only
+  `command_execution`/`mcp_tool_call`, so an edit codex made through this item type never reached
+  the Monitor's event stream at all (measured against real `~/.polybridge/tasks` logs while adding
+  the Monitor's Summary tab, 2026-09-26). Each change now gets its own `tool_call`
+  (category `edit`, tool `file_change`, `call_id` = `"<item id>:<path>"` — path, not list index, so
+  pairing survives the changes list being reordered between start and completion) and, on
+  completion, a `tool_result` with `ok = (item's own status == "completed")` — codex reports no
+  per-change status, only one for the whole item. A completion-only item (no prior `item.started`)
+  synthesizes its `tool_call`s first, exactly like the shell/MCP completion paths already did.
 
 **opencode (1.18.18)**
 - `run --format json` emits clean JSONL — `step_start`, `tool_use`, `text`, `step_finish`, `error` —
@@ -250,6 +261,15 @@ Measured on this machine. Do not "tidy" these away:
   unparsed as a flag.
 - `sessionId` is a UUID vibe mints itself, present on **every** stream entry including the first, so
   the id is known from line one — `chooses_session_id=False`.
+- **vibe renames its own process — measured 2026-09-26 on 2.25.8.** `vibe/cli/entrypoint.py:385`
+  calls `setproctitle(process_name())` (`vibe/cli/_process_title.py`), so `ps -o command=` shows
+  `Vibe CLI` and the argv markers recorded at spawn never match from then on. Until the fix this
+  read as a false death: a *running* vibe task was listed `failed` by `ctl list`/the Monitor
+  sidebar, and `resume` refused it, for as long as it ran. Status and the resume guards
+  (`store.record_process_alive`) now use the recorded start time when one is present, so a
+  retitled live run reads `running` again. Still open: cross-process cancel/takeover of a running
+  vibe task stays refused — `may_signal` still requires the markers and reports `markers_missing`
+  — which is a deliberate second factor, not an oversight.
 - **No terminal event, no dollar cost, no token counts at all.** `--output streaming` emits only
   `PublicHistoryEntry` objects with `generation_status == COMPLETED`. Classification is
   exit-code-authoritative with the closing assistant message as corroboration — the same shape as
@@ -268,25 +288,44 @@ Measured on this machine. Do not "tidy" these away:
   stderr:** the run also emits a *live-turn* `assistant` message whose text is that same
   `<vibe_stop_event>…</vibe_stop_event>` marker, so a naive ingest reports the marker itself as the
   agent's answer. `supports_turn_cap=True`, with that caveat attached.
-- **A denial can end a run that already spoke, and that used to read as `completed`.** The refusal
-  above is not only a `publish` concern: at *any* freedom, a dispatch whose next command falls
-  outside the user's `[tools.bash]` config is auto-denied and frequently stops there. Measured
-  2026-09-22 on two real dispatches replayed through `ingest`: one narrated its next step, had bash
-  denied, **changed zero files**, and exited 0 — reported `completed` with that narration as its
-  `summary`, because `saw_final_message` had already latched on a message that preceded the refusal.
-  So `ingest` now **withdraws** the close when it records a denial, exactly as the stop-event branch
-  does — but **without latching**, which is the whole distinction: a turn cap is terminal, a refusal
-  is not, so a later assistant message in the same turn re-establishes the close and only a run that
-  never speaks again reports `failed`. The denial stays on `acc.denials` either way.
-  **What this does not fix**, and the limits are worth stating precisely. The second dispatch simply
-  ended mid-work with no denial at all, and nothing in the stream distinguishes that from a short
-  legitimate answer — it still reads `completed`. A denial followed by a further assistant message
-  also re-establishes `completed`, and that message can itself be progress rather than an answer;
-  vibe's stream offers no structural way to tell them apart, so neither can polybridge. **For an
-  editing task, then, a vibe `completed` does not establish that the requested changes landed —
-  check the resulting worktree and run the tests.** Not stated as "the diff is the only reliable
-  signal", which overclaims in the other direction: a diff attributes nothing to a particular
-  dispatch, and says nothing at all about a read-only or analysis task.
+- **A denial can end a run that already spoke — and a clean exit after one now reads `completed`
+  with a warning.** The refusal above is not only a `publish` concern: at *any* freedom, a dispatch
+  whose next command falls outside the user's `[tools.bash]` config is auto-denied and frequently
+  stops there. Measured 2026-09-22 on two real dispatches replayed through `ingest`: one narrated
+  its next step, had bash denied, **changed zero files**, and exited 0 — at the time reported
+  `completed` with that narration as its `summary`, because `saw_final_message` had already latched
+  on a message that preceded the refusal. So `ingest` **withdraws** the close when it records a
+  denial, exactly as the stop-event branch does — but **without latching**, which is the whole
+  distinction: a turn cap is terminal, a refusal is not, so a later assistant message in the same
+  turn re-establishes the close. The denial stays on `acc.denials` either way.
+  The withdrawal alone then made *every* run that ended on a refusal read `failed` — including a
+  real dispatch whose every edit had landed and whose only sin was that its last action was refused
+  before a clean exit. That is the opposite overclaim, so the policy changed (decided 2026-09-26 by
+  the owner): a turn that ends on a refusal and then exits 0 reports **`completed` with a warning**
+  naming the refused command, not `failed` with no summary. Every genuine failure signal still wins
+  first — an error, a non-zero or unobserved exit, a turn-cap breach — and a run that recovers
+  (answers after the refusal) completes with no warning at all. The accepted trade-off, stated so it
+  isn't rediscovered as a bug: this reintroduces the 2026-09-22 false success. A run that narrates a
+  step, is refused, changes nothing and exits 0 will read `completed`; the warning is then the only
+  signal, and for an editing task the worktree is the check.
+  **What this still does not fix**, and the limits are worth stating precisely. The second dispatch
+  simply ended mid-work with no denial at all, and nothing in the stream distinguishes that from a
+  short legitimate answer — it still reads `completed`. A denial followed by a further assistant
+  message also re-establishes `completed`, and that message can itself be progress rather than an
+  answer; vibe's stream offers no structural way to tell them apart, so neither can polybridge.
+  **For an editing task, then, a vibe `completed` does not establish that the requested changes
+  landed — check the resulting worktree and run the tests.** Not stated as "the diff is the only
+  reliable signal", which overclaims in the other direction: a diff attributes nothing to a
+  particular dispatch, and says nothing at all about a read-only or analysis task.
+- **An `effect`'s `tool_result` is now normalized too, not silently dropped.** Every `effect` was
+  already turned into a `tool_call`, but vibe carries no separate completion event for one — the
+  same `id` is re-emitted as its `state.status` moves from a non-terminal value to a terminal one
+  (`completed`/`failed`/`cancelled`, measured against real `~/.polybridge/tasks` logs, e.g. a
+  `file_edit failed`). `_normalize_effect` now tracks seen ids in two `stream_state` sets
+  (`normalize_seen_effect_calls`, `normalize_seen_effect_results`) so the `tool_call` still fires
+  exactly once and a `tool_result` fires exactly once, `ok = (status == "completed")`, output from
+  `state.output` else `state.error`. An id already terminal the first time it is seen yields both
+  events, call then result, in one pass.
 - **`publish` on vibe needs `--agent auto-approve`, and so is no narrower than `unrestricted`.**
   Measured: under `--agent accept-edits`, `git commit -am wip` in a throwaway repo emitted a
   `callback` (`detail.kind: "approval"`, `title: "Allow bash?"`), was auto-denied, produced an
@@ -389,10 +428,12 @@ encoder needed, just the literal interpolated between quotes.
 5. **Persist a session id the moment it is disclosed.** Codex only reveals its `thread_id` mid-run;
    waiting until exit means a server that dies first loses any chance of resuming.
 6. **Identity markers, not session ids, decide liveness.** On a fresh run codex never receives its id
-   on the command line, so `store.process_alive` matches backend-supplied markers instead. (A
-   *resume* is the one exception — the thread id rides as a positional there, see `backends/codex.py`
-   — but the marker-matching logic itself does not branch on that; it is unaffected.) See
-   `tasks._identity_markers`.
+   on the command line, so `store.process_alive` matches backend-supplied markers instead; status
+   and the resume guards go through `store.record_process_alive`, which uses the recorded start
+   time when one is present, so a process that renames itself after spawn (vibe) is still
+   recognised. (A *resume* is the one exception — the thread id rides as a positional there, see
+   `backends/codex.py` — but the marker-matching logic itself does not branch on that; it is
+   unaffected.) See `tasks._identity_markers`.
 7. **One live run per session**, checked against disk so two server processes cannot both resume it.
 8. **`task_id` is validated before becoming a path** — it arrives from a caller.
 
@@ -462,8 +503,11 @@ recovery note says so in as many words. Fixing that properly means durable spool
 straight into the append-only log and have servers tail the file, rather than owning the pipe), which
 would also make an orphan finish normally. Until then, judge a recovered-alive run by what it changed
 on disk. Also still open, both pre-existing: `session_has_live_run` → spawn is check-then-act, so two
-servers can still race a resume, and process identity is pid + marker substring matching in `ps`
-output rather than pid + start time.
+servers can still race a resume, and *signal authorisation* (cancel/takeover, `may_signal`) is
+stricter than status: with a recorded start time it needs that start time to match **and** every
+marker to appear, so a retitled vibe process (`markers_missing`) cannot be signalled cross-process;
+without one, only the legacy pid + markers match (`legacy_markers_seen`) may signal. Status and the
+resume guards use the recorded start time alone and count any non-`dead` verdict as still running.
 
 **A live-input run across a restart.** The server holds the write end of the agent's stdin, so its
 death is EOF to the agent — per the plan's measurement on claude 2.1.281, the process holding the pipe
@@ -539,11 +583,16 @@ only that task waits; cancellation still works.
 
 ## The Monitor app is a consumer of three frozen contracts (Stage C)
 
-`macos/PolybridgeMonitor` reads `polybridge-ctl --json`, `polybridge-setup --json` (both `"v": 1`)
-and `events.jsonl` v1, and acts only through those two binaries — it never writes a record, phase
-file or inbox itself. So a change to any of those shapes is a contract change on both sides: bump
-`v` (the app refuses any other version with a message rather than guessing), and a new event kind
-means `events.EVENT_KINDS`, README's list and `TaskEvent.Kind` in
+`macos/PolybridgeMonitor` reads `polybridge-ctl --json` (`CTL_JSON_VERSION`, now 2 — bumped for
+Monitor piece 3/3's `resume_command` field), `polybridge-setup --json` (its own `JSON_VERSION`,
+still 1) and `events.jsonl` (`EVENT_LOG_VERSION`, still 1), and acts only through those two
+binaries — it never writes a record, phase file or inbox itself. Each of the three is versioned and
+gated independently on the Swift side (`MonitorCore/CtlModels.swift`'s `ctlContractVersions: Set<Int>`,
+`SetupClient.swift`'s `setupContractVersion`, `Events.swift`'s `eventLogVersion`), so a change to
+any one shape is a contract change on both sides: bump that contract's own `v` (the app refuses any
+version outside the set it understands, with a message naming the tool and the versions understood,
+rather than guessing), and a new event kind means `events.EVENT_KINDS`, README's list and
+`TaskEvent.Kind` in
 `macos/PbCore/MonitorCore/Sources/MonitorCore/Events.swift` together (an unknown kind decodes as
 `.unknown` and is ignored, so an old app degrades quietly). The app's tests use fake
 `polybridge-ctl`/`polybridge-setup` scripts, never the real binaries. Backend names appear in the
