@@ -29,7 +29,6 @@ jobs:
           - macos/PbFoundation/PbUtilities
           - macos/PbCore/MonitorCore
           - macos/PbCore/PbRepository
-          - macos/PbCore/PbTerminal
           - macos/PbFeatures/MainWindowFeature
           - macos/PbFeatures/MenuBarFeature
           - macos/PbFeatures/SettingsFeature
