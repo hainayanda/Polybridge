@@ -596,7 +596,9 @@ rather than guessing), and a new event kind means `events.EVENT_KINDS`, README's
 `macos/PbCore/MonitorCore/Sources/MonitorCore/Events.swift` together (an unknown kind decodes as
 `.unknown` and is ignored, so an old app degrades quietly). The app's tests use fake
 `polybridge-ctl`/`polybridge-setup` scripts, never the real binaries. Backend names appear in the
-app only for display styling; every fact it shows comes from polybridge.
+app only for display styling; every fact it shows comes from polybridge. A new ctl command (like
+`backends`) is additive under the current `v` — it changes no existing document's shape, so no
+bump; the Monitor treats an older ctl's usage error for it as "unsupported".
 
 The app's UI layer follows a coordinator/VM/use-case architecture (a SwiftPM package per module, wired by path,
 under `macos/PbFoundation/`, `macos/PbCore/` and `macos/PbFeatures/`, with the root
