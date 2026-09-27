@@ -126,6 +126,18 @@ Measured on this machine. Do not "tidy" these away:
   `--max-turns`, a pipe, and an `initial_input` that is exactly one well-formed user line. It takes
   the whole `Invocation`, so a live argv wired to DEVNULL (or a classic one to a pipe) is refused, and
   a bare argv list is refused outright.
+- **`--include-partial-messages` streams text as it arrives (measured 2.1.283, real captures in
+  `tests/fixtures/claude_partial_*.jsonl`) — in the classic `-p` shape, in the live shape, and on
+  `--resume`.** The stream gains `stream_event` lines: `message_start` (carries the message id),
+  `content_block_start` (carries the block's `index`), `content_block_delta` (`text_delta` carries
+  a text chunk; `thinking_delta`, `signature_delta` and `input_json_delta` carry nothing
+  polybridge surfaces), `content_block_stop`, `message_delta`, `message_stop`. Claude still emits
+  one `assistant` event **per content block** — after that block's deltas, before its
+  `content_block_stop` — so a streamed chunk's identity is `(message_id, block_index)`, and the
+  `result` line is unchanged. Subagent `stream_event`s carry a non-empty `parent_tool_use_id` like
+  other subagent events. polybridge normalizes the deltas to an additive `assistant_delta` event
+  kind, with optional `message_id`/`block_index` on `assistant_text` — a new *kind* is additive
+  under `EVENT_LOG_VERSION` 1 (older apps decode it as `.unknown`), so the version does not bump.
 - **Background tasks (measured, 2.1.281).** `system/task_started` carries `is_backgrounded` — and a
   *foreground* Bash emits `task_started` too, with `is_backgrounded: false`, plus its own
   `task_notification`, so only `is_backgrounded: true` counts. On finish: `system/task_updated`
