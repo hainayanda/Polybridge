@@ -667,6 +667,14 @@ infer belong **in the payload**: `enforcement` on every task, `recovered: true` 
 tasks from an earlier process, `next_step` when a wait returns still-running, `notices` for non-fatal
 messages, and errors that say what to do instead of just what failed.
 
+**MCP status responses are shaped in `server.py` (`_status_payload`), never in the snapshot.**
+`get_task_status`, `wait_for_task` and `cancel_task` carry `recent_activity` (≤ 5 one-liners from the
+normalized event log) instead of the ~10k-token raw `last_output_tail`, which comes back only with
+`include_tail=True` — or shortened, on a failed run, where the raw lines are what diagnoses it.
+`get_task_events` pages the normalized log on demand. `Task.snapshot()`/`store.snapshot()` keep the
+full tail because `polybridge-ctl --json` is a frozen contract (`CTL_JSON_VERSION`); reshape the MCP
+layer, not the snapshot.
+
 A dispatch at `publish` or `unrestricted` also checks whether the checkout is on the repository's
 default branch, and says so on `bridge_notices` — a channel separate from `Accumulator.notices`
 precisely because vibe's `ingest` resets those per turn and would discard a dispatch-level notice on
