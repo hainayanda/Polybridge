@@ -591,7 +591,9 @@ only that task waits; cancellation still works.
   `identity.own_identity` cache. Test the fork from a fresh interpreter (`tests/ctl_driver.py`), not
   from pytest's own process, which carries threads by then.
 - **Opening the Monitor app never changes an outcome**: scheduled synchronously after registration,
-  root tasks only, launcher injectable, every exception a notice. `PB_OPEN_MONITOR=0` in conftest.
+  root tasks only, launcher injectable, every exception a notice. **Opt-in** since 2026-09-28
+  (`PB_OPEN_MONITOR=1`; unset or anything else means off), because opening on every dispatch kept
+  bringing the app forward. `PB_OPEN_MONITOR=0` in conftest stays as a belt-and-braces default.
 
 ## The Monitor app is a consumer of three frozen contracts (Stage C)
 
