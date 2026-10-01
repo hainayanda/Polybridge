@@ -18,6 +18,10 @@ PB_CLI_INTEGRATION=1 uv run pytest -m cli_integration  # real client and agent C
 uv run mcp dev src/polybridge/server.py         # MCP Inspector
 ./install.sh                                    # install + register with the desktop app + each CLI found
 uv tool install . --force --no-cache             # reinstall after changes; --no-cache is required
+swiftformat macos && swiftlint lint                  # Monitor app: format, then lint (SwiftFormat 0.62.1, SwiftLint 0.65.0)
+scripts/check-private-refs.sh                        # private-reference guard (CI runs it too)
+for p in macos/PbFoundation/* macos/PbCore/* macos/PbFeatures/* macos/PolybridgeMonitor; do (cd "$p" && swift build && swift test); done  # Monitor app: per-package unit tests
+macos/build-app.sh                               # build the .app into macos/build/ (build only)
 ```
 
 **`uv tool install --force` alone reinstalls stale code.** The version never changes, so uv reuses its
@@ -33,8 +37,12 @@ verify by grepping the installed copy under
 on a backend's name.** If you find yourself writing `if backend == "codex"`, the seam is missing a
 method.
 
-Each backend supplies: argv builders, `assert_safe`, `enforcement`, `ingest` (normalise its stream
-into `Accumulator`), and `classify` (decide the terminal status from its own signals). Adding a
+Each backend supplies: argv builders (returning an `Invocation` — argv plus stdin wiring and any
+initial stdin bytes), `assert_safe` (over the whole `Invocation`), `enforcement`, `ingest` (normalise
+its stream into `Accumulator`), `normalize`, `classify` (decide the terminal status from its own
+signals), `encode_live_message` (one message in its CLI's live-input format, or
+`UnsupportedCapability`), and `interactive_resume_argv` (the command a human runs to resume the
+session in the CLI's own UI — built at takeover time, never stored, None when unsafe). Adding a
 backend should mean one new module plus a registry entry — nothing else. That held when `opencode`
 was added: the only non-`backends/` changes were docs, the places that enumerated the two names, and
 tests. It held again for `vibe`: no change to the `Backend` protocol was needed, even though vibe
@@ -57,10 +65,15 @@ The two kinds share only the interface. The desktop app has no CLI, so `desktop.
 reformatting — 78 KB of application state, hand-commented TOML, JSONC, and TOML again — so they are
 driven through their own `mcp add`, which stores the entry in each one's own shape.
 
-`Result.status` is five values, not two, for the same reason `Enforcement` is strict: `unknown` exists
+`Result.status` is seven values, not two, for the same reason `Enforcement` is strict: `unknown` exists
 because a CLI that times out may already have written the config, so `failed` there would be a guess
-stated as a fact. And success is reported as "add command succeeded", never "registered" — exiting
-zero is all that was observed.
+stated as a fact. `removed` and `not_installed` are the two uninstall outcomes that did not go wrong,
+kept apart because only one of them changed anything. And success is reported as "add command
+succeeded", never "registered" — exiting zero is all that was observed.
+
+Every client implements `inspect(key, run)` and `remove(key, run)` as well as `apply`. Both take the
+server's key, not a `Registration`, because neither may need the server binary — an uninstall has to
+work after it is gone. `Inspection.installed is None` means "could not tell", never "not installed".
 
 ## Verified CLI facts
 
@@ -96,7 +109,43 @@ Measured on this machine. Do not "tidy" these away:
   `--dangerously-skip-permissions` reached claude's own parser and aborted for lack of a prompt;
   with it, the same text was delivered literally. Also measured on **resume** —
   `--resume <id> -- "<option-shaped prompt>"` preserved the session id and delivered the text
-  verbatim, so the separator holds on both paths.
+  verbatim, so the separator holds on both paths. That is the **classic** shape, which claude now
+  uses only when `max_turns` is set (see live input below).
+- **Live input: `--input-format stream-json`, a stdin pipe, and the prompt as the first stdin
+  line** — `{"type":"user","message":{"role":"user","content":[{"type":"text","text":…}]}}`.
+  Measured on 2.1.281 (`tests/test_live_input_real.py`): next to `--input-format stream-json` **a
+  positional prompt is silently ignored** (exit 0, no model call), so the live shape has no `--` and
+  no positional at all. A message written mid-turn is folded into that turn (one `result`); after a
+  `result` the process idles until more input or EOF; EOF after a result exits 0 in ~1.2 s; a
+  message written just before EOF still runs as its own turn; `--resume` takes the same shape.
+  `total_cost_usd` is cumulative per process, `num_turns`/`usage`/`permission_denials` per result.
+  `--max-turns` with live input is unmeasured, so a capped run stays classic.
+  **`assert_safe` accepts exactly these two shapes and validates each completely**: classic is `--`
+  plus one positional, no `--input-format`, stdin DEVNULL, no initial input; live is no `--`, every
+  token a known option (so no positional), `--input-format stream-json` exactly once, no
+  `--max-turns`, a pipe, and an `initial_input` that is exactly one well-formed user line. It takes
+  the whole `Invocation`, so a live argv wired to DEVNULL (or a classic one to a pipe) is refused, and
+  a bare argv list is refused outright.
+- **`--include-partial-messages` streams text as it arrives (measured 2.1.283, real captures in
+  `tests/fixtures/claude_partial_*.jsonl`) — in the classic `-p` shape, in the live shape, and on
+  `--resume`.** The stream gains `stream_event` lines: `message_start` (carries the message id),
+  `content_block_start` (carries the block's `index`), `content_block_delta` (`text_delta` carries
+  a text chunk; `thinking_delta`, `signature_delta` and `input_json_delta` carry nothing
+  polybridge surfaces), `content_block_stop`, `message_delta`, `message_stop`. Claude still emits
+  one `assistant` event **per content block** — after that block's deltas, before its
+  `content_block_stop` — so a streamed chunk's identity is `(message_id, block_index)`, and the
+  `result` line is unchanged. Subagent `stream_event`s carry a non-empty `parent_tool_use_id` like
+  other subagent events. polybridge normalizes the deltas to an additive `assistant_delta` event
+  kind, with optional `message_id`/`block_index` on `assistant_text` — a new *kind* is additive
+  under `EVENT_LOG_VERSION` 1 (older apps decode it as `.unknown`), so the version does not bump.
+- **Background tasks (measured, 2.1.281).** `system/task_started` carries `is_backgrounded` — and a
+  *foreground* Bash emits `task_started` too, with `is_backgrounded: false`, plus its own
+  `task_notification`, so only `is_backgrounded: true` counts. On finish: `system/task_updated`
+  with `patch.status: "completed"`, then `system/task_notification` `status: "completed"`; with
+  stdin still open claude then **starts a follow-up turn by itself** and emits another `result`.
+  EOF while one runs kills it: `patch.status: "killed"`, notification `status: "stopped"`, no
+  further result, exit 0 — nobody ever sees that task's output. EOF at the moment of the
+  notification still lets the follow-up turn finish.
 - **The approval layer refuses a chained command citing each part separately** — a run that bundled
   `git commit -am wip` with `echo "EXIT: $?"` was refused naming both — so an allow-listed command
   is still refused when it arrives chained to something else.
@@ -106,7 +155,10 @@ Measured on this machine. Do not "tidy" these away:
   `unrestricted` did *not* permit an ordinary `git commit` despite its name.
 
 **Codex (codex-cli 0.153.2)**
-- **`codex exec` blocks forever reading stdin.** `stdin=DEVNULL` is mandatory, not tidiness.
+- **`codex exec` blocks forever reading stdin.** `stdin=DEVNULL` is mandatory, not tidiness. The
+  stdin wiring now comes from each run's own `Invocation` (`stdin_mode`), never from a backend name:
+  only a live-input claude run gets a pipe, and every other backend's `assert_safe` refuses anything
+  but a DEVNULL Invocation with no initial input.
 - An approval prompt would hang a headless run equally, hence pinned `-c approval_policy="never"`.
 - Prompt goes after `--`, so prompt text can never be parsed as an option.
 - The stream is nothing like Claude's: session id is **`thread_id`** on `thread.started`; the final
@@ -158,6 +210,17 @@ Measured on this machine. Do not "tidy" these away:
   `--`. The shipped shape was never observed to work: it failed this way in the field (a reported
   resume, exit 2 in 0.119s), it fails on 0.154.0 here, and the same rejection was recorded for `-s`
   on 0.145.0 — three points, not a proof about every version in between.
+- **`item.started`/`item.completed` `file_change` items are now normalized, not dropped.** The raw
+  item is `{"type":"file_change","changes":[{"path","kind"}],"status":"in_progress"|"completed"}` —
+  previously `_normalize_item_started`/`_normalize_item_completed` handled only
+  `command_execution`/`mcp_tool_call`, so an edit codex made through this item type never reached
+  the Monitor's event stream at all (measured against real `~/.polybridge/tasks` logs while adding
+  the Monitor's Summary tab, 2026-09-26). Each change now gets its own `tool_call`
+  (category `edit`, tool `file_change`, `call_id` = `"<item id>:<path>"` — path, not list index, so
+  pairing survives the changes list being reordered between start and completion) and, on
+  completion, a `tool_result` with `ok = (item's own status == "completed")` — codex reports no
+  per-change status, only one for the whole item. A completion-only item (no prior `item.started`)
+  synthesizes its `tool_call`s first, exactly like the shell/MCP completion paths already did.
 
 **opencode (1.18.18)**
 - `run --format json` emits clean JSONL — `step_start`, `tool_use`, `text`, `step_finish`, `error` —
@@ -210,6 +273,15 @@ Measured on this machine. Do not "tidy" these away:
   unparsed as a flag.
 - `sessionId` is a UUID vibe mints itself, present on **every** stream entry including the first, so
   the id is known from line one — `chooses_session_id=False`.
+- **vibe renames its own process — measured 2026-09-26 on 2.25.8.** `vibe/cli/entrypoint.py:385`
+  calls `setproctitle(process_name())` (`vibe/cli/_process_title.py`), so `ps -o command=` shows
+  `Vibe CLI` and the argv markers recorded at spawn never match from then on. Until the fix this
+  read as a false death: a *running* vibe task was listed `failed` by `ctl list`/the Monitor
+  sidebar, and `resume` refused it, for as long as it ran. Status and the resume guards
+  (`store.record_process_alive`) now use the recorded start time when one is present, so a
+  retitled live run reads `running` again. Still open: cross-process cancel/takeover of a running
+  vibe task stays refused — `may_signal` still requires the markers and reports `markers_missing`
+  — which is a deliberate second factor, not an oversight.
 - **No terminal event, no dollar cost, no token counts at all.** `--output streaming` emits only
   `PublicHistoryEntry` objects with `generation_status == COMPLETED`. Classification is
   exit-code-authoritative with the closing assistant message as corroboration — the same shape as
@@ -228,25 +300,44 @@ Measured on this machine. Do not "tidy" these away:
   stderr:** the run also emits a *live-turn* `assistant` message whose text is that same
   `<vibe_stop_event>…</vibe_stop_event>` marker, so a naive ingest reports the marker itself as the
   agent's answer. `supports_turn_cap=True`, with that caveat attached.
-- **A denial can end a run that already spoke, and that used to read as `completed`.** The refusal
-  above is not only a `publish` concern: at *any* freedom, a dispatch whose next command falls
-  outside the user's `[tools.bash]` config is auto-denied and frequently stops there. Measured
-  2026-09-22 on two real dispatches replayed through `ingest`: one narrated its next step, had bash
-  denied, **changed zero files**, and exited 0 — reported `completed` with that narration as its
-  `summary`, because `saw_final_message` had already latched on a message that preceded the refusal.
-  So `ingest` now **withdraws** the close when it records a denial, exactly as the stop-event branch
-  does — but **without latching**, which is the whole distinction: a turn cap is terminal, a refusal
-  is not, so a later assistant message in the same turn re-establishes the close and only a run that
-  never speaks again reports `failed`. The denial stays on `acc.denials` either way.
-  **What this does not fix**, and the limits are worth stating precisely. The second dispatch simply
-  ended mid-work with no denial at all, and nothing in the stream distinguishes that from a short
-  legitimate answer — it still reads `completed`. A denial followed by a further assistant message
-  also re-establishes `completed`, and that message can itself be progress rather than an answer;
-  vibe's stream offers no structural way to tell them apart, so neither can polybridge. **For an
-  editing task, then, a vibe `completed` does not establish that the requested changes landed —
-  check the resulting worktree and run the tests.** Not stated as "the diff is the only reliable
-  signal", which overclaims in the other direction: a diff attributes nothing to a particular
-  dispatch, and says nothing at all about a read-only or analysis task.
+- **A denial can end a run that already spoke — and a clean exit after one now reads `completed`
+  with a warning.** The refusal above is not only a `publish` concern: at *any* freedom, a dispatch
+  whose next command falls outside the user's `[tools.bash]` config is auto-denied and frequently
+  stops there. Measured 2026-09-22 on two real dispatches replayed through `ingest`: one narrated
+  its next step, had bash denied, **changed zero files**, and exited 0 — at the time reported
+  `completed` with that narration as its `summary`, because `saw_final_message` had already latched
+  on a message that preceded the refusal. So `ingest` **withdraws** the close when it records a
+  denial, exactly as the stop-event branch does — but **without latching**, which is the whole
+  distinction: a turn cap is terminal, a refusal is not, so a later assistant message in the same
+  turn re-establishes the close. The denial stays on `acc.denials` either way.
+  The withdrawal alone then made *every* run that ended on a refusal read `failed` — including a
+  real dispatch whose every edit had landed and whose only sin was that its last action was refused
+  before a clean exit. That is the opposite overclaim, so the policy changed (decided 2026-09-26 by
+  the owner): a turn that ends on a refusal and then exits 0 reports **`completed` with a warning**
+  naming the refused command, not `failed` with no summary. Every genuine failure signal still wins
+  first — an error, a non-zero or unobserved exit, a turn-cap breach — and a run that recovers
+  (answers after the refusal) completes with no warning at all. The accepted trade-off, stated so it
+  isn't rediscovered as a bug: this reintroduces the 2026-09-22 false success. A run that narrates a
+  step, is refused, changes nothing and exits 0 will read `completed`; the warning is then the only
+  signal, and for an editing task the worktree is the check.
+  **What this still does not fix**, and the limits are worth stating precisely. The second dispatch
+  simply ended mid-work with no denial at all, and nothing in the stream distinguishes that from a
+  short legitimate answer — it still reads `completed`. A denial followed by a further assistant
+  message also re-establishes `completed`, and that message can itself be progress rather than an
+  answer; vibe's stream offers no structural way to tell them apart, so neither can polybridge.
+  **For an editing task, then, a vibe `completed` does not establish that the requested changes
+  landed — check the resulting worktree and run the tests.** Not stated as "the diff is the only
+  reliable signal", which overclaims in the other direction: a diff attributes nothing to a
+  particular dispatch, and says nothing at all about a read-only or analysis task.
+- **An `effect`'s `tool_result` is now normalized too, not silently dropped.** Every `effect` was
+  already turned into a `tool_call`, but vibe carries no separate completion event for one — the
+  same `id` is re-emitted as its `state.status` moves from a non-terminal value to a terminal one
+  (`completed`/`failed`/`cancelled`, measured against real `~/.polybridge/tasks` logs, e.g. a
+  `file_edit failed`). `_normalize_effect` now tracks seen ids in two `stream_state` sets
+  (`normalize_seen_effect_calls`, `normalize_seen_effect_results`) so the `tool_call` still fires
+  exactly once and a `tool_result` fires exactly once, `ok = (status == "completed")`, output from
+  `state.output` else `state.error`. An id already terminal the first time it is seen yields both
+  events, call then result, in one pass.
 - **`publish` on vibe needs `--agent auto-approve`, and so is no narrower than `unrestricted`.**
   Measured: under `--agent accept-edits`, `git commit -am wip` in a throwaway repo emitted a
   `callback` (`detail.kind: "approval"`, `title: "Allow bash?"`), was auto-denied, produced an
@@ -349,10 +440,12 @@ encoder needed, just the literal interpolated between quotes.
 5. **Persist a session id the moment it is disclosed.** Codex only reveals its `thread_id` mid-run;
    waiting until exit means a server that dies first loses any chance of resuming.
 6. **Identity markers, not session ids, decide liveness.** On a fresh run codex never receives its id
-   on the command line, so `store.process_alive` matches backend-supplied markers instead. (A
-   *resume* is the one exception — the thread id rides as a positional there, see `backends/codex.py`
-   — but the marker-matching logic itself does not branch on that; it is unaffected.) See
-   `tasks._identity_markers`.
+   on the command line, so `store.process_alive` matches backend-supplied markers instead; status
+   and the resume guards go through `store.record_process_alive`, which uses the recorded start
+   time when one is present, so a process that renames itself after spawn (vibe) is still
+   recognised. (A *resume* is the one exception — the thread id rides as a positional there, see
+   `backends/codex.py` — but the marker-matching logic itself does not branch on that; it is
+   unaffected.) See `tasks._identity_markers`.
 7. **One live run per session**, checked against disk so two server processes cannot both resume it.
 8. **`task_id` is validated before becoming a path** — it arrives from a caller.
 
@@ -422,8 +515,120 @@ recovery note says so in as many words. Fixing that properly means durable spool
 straight into the append-only log and have servers tail the file, rather than owning the pipe), which
 would also make an orphan finish normally. Until then, judge a recovered-alive run by what it changed
 on disk. Also still open, both pre-existing: `session_has_live_run` → spawn is check-then-act, so two
-servers can still race a resume, and process identity is pid + marker substring matching in `ps`
-output rather than pid + start time.
+servers can still race a resume, and *signal authorisation* (cancel/takeover, `may_signal`) is
+stricter than status: with a recorded start time it needs that start time to match **and** every
+marker to appear, so a retitled vibe process (`markers_missing`) cannot be signalled cross-process;
+without one, only the legacy pid + markers match (`legacy_markers_seen`) may signal. Status and the
+resume guards use the recorded start time alone and count any non-`dead` verdict as still running.
+
+**A live-input run across a restart.** The server holds the write end of the agent's stdin, so its
+death is EOF to the agent — per the plan's measurement on claude 2.1.281, the process holding the pipe
+dying mid-turn does not kill claude (own session): the in-flight turn finishes and writes its
+`result`, then the agent exits. What is lost: every message queued with `send_message` that the pump
+had not yet written (the in-memory queue dies with the server, and nothing is left to read the
+on-disk inbox), and any background task still open, which claude kills at EOF (measured) so nobody
+ever sees its result. No `.inbox.closed` marker is written on that path, so a later
+`send_message`/`polybridge-ctl send` is refused by the owner check instead (the owner is dead), and
+the record settles through `resolve_status` like any other recovered run.
+
+**Live input — the rules that keep a message from being lost silently.** The pump (`task.pump`) is a
+dedicated task, deliberately not in `task.watchers`, so `_finish_draining` neither waits on nor
+cancels it; `_monitor` lets it finish its exit-path close (`_finish_pump`, bounded) before
+publishing, so `undelivered` events precede `task_finished`. Every exit from the pump goes through
+the one close protocol — flock `<id>.inbox.jsonl`, forward or report every queued message, create
+`<id>.inbox.closed`, unlock, close stdin — and every send takes the same lock, so a message is either
+accepted before the close (then written or reported `undelivered`) or refused after it. Nothing is
+awaited while that lock is held. `send` answers "queued", never "delivered". Three edges, each from
+review: the close re-checks its reason under the lock (an idle close whose idleness has passed is
+abandoned; an error that arrived meanwhile drops instead of forwarding); the seal falls back to a
+seal *line* in the inbox itself when the directory refuses the marker, and a close that can do
+neither is retried `CLOSE_RETRY_LIMIT` times, then forced with a notice — a live run that can never
+reach EOF would never settle — and a forced close still tries to seal, counts open background work
+as abandoned, and leaves `inbox_reconciled` false unless it both read the disk inbox *and* the seal
+landed (an unsealed inbox still looks open to other processes, which can append and be told
+"queued" after that read), so `_finish_pump` does a final read and reports every unread line
+`undelivered` before the run is published; and after exit, a lock that stays busy for `EXIT_CLOSE_GIVE_UP_SECONDS`
+gets `_close_unlocked` (seal first, then read), which senders cover by re-checking the seal after
+appending. A send is also refused once the run's own process is confirmed dead, whatever its record
+still says. A message written after a result persists `input_after_result` on the record, so a
+recovered run whose replay shows no later result reads `failed`, not the earlier success.
+
+Two accepted limits, documented rather than fixed. **An owner-local "queued" is in memory only**:
+`send_message` on the owning server appends to `task.inbox_queue`, not to disk, so if that server
+dies abruptly before the pump writes it, the message is lost with no event at all (the plan accepts
+restart loss; the non-owner path, via the on-disk inbox, is always accounted for). **A stalled or
+hostile local process holding the inbox `flock` keeps a live idle task from closing stdin** while
+it holds the lock — correctness over liveness, since closing without it could accept a message
+after the last forward. Nothing blocks the event loop (acquisition is `LOCK_NB` retried on it), so
+only that task waits; cancellation still works.
+
+## Takeover, ctl control commands, open-app (A4)
+
+- **Takeover is humans-only and ctl-only.** Never expose it over MCP. `ctl takeover` and
+  `takeover-attach` refuse when `PB_TASK_ID` is set at all or a caller is detected: the interactive
+  session runs under the user's own permissions, so an agent reaching it escapes its enforcement.
+  The gate **fails closed**: it uses `lineage.detect_caller_detail`, which tells "positively no
+  caller" from "could not look" (`ps` denied, unreadable ancestry/session, a related task that is
+  neither confirmed alive nor dead), and refuses the latter as `caller_undecidable`. Plain
+  `detect_caller` reads both as None, which is right for lineage and wrong for a gate.
+- **A takeover's `.ready` is terminal for lease purposes.** Its controller (`polybridge-ctl`) exits
+  right after writing it, so `control.recover_abandoned` — which reads anything without `.sig`/
+  `.failed` as pending — must never be pointed at the takeover family; `begin_takeover` has its own
+  recovery.
+- **The session is busy from `.req`**, via `store.live_session_ids` (records ∪
+  `control.takeover_reservations`), until `.failed`, the 120 s window lapsing with no attach (a
+  pending attempt also stays busy while its controller is not provably abandoned — a deliberate,
+  test-pinned divergence from the plan, so a slow cascade cannot let a resume in before `.ready`),
+  or the attached
+  process confirmed `dead`. `undecidable` is busy. Retention keeps a task exactly while it is busy.
+- **Lock order is session lock, then `<id>.lock`**, everywhere (`takeover-attach` takes both).
+- The interactive commands were checked against each CLI's `--help` only (2026-09-25,
+  `tests/test_interactive_resume_real.py`); the table in README.md comes from the plan's
+  measurements. Never run them from a test: they open a TUI, and codex's writes a trust entry to
+  `~/.codex/config.toml`.
+- **`ctl run`/`resume` fork.** The child redirects stdio before anything else (a reader of the
+  parent's stdout must see EOF when the parent exits) and clears the fork-copied
+  `identity.own_identity` cache. Test the fork from a fresh interpreter (`tests/ctl_driver.py`), not
+  from pytest's own process, which carries threads by then.
+- **Opening the Monitor app never changes an outcome**: scheduled synchronously after registration,
+  root tasks only, launcher injectable, every exception a notice. **Opt-in** since 2026-09-28
+  (`PB_OPEN_MONITOR=1`; unset or anything else means off), because opening on every dispatch kept
+  bringing the app forward. `PB_OPEN_MONITOR=0` in conftest stays as a belt-and-braces default.
+
+## The Monitor app is a consumer of three frozen contracts (Stage C)
+
+`macos/PolybridgeMonitor` reads `polybridge-ctl --json` (`CTL_JSON_VERSION`, now 2 — bumped for
+Monitor piece 3/3's `resume_command` field), `polybridge-setup --json` (its own `JSON_VERSION`,
+still 1) and `events.jsonl` (`EVENT_LOG_VERSION`, still 1), and acts only through those two
+binaries — it never writes a record, phase file or inbox itself. Each of the three is versioned and
+gated independently on the Swift side (`MonitorCore/CtlModels.swift`'s `ctlContractVersions: Set<Int>`,
+`SetupClient.swift`'s `setupContractVersion`, `Events.swift`'s `eventLogVersion`), so a change to
+any one shape is a contract change on both sides: bump that contract's own `v` (the app refuses any
+version outside the set it understands, with a message naming the tool and the versions understood,
+rather than guessing), and a new event kind means `events.EVENT_KINDS`, README's list and
+`TaskEvent.Kind` in
+`macos/PbCore/MonitorCore/Sources/MonitorCore/Events.swift` together (an unknown kind decodes as
+`.unknown` and is ignored, so an old app degrades quietly). The app's tests use fake
+`polybridge-ctl`/`polybridge-setup` scripts, never the real binaries. Backend names appear in the
+app only for display styling; every fact it shows comes from polybridge. A new ctl command (like
+`backends`) is additive under the current `v` — it changes no existing document's shape, so no
+bump; the Monitor treats an older ctl's usage error for it as "unsupported".
+
+The app's UI layer follows a coordinator/VM/use-case architecture (a SwiftPM package per module, wired by path,
+under `macos/PbFoundation/`, `macos/PbCore/` and `macos/PbFeatures/`, with the root
+`macos/PolybridgeMonitor/` holding only the app shell — `App.swift`, `AppDelegate`,
+`AppCoordinator`, `AppModulesRegistry`) — see `macos/AGENTS.md` for the architecture rules this
+follows and each package's own `AGENTS.md` for what that package specifically owns.
+
+Before finishing any change under `macos/`, run `swiftformat macos && swiftlint lint` (repo-root
+`.swiftformat`, `.swiftlint.yml`; MonitorCore's existing source violations live in
+`.swiftlint-baseline.json`, never touch `macos/PbCore/MonitorCore/Sources` to satisfy a rule) and
+`scripts/check-private-refs.sh`. The guard keeps this open-source tree from naming a private
+project; its patterns are assembled from pieces inside the script, so never quote them elsewhere.
+
+**CI.** `.github/workflows/lint.yml` (Linux) runs SwiftFormat `--lint`, SwiftLint and the guard;
+`.github/workflows/test.yml` (macOS) runs `swift test` per Monitor package, `macos/build-app.sh`, and
+`uv run pytest` with a temporary `HOME`/`CODEX_HOME`. The headless app smoke stays a local gate.
 
 ## Enforcement must never overclaim
 
@@ -463,6 +668,14 @@ The caller is usually a model, and it only knows what the tool surface says. Sta
 infer belong **in the payload**: `enforcement` on every task, `recovered: true` plus a `note` on
 tasks from an earlier process, `next_step` when a wait returns still-running, `notices` for non-fatal
 messages, and errors that say what to do instead of just what failed.
+
+**MCP status responses are shaped in `server.py` (`_status_payload`), never in the snapshot.**
+`get_task_status`, `wait_for_task` and `cancel_task` carry `recent_activity` (≤ 5 one-liners from the
+normalized event log) instead of the ~10k-token raw `last_output_tail`, which comes back only with
+`include_tail=True` — or shortened, on a failed run, where the raw lines are what diagnoses it.
+`get_task_events` pages the normalized log on demand. `Task.snapshot()`/`store.snapshot()` keep the
+full tail because `polybridge-ctl --json` is a frozen contract (`CTL_JSON_VERSION`); reshape the MCP
+layer, not the snapshot.
 
 A dispatch at `publish` or `unrestricted` also checks whether the checkout is on the repository's
 default branch, and says so on `bridge_notices` — a channel separate from `Accumulator.notices`
