@@ -1,8 +1,9 @@
 # polybridge
 
-MCP server (stdio) that dispatches coding tasks to headless agents — Claude Code, Codex, opencode and
-vibe — without blocking the caller. See README.md for the tool surface; this file is what you need to
-change it safely.
+MCP server (stdio) that dispatches coding tasks to headless agents — Claude Code, Codex, opencode,
+vibe and Antigravity (`agy`) — without blocking the caller. README.md is the short user-facing
+overview; the tool surface is the docstrings in `server.py`, and this file is what you need to change
+it safely.
 
 Sibling project: `~/Code/claude-code-bridge` is the single-agent version. Its hardened core
 (registry, persistence, drainers, cancellation, progress-aware waiting, config editing) was ported
@@ -33,7 +34,7 @@ verify by grepping the installed copy under
 ## Architecture: everything agent-specific lives behind `Backend`
 
 `backends/base.py` defines the contract; `backends/claude.py`, `backends/codex.py`,
-`backends/opencode.py` and `backends/vibe.py` implement it. **Nothing outside `backends/` may branch
+`backends/opencode.py`, `backends/vibe.py` and `backends/antigravity.py` implement it. **Nothing outside `backends/` may branch
 on a backend's name.** If you find yourself writing `if backend == "codex"`, the seam is missing a
 method.
 
@@ -47,8 +48,12 @@ backend should mean one new module plus a registry entry — nothing else. That 
 was added: the only non-`backends/` changes were docs, the places that enumerated the two names, and
 tests. It held again for `vibe`: no change to the `Backend` protocol was needed, even though vibe
 rejects both `model` and `reasoning_effort` outright — that only needed a `supports_model_selection`
-capability field beside the existing `reasoning_effort` one, not a protocol change. If your fifth
-backend needs more than a module and a registry entry, the seam is missing a method.
+capability field beside the existing `reasoning_effort` one, not a protocol change. `antigravity`
+was the fifth, and the first since claude with live input. It needed one more capability field,
+`live_input_message_is_turn`, because agy runs every written message as its own turn where claude
+folds a mid-turn message into the turn already running. The pump in `tasks.py` reads that field,
+never the name. If your next backend needs more than a module, a registry entry and a declared
+capability, the seam is missing a method.
 
 `Capabilities` exists so callers are told, not surprised. Unsupported requests **fail loudly**:
 `max_turns` on Codex raises rather than being dropped, checked both in `server.py` and again in the
@@ -359,17 +364,89 @@ Measured on this machine. Do not "tidy" these away:
   `reasoning_effort` are both declared unsupported and raised loudly rather than passed through best-
   effort.
 
-All four CLIs mishandle an unsupported reasoning effort differently, which is exactly why polybridge
+**antigravity (`agy` 1.2.14, measured 2026-10-01; real captures in `tests/fixtures/antigravity_*.jsonl`)**
+- **`-p`/`--print` takes the prompt as its value** — unlike claude's boolean `-p`. `agy -p
+  --output-format …` exits 2 with `-p took "--output-format" as its prompt`. A positional, with or
+  without `--`, is refused outright (exit 2, `unexpected argument … Prompts are read only from
+  -p/--print, -i/--prompt-interactive, or stdin`), so there is no separator at all: the prompt rides
+  as the single canonical token `--print=<text>`, as on vibe. A prompt of
+  `--dangerously-skip-permissions --mode plan. …` was delivered verbatim and the run stayed in
+  `request-review`.
+- The parser is strict: an unknown or mis-split token exits 2 with `flags provided but not defined`.
+- `--output-format stream-json` events: `init` (carries `conversation_id` on line one, plus
+  `init.model` — null when no `--model` — and `init.permission_mode`), `step_update` (one per step
+  state change: `step_type` `user_input` / `agent_response` (with `text_delta` while `ACTIVE`, and
+  `usage` when `DONE`) / `tool` (with `tool_name`, `tool_info.parameters`, then `tool_info.output`
+  or `tool_info.error` on the terminal state)), and a terminal `result` with `status`
+  (`SUCCESS`/`ERROR`), `response`, `num_turns`, `usage`, optional `error` and `denied_actions`.
+  **No dollar cost.** Exit 0 on success, 1 on an `ERROR` result.
+- **A tool step's `state` does not show a denial; `result.denied_actions` does.** In plan mode a
+  `write_to_file` step read `DONE` though no file was written; only `denied_actions:
+  [{"action":"write_file",…}]` said so. A denied command step does read `ERROR` with `permission
+  check failed … user denied permission`.
+- **A headless denial ends the run as a success.** The first permission prompt it cannot show is
+  auto-denied, the agent stops, and the run reports `status: SUCCESS`, often an empty `response`,
+  exit 0, with stderr `no output produced — a tool required the "<perm>" permission that headless
+  mode cannot prompt for`. Polybridge follows vibe's policy for this: completed, with a warning naming
+  what was denied.
+- Freedom, measured against a scratch repo with a local bare remote:
+  - default (`request-review`) and `--mode plan`: workspace file writes denied; read-only commands
+    (`git status`) run without approval; mutating commands (`touch`, `git commit`) denied. Plan mode
+    also writes its own plan artifacts under `~/.gemini/antigravity-cli/brain/<id>/` — outside the
+    repo, and allowed.
+  - `--mode accept-edits`: workspace writes auto-approved; a write to a path outside the workspace
+    was denied; mutating commands still denied.
+  - `--dangerously-skip-permissions`: file write, `git commit`, `git push` to the remote, `curl`
+    (HTTP 200) and a write outside the repo all succeeded.
+  - All of the above is agy's own permission layer plus the user's `settings.json` allow-rules,
+    which can widen it — nothing is OS-enforced.
+  - `--sandbox` is OS-level, but only for **commands**, and it is not usable for real work. Commands
+    could not write inside the repo, nor read `~/.gitconfig` (so every git command failed) or
+    `~/.zshrc`, yet `curl` reached the network and `/tmp` was writable. The file-writing *tool* wrote
+    outside the repo under it. Polybridge maps no freedom to it. (Measured from inside Claude Code's
+    own sandboxed shell, so the in-repo denial may partly reflect that nesting.)
+- `--conversation <id>` resumes the same id (verified). **An unknown id is not refused:** stderr
+  `warning: conversation "<id>" not found`, a *new* conversation with a different id, exit 0. So
+  `ingest` must not let a resumed run's id silently replace the one asked for.
+- No way to choose the id up front (`--conversation <fresh-uuid>` is just the not-found case), so
+  `chooses_session_id=False`. `--add-dir <repo>` is accepted and harmless, which puts the repo on
+  the command line as the identity marker for a fresh run. agy keeps its argv as its process title.
+- `--effort low|medium|high|max`: `xhigh` is refused loudly (exit 1, `invalid --effort "xhigh"`).
+  It works only with the default model. A model id that encodes its own level
+  (`gemini-3.8-flash-low`) plus `--effort` exits 1 with `conflicts with --effort=high`, and
+  `claude-sonnet-4-6` exits 1 with `--effort is not supported for model`. Base family names (`gemini-3.8-flash`,
+  `gemini-3.1-pro`) do accept it. On the default model, three paired runs gave `low` 0/70/0
+  thinking tokens and `high` 145/134/138: non-overlapping, so the levels change behaviour there.
+- An unknown `--model` exits 1 with an `ERROR` result whose `conversation_id` is empty.
+- **Live input: `--input-format stream-json`, one line per message:
+  `{"event":"user","message":{"content":"<text>"}}`.** A claude-shaped line is refused (`missing the
+  "event" field`), and so is a `--print` alongside it (exit 2).
+  - The process idles after a `result` until more input or EOF, and EOF after a result exits 0 in
+    ~0.2 s.
+  - **Each written line is its own turn, even mid-turn** — unlike claude, which folds a mid-turn
+    message into the current turn. Lines already written when stdin hits EOF still run, one turn
+    each, before exit (measured: two queued lines, EOF at the first result, three results).
+  - EOF mid-turn lets that turn finish, and resume takes the same live shape.
+  - `result.usage` and `num_turns` are cumulative per process: the second result's usage is roughly
+    twice the first's, and a resumed live run reported `num_turns: 3`.
+
+**GitHub Copilot CLI (1.0.89) — not supported yet, because nothing can be measured here.** On this
+machine every `copilot -p` run fails with `Access denied by policy settings`, exit 1, and the stream
+warns `Third-party MCP servers are disabled by your organization's Copilot policy`, so a polybridge
+registered inside it would not load either. Both a backend and a client wait on an account whose
+policy allows the CLI.
+
+All five CLIs mishandle an unsupported reasoning effort differently, which is exactly why polybridge
 validates against its own closed `EFFORTS` vocabulary before any of them see a value: claude degrades
 silently with a stderr warning, opencode ignores it silently with no warning at all, codex alone fails
-loudly — as a mid-run API `400` — and vibe has no flag to mishandle at all: its equivalent
+loudly — as a mid-run API `400` — agy refuses one before any model call (exit 1, `invalid --effort`), and vibe has no flag to mishandle at all: its equivalent
 (`[[models]].thinking`) is config-only, several layers removed from anything on the command line, and
 an unsupported value there would surface (if it ever did) as a config-resolution problem, not a CLI
 error. Because that vocabulary is only four literals (`low`/`medium`/`high`/`xhigh`), none containing
 a quote or `=`, TOML-quoting codex's `-c model_reasoning_effort="<v>"` value is a non-issue — no
 encoder needed, just the literal interpolated between quotes.
 
-**Registering with them as MCP clients (`mcp add`, measured 2026-08-12; vibe measured 2026-09-10)**
+**Registering with them as MCP clients (`mcp add`, measured 2026-08-12; vibe measured 2026-09-10; agy 2026-10-01)**
 - All four accept `--` and run headless with stdin closed. `stdin=DEVNULL` still matters:
   `opencode mcp add` is prompt-capable, and so is `vibe mcp add`.
 - **Only Claude Code refuses to overwrite.** Re-adding exits **1** with
@@ -422,6 +499,16 @@ encoder needed, just the literal interpolated between quotes.
   - `vibe mcp add` also **rewrites the whole `config.toml` and destroys hand-written comments in it**
     (measured: a `# hand-written comment` was gone afterwards, and `args` was reformatted) — unlike
     codex's and opencode's own `add`, which preserved comments elsewhere in their configs.
+- **agy** (sandboxed with a temp `HOME`; its config is `~/.gemini/config/mcp_config.json`, plain
+  JSON `{"mcpServers": {"<name>": {"command", "args"?, "env", "disabled"}}}`):
+  - **Flags must come before the name** (its own help says so), so the shared `add_argv` shape does
+    not fit.
+  - `agy mcp add --env K=V <name> -- <cmd> [args]` → `Added MCP server "<name>" (stdio)`, exit 0.
+  - **It overwrites like codex.** Re-adding an identical entry and re-adding with different settings
+    both exit 0 with the same message, and the stored entry is replaced.
+  - `agy mcp remove <existing>` → `Removed MCP server "<name>"`, exit 0.
+  - `agy mcp remove <absent>` → `Error: MCP server "<name>" not found`, **exit 1**, as with claude.
+  - `agy mcp list` prints a human table, not JSON, so inspect reads the JSON file instead.
 
 ## Invariants — break these and the design stops holding
 
@@ -583,8 +670,8 @@ only that task waits; cancellation still works.
   process confirmed `dead`. `undecidable` is busy. Retention keeps a task exactly while it is busy.
 - **Lock order is session lock, then `<id>.lock`**, everywhere (`takeover-attach` takes both).
 - The interactive commands were checked against each CLI's `--help` only (2026-09-25,
-  `tests/test_interactive_resume_real.py`); the table in README.md comes from the plan's
-  measurements. Never run them from a test: they open a TUI, and codex's writes a trust entry to
+  `tests/test_interactive_resume_real.py`); each backend's `interactive_resume_argv` docstring
+  records what was measured. Never run them from a test: they open a TUI, and codex's writes a trust entry to
   `~/.codex/config.toml`.
 - **`ctl run`/`resume` fork.** The child redirects stdio before anything else (a reader of the
   parent's stdout must see EOF when the parent exits) and clears the fork-copied
@@ -605,7 +692,7 @@ gated independently on the Swift side (`MonitorCore/CtlModels.swift`'s `ctlContr
 `SetupClient.swift`'s `setupContractVersion`, `Events.swift`'s `eventLogVersion`), so a change to
 any one shape is a contract change on both sides: bump that contract's own `v` (the app refuses any
 version outside the set it understands, with a message naming the tool and the versions understood,
-rather than guessing), and a new event kind means `events.EVENT_KINDS`, README's list and
+rather than guessing), and a new event kind means `events.EVENT_KINDS` and
 `TaskEvent.Kind` in
 `macos/PbCore/MonitorCore/Sources/MonitorCore/Events.swift` together (an unknown kind decodes as
 `.unknown` and is ignored, so an old app degrades quietly). The app's tests use fake
@@ -658,8 +745,8 @@ unauthenticated `gh`, and the agent's own behaviour all sit outside it. `network
 because network is the material difference for pushing, and `not_controlled` (claude, opencode, vibe)
 means the environment decides — which is not the same claim as `blocked`.
 
-If you add a backend or a freedom level, re-measure rather than reasoning about it, and update the
-tables in README.md. `tests/test_backends.py::test_enforcement_never_overclaims` enforces the shape;
+If you add a backend or a freedom level, re-measure rather than reasoning about it, and record what
+you measured under "Verified CLI facts" above. `tests/test_backends.py::test_enforcement_never_overclaims` enforces the shape;
 it cannot check whether your claim is true.
 
 ## Telling the caller what happened
