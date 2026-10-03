@@ -68,6 +68,8 @@ class TaskRecord:
     this field existed still loads and resumes at the historical default; `read` already filters
     unknown keys and defaults missing ones, so no migration is needed."""
     parent_task_id: str | None = None
+    stderr_tail: list[str] = field(default_factory=list)
+    workflow_builder: bool = False
     prompt: str = ""
     status: str = "running"
     exit_code: int | None = None
@@ -549,9 +551,16 @@ def _notices(record: TaskRecord, state: Accumulator) -> list[str]:
 def snapshot(log_dir: Path, record: TaskRecord) -> dict[str, Any]:
     """A recovered task's state, shaped like a live snapshot so callers need no special casing."""
     status, note, state, tail, owned = _resolve(log_dir, record, detail=True)
+    from . import inbox
+    pending = inbox.pending_messages(log_dir, record.task_id)
+    if record.workflow_builder:
+        from .workflows import builder_pending_messages
+        pending = builder_pending_messages(log_dir, record.task_id, pending)
 
     return {
+        "pending_messages": pending,
         "task_id": record.task_id,
+        "workflow_builder": record.workflow_builder,
         "backend": record.backend,
         "session_id": record.session_id,
         "repo_path": record.repo_path,
@@ -573,6 +582,7 @@ def snapshot(log_dir: Path, record: TaskRecord) -> dict[str, Any]:
         "total_cost_usd": state.total_cost_usd,
         "num_turns": state.num_turns,
         "exit_code": record.exit_code,
+        **({"stderr_tail": list(record.stderr_tail)} if status == "failed" and record.stderr_tail else {}),
         "permission_denials": state.denials,
         "last_output_tail": tail,
         "raw_stream_log": str(log_path(log_dir, record.task_id)),
@@ -608,6 +618,7 @@ def brief(log_dir: Path, record: TaskRecord) -> dict[str, Any]:
     status, _, _, _, owned = _resolve(log_dir, record, detail=False)
     return {
         "task_id": record.task_id,
+        "workflow_builder": record.workflow_builder,
         "backend": record.backend,
         "session_id": record.session_id,
         "repo_path": record.repo_path,

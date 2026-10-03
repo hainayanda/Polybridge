@@ -31,10 +31,15 @@ extension TaskDetailVM {
     func recomputeTimeline(task: TaskInfo, allChildren: [TaskInfo]) {
         let members = conversationMembers
         let start = members.first?.startedAt
-        let conversationTimelineMembers = members.map {
-            ConversationItemMember(task: $0, items: itemsByMember[$0.taskID] ?? [], prompt: useCase.prompt(for: $0.taskID))
+        let conversationTimelineMembers = members.map { member in
+            let prompt = member.raw["display_prompt"]?.stringValue ?? useCase.prompt(for: member.taskID)
+            return WorkflowBuilderPresentation.conversationMember(
+                task: member, items: itemsByMember[member.taskID] ?? [], prompt: prompt, isBuilder: isWorkflowBuilder
+            )
         }
-        let rows = ConversationTimeline.rows(itemMembers: conversationTimelineMembers)
+        let allRows = ConversationTimeline.rows(itemMembers: conversationTimelineMembers)
+        let rows = isWorkflowBuilder ? WorkflowBuilderPresentation.visibleRows(allRows)
+        : WorkflowNodePresentation.isWorker(task) ? WorkflowNodePresentation.visibleRows(allRows) : allRows
         let subTaskStrip: SubTaskStripModel? = allChildren.isEmpty ? nil : SubTaskStripModel(
             children: allChildren.map { SubTaskEntry(task: $0, title: useCase.title($0.taskID)) },
             start: start,
@@ -46,7 +51,8 @@ extension TaskDetailVM {
         // member's own event stream is still `.loading` — never once real content exists, and never
         // for `.unavailable` (that keeps today's honest empty-log message).
         let isLoading = itemCount == 0 && members.contains { (eventsAvailabilityByMember[$0.taskID] ?? .loading) == .loading }
-        let liveStep = LiveStep(rows: rows)
+        let liveStep = LiveStep(rows: rows, isRunning: task.status.isRunning)
+        let pendingMessages = PendingMessage.visible(snapshot: useCase.snapshot(currentTaskID), events: eventsByMember[currentTaskID] ?? [])
         timelineModel = TimelinePaneModel(
             stepCountText: "\(itemCount) steps",
             rows: rows,
@@ -58,10 +64,14 @@ extension TaskDetailVM {
             subTaskStrip: subTaskStrip,
             isLoading: isLoading,
             liveStep: liveStep,
-            updateToken: ActivityUpdateToken(rows: rows, liveStep: liveStep)
+            updateToken: ActivityUpdateToken(rows: rows, liveStep: liveStep, pendingMessages: pendingMessages),
+            pendingMessages: pendingMessages
         )
         // Design point 6: the Prompt tab shows the FIRST task's own prompt — the conversation's name.
-        promptText = useCase.prompt(for: members[0].taskID)
+        let visiblePrompt = WorkflowNodePresentation.isWorker(task)
+        ? task.raw["display_prompt"]?.stringValue ?? useCase.prompt(for: currentTaskID)
+        : conversationTimelineMembers.first?.prompt
+        promptText = visiblePrompt
         ?? "The prompt is recorded in the task's event log, which has not been read yet (or does not exist)."
         rawEventsPath = useCase.eventsPath(for: currentTaskID)
         rawEvents = eventsByMember[currentTaskID] ?? []
