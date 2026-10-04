@@ -684,8 +684,8 @@ only that task waits; cancellation still works.
 
 ## The Monitor app is a consumer of three frozen contracts (Stage C)
 
-`macos/PolybridgeMonitor` reads `polybridge-ctl --json` (`CTL_JSON_VERSION`, now 2 — bumped for
-Monitor piece 3/3's `resume_command` field), `polybridge-setup --json` (its own `JSON_VERSION`,
+`macos/PolybridgeMonitor` reads `polybridge-ctl --json` (`CTL_JSON_VERSION`, now 3 — includes pending messages and workflow ownership/status;
+v2 added `resume_command`), `polybridge-setup --json` (its own `JSON_VERSION`,
 still 1) and `events.jsonl` (`EVENT_LOG_VERSION`, still 1), and acts only through those two
 binaries — it never writes a record, phase file or inbox itself. Each of the three is versioned and
 gated independently on the Swift side (`MonitorCore/CtlModels.swift`'s `ctlContractVersions: Set<Int>`,
