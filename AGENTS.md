@@ -267,7 +267,9 @@ Measured on this machine. Do not "tidy" these away:
 **vibe (Mistral Vibe CLI 2.25.1)**
 - `get_prompt_from_stdin()` (`vibe/cli/cli.py:54-67`) runs unconditionally before mode dispatch and
   calls `sys.stdin.read()` whenever stdin is **not a tty** — a pipe that never closes blocks forever.
-  `stdin=DEVNULL` is mandatory, same reason as codex's.
+  Small prompts use `stdin=DEVNULL`. Prompts over 32 KiB use `pipe_once` with trailing
+  `--prompt=`: send UTF-8 bytes and immediately close stdin. Native stdin ingestion strips outer
+  whitespace, so large prompts with outer whitespace are refused explicitly rather than changed.
 - Programmatic mode is `-p/--prompt TEXT` with `--output streaming` for newline-delimited JSON.
 - **The `PROMPT` positional is ignored in programmatic mode.** `cli.py:172` reads
   `args.prompt or stdin_prompt`; the positional serves interactive mode and worktree naming only
@@ -276,7 +278,7 @@ Measured on this machine. Do not "tidy" these away:
   starting with `-` is not taken as its value (it falls through to stdin and dies with
   `Error: No prompt provided for programmatic mode`, exit 1 — loud, not silent, but it rules out the
   space-separated form for such prompts). Hence the single canonical token `--prompt=<text>`, last in
-  argv. Measured: a prompt beginning with `--max-turns` reached the model verbatim at exit 0,
+  argv for small prompts; the empty token selects stdin for large prompts. Measured: a prompt beginning with `--max-turns` reached the model verbatim at exit 0,
   unparsed as a flag.
 - `sessionId` is a UUID vibe mints itself, present on **every** stream entry including the first, so
   the id is known from line one — `chooses_session_id=False`.
