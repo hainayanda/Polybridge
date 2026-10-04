@@ -160,10 +160,12 @@ Measured on this machine. Do not "tidy" these away:
   `unrestricted` did *not* permit an ordinary `git commit` despite its name.
 
 **Codex (codex-cli 0.153.2)**
-- **`codex exec` blocks forever reading stdin.** `stdin=DEVNULL` is mandatory, not tidiness. The
-  stdin wiring now comes from each run's own `Invocation` (`stdin_mode`), never from a backend name:
-  only a live-input claude run gets a pipe, and every other backend's `assert_safe` refuses anything
-  but a DEVNULL Invocation with no initial input.
+- **`codex exec` waits for EOF when reading stdin.** Small prompts use DEVNULL. Prompts over
+  32 KiB use the documented `-` positional with `Invocation.stdin_mode="pipe_once"`: deliver the
+  full UTF-8 assignment and immediately close stdin, with no live-input pump. A fake executable
+  verifies byte-identical delivery of a 1 MiB assignment and EOF. This keeps results complete
+  without exceeding the operating system argv limit. Backend validators distinguish this
+  one-shot transport from a live conversation pipe.
 - An approval prompt would hang a headless run equally, hence pinned `-c approval_policy="never"`.
 - Prompt goes after `--`, so prompt text can never be parsed as an option.
 - The stream is nothing like Claude's: session id is **`thread_id`** on `thread.started`; the final
