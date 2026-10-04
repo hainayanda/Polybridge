@@ -124,12 +124,16 @@ Measured on this machine. Do not "tidy" these away:
   `result` the process idles until more input or EOF; EOF after a result exits 0 in ~1.2 s; a
   message written just before EOF still runs as its own turn; `--resume` takes the same shape.
   `total_cost_usd` is cumulative per process, `num_turns`/`usage`/`permission_denials` per result.
-  `--max-turns` with live input is unmeasured, so a capped run stays classic.
-  **`assert_safe` accepts exactly these two shapes and validates each completely**: classic is `--`
+  `--max-turns` with live input is unmeasured, so capped runs remain one-shot. Large capped
+  assignments over 32 KiB use `--input-format text`, raw UTF-8 stdin and immediate EOF, with no
+  positional prompt. Native Claude 2.1.289 start and persisted-session resume were verified against
+  an isolated local fake API with byte-identical 1 MiB prompts and the turn cap retained.
+  **`assert_safe` accepts these three shapes and validates each completely**: classic is `--`
   plus one positional, no `--input-format`, stdin DEVNULL, no initial input; live is no `--`, every
   token a known option (so no positional), `--input-format stream-json` exactly once, no
   `--max-turns`, a pipe, and an `initial_input` that is exactly one well-formed user line. It takes
-  the whole `Invocation`, so a live argv wired to DEVNULL (or a classic one to a pipe) is refused, and
+  the whole `Invocation`; capped text stdin requires a turn cap, `pipe_once`, nonempty UTF-8 input,
+  and no positional or live-input flags. A live argv wired to DEVNULL (or a classic one to a pipe) is refused, and
   a bare argv list is refused outright.
 - **`--include-partial-messages` streams text as it arrives (measured 2.1.283, real captures in
   `tests/fixtures/claude_partial_*.jsonl`) — in the classic `-p` shape, in the live shape, and on
@@ -240,6 +244,11 @@ Measured on this machine. Do not "tidy" these away:
   run from one killed mid-flight.
 - A top-level `error` event comes with exit code 1. There is no terminal success event.
 - `--` is honoured; `-s <id>` resumes into the same session id (both verified).
+- Assignments over 32 KiB use EOF-closed one-shot UTF-8 stdin, with trailing `--` and no argv
+  message, on both start and resume. Installed CLI source reads `Bun.stdin.text()` and returns
+  that text unchanged when the argv message is empty; leading/trailing whitespace and CRLF remain
+  intact. Fake executable checks verify byte-identical 1 MiB delivery and EOF without live input.
+  Small assignments retain the separated argv shape.
 - Its parser also accepts `--flag=value` and compact `-sID`, and **a later value wins**: appending
   `--format=default` after `--format json` disabled the JSON stream outright (measured). So
   `assert_safe` walks the option region and refuses any non-canonical token instead of searching for
