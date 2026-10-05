@@ -1,6 +1,6 @@
 # Draft: Monitor intermittent stall
 
-Status: bounded history implementation verified by backend and native tests, release build, and isolated fixture measurements. Interactive paging and scroll checks remain pending because the Mac is locked. The original intermittent stall remains unconfirmed; no causal hang fix has been identified.
+Status: bounded history implementation verified by backend and native tests, release build, and isolated fixture measurements. The isolated UI initial load and first older activity page passed; remaining paging and scroll checks are paused by the Mac lock. The original intermittent stall remains unconfirmed; no causal hang fix has been identified.
 
 ## Observation
 
@@ -36,7 +36,7 @@ Verification uses temporary stores and an isolated Monitor copy. The cancelled w
 
 An isolated 100,000-record, 107,088,890-byte activity fixture returned three successive 100-event pages in 6.62, 6.61, and 6.41 ms. Each read consumed 1,000,256 bytes including integrity anchors and decoded exactly 100 records; traced peak allocation was 1,294,507 bytes. These Python retrieval measurements do not establish native rendering performance or the cause of the original stall. Native release-mode measurements on a 100,000-unique-edit fixture (approximately 105 MB) returned three 100-event pages in 5.94, 5.33 and 5.27 ms. Actual reads were 1,048,960, 1,049,024 and 1,049,024 bytes including snapshot anchors. Cumulative indexing retained 100,000 edit counts and path entries, published only 100 file entries initially, and completed 1,588 bounded batches in 3,782.94 ms. Each batch attempted at most 100 records.
 
-The measurement exposed repeated forward reads of unused 1 MiB windows and rebuilding the entire file projection each chunk. Summary bootstrap now reads 64 KiB chunks, retains a compact mutable accumulator, publishes at most ten times per second, and exposes another 100 file entries per explicit Load more files action. These changes address measured large-fixture work; they are not a diagnosis of the original intermittent stall. Isolated UI smoke and final delivery verification are pending.
+The measurement exposed repeated forward reads of unused 1 MiB windows and rebuilding the entire file projection each chunk. Summary bootstrap now reads 64 KiB chunks, retains a compact mutable accumulator, publishes at most ten times per second, and exposes another 100 file entries per explicit Load more files action. These changes address measured large-fixture work; they are not a diagnosis of the original intermittent stall. The isolated UI checks below supplement these measurements; final delivery verification is pending.
 
 ## Sidebar measurement and remaining boundary
 
@@ -51,5 +51,17 @@ Optimized benchmark builds hit a compiler crash in a third-party dependency, so 
 figures are explicitly debug measurements. Native activity measurements above used release mode.
 
 The isolated release app launched under a temporary HOME and issued bounded task/workflow
-page calls. Interactive rendering, Load more and scroll-anchor smoke remain pending because the
-Mac is locked. No original minute-long stall was reproduced or sampled; it remains unconfirmed.
+page calls. With the Mac unlocked, the actual conversation UI exposed a protocol-extension
+default-argument dispatch bug: the task detail adapter selected the unsupported fallback rather
+than the concrete session paging implementation. The adapter now passes the page limit explicitly,
+and a real adapter/protocol/CLI regression verifies the session, cursor, limit, and related-member
+lookup. This is a confirmed paging error, not evidence of the original intermittent stall.
+
+The corrected release app loaded the recent 100 activity events (99 rendered steps after tool
+call/result pairing) and one older 100-event page (199 steps). Initial selection to observed UI
+was 1,291 ms, and Load more to observed UI was 893 ms. These durations include native automation
+and accessibility observation overhead; they are not pure frame or render timings. Follow live
+stayed off, and the visible activity remained around event 099903 after the prepend. The Mac
+locked again before repeated older loads and page-boundary pairing could be checked on this build.
+Those interactive checks remain pending. No original minute-long stall was reproduced or sampled;
+it remains unconfirmed.
