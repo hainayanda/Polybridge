@@ -65,3 +65,25 @@ stayed off, and the visible activity remained around event 099903 after the prep
 locked again before repeated older loads and page-boundary pairing could be checked on this build.
 Those interactive checks remain pending. No original minute-long stall was reproduced or sampled;
 it remains unconfirmed.
+
+
+## Selected workflow transport follow-up
+
+Review identified two additional loading costs: changed workflow digests triggered another full
+snapshot, and each snapshot continuation reread and hashed the entire cached payload. Changed
+polls now retain compact status and request only changed views and executions. Initial snapshots
+seed the field cache; execution identities are reused only after their captured index digest is
+verified. A changing index leaves the valid frozen snapshot visible for a later retry.
+
+Monitor-only detail pages share the immutable snapshot transport. Each continuation reads at
+most a 128 KiB chunk, a 4 KiB receipt plus one overflow sentinel byte, and a 32-byte page hash.
+The receipt binds run, view, digest, and file identities; replacement, truncation, and in-place
+modification invalidate the cursor. Continuations do not reload the durable run. Public detail
+callers retain their existing semantics.
+
+An isolated 5,242,923-byte snapshot required 40 continuation pages, using a fresh provider module
+for each page. Median continuation time was 0.222 ms and maximum was 0.608 ms; the read ceiling
+was 135,201 bytes per page. These direct Python provider timings exclude CLI startup and native
+rendering. A regression verifies linear total reads, and native tests verify changed-summary,
+changed-execution, status-only, and stale-bootstrap behavior. Interactive selected-workflow
+refresh remains pending while the Mac is locked. These findings do not confirm the original stall.
