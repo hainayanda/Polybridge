@@ -1,6 +1,6 @@
 # Draft: Monitor intermittent stall
 
-Status: bounded history implementation verified by backend and native tests, release build, and isolated fixture measurements. The isolated UI initial load and first older activity page passed; remaining paging and scroll checks are paused by the Mac lock. The original intermittent stall remains unconfirmed; no causal hang fix has been identified.
+Status: bounded history implementation and final review fixes verified by backend and native tests, release build, isolated fixture measurements, and completed multi-turn activity, sidebar paging, and late-file Summary recovery checks. The original intermittent stall remains unconfirmed; no causal hang fix has been identified.
 
 ## Observation
 
@@ -36,7 +36,7 @@ Verification uses temporary stores and an isolated Monitor copy. The cancelled w
 
 An isolated 100,000-record, 107,088,890-byte activity fixture returned three successive 100-event pages in 6.62, 6.61, and 6.41 ms. Each read consumed 1,000,256 bytes including integrity anchors and decoded exactly 100 records; traced peak allocation was 1,294,507 bytes. These Python retrieval measurements do not establish native rendering performance or the cause of the original stall. Native release-mode measurements on a 100,000-unique-edit fixture (approximately 105 MB) returned three 100-event pages in 5.94, 5.33 and 5.27 ms. Actual reads were 1,048,960, 1,049,024 and 1,049,024 bytes including snapshot anchors. Cumulative indexing retained 100,000 edit counts and path entries, published only 100 file entries initially, and completed 1,588 bounded batches in 3,782.94 ms. Each batch attempted at most 100 records.
 
-The measurement exposed repeated forward reads of unused 1 MiB windows and rebuilding the entire file projection each chunk. Summary bootstrap now reads 64 KiB chunks, retains a compact mutable accumulator, publishes at most ten times per second, and exposes another 100 file entries per explicit Load more files action. These changes address measured large-fixture work; they are not a diagnosis of the original intermittent stall. The isolated UI checks below supplement these measurements; final delivery verification is pending.
+The measurement exposed repeated forward reads of unused 1 MiB windows and rebuilding the entire file projection each chunk. Summary bootstrap now reads 64 KiB chunks, retains a compact mutable accumulator, publishes at most ten times per second, and exposes another 100 file entries per explicit Load more files action. These changes address measured large-fixture work; they are not a diagnosis of the original intermittent stall. The isolated UI checks below supplement these measurements. Final post-fix checks passed: 5,500 backend tests, 322 opt-in integration tests skipped, and 1,491 tests across all nine native packages. Format, lint, private-reference guard, and signed release build passed.
 
 ## Sidebar measurement and remaining boundary
 
@@ -62,9 +62,9 @@ call/result pairing) and one older 100-event page (199 steps). Initial selection
 was 1,291 ms, and Load more to observed UI was 893 ms. These durations include native automation
 and accessibility observation overhead; they are not pure frame or render timings. Follow live
 stayed off, and the visible activity remained around event 099903 after the prepend. The Mac
-locked again before repeated older loads and page-boundary pairing could be checked on this build.
-Those interactive checks remain pending. No original minute-long stall was reproduced or sampled;
-it remains unconfirmed.
+locked again before further checks on that build. The final post-fix checks below supersede that
+paused activity verification. No original minute-long stall was reproduced or sampled; it remains
+unconfirmed.
 
 
 ## Selected workflow transport follow-up
@@ -85,5 +85,42 @@ An isolated 5,242,923-byte snapshot required 40 continuation pages, using a fres
 for each page. Median continuation time was 0.222 ms and maximum was 0.608 ms; the read ceiling
 was 135,201 bytes per page. These direct Python provider timings exclude CLI startup and native
 rendering. A regression verifies linear total reads, and native tests verify changed-summary,
-changed-execution, status-only, and stale-bootstrap behavior. Interactive selected-workflow
-refresh remains pending while the Mac is locked. These findings do not confirm the original stall.
+changed-execution, status-only, and stale-bootstrap behavior. The isolated ParentFlow UI passed
+initial snapshot/index loading. Updating only the temporary
+fixture's technical plan and update time made the plan disclosure show the new text; CLI calls
+confirmed only the technical-plan detail view was fetched, without a second root snapshot.
+Opening the child showed its own canvas, assignment, plan, owning session, and nested sidebar;
+the parent breadcrumb returned to the preserved parent plan. These checks establish changed-view
+and navigation behavior, without measuring pure rendering latency or diagnosing the original stall.
+
+
+## Final review fixes and isolated UI verification
+
+Three final review findings were fixed and reviewed independently with Codex. Cancellation now
+signals live tasks inside a terminal child run while preserving that run's recorded failure.
+Activity paging checks every loaded conversation turn before opening another turn or advancing
+session history. Summary leases retry missing or temporarily unreadable logs once per second,
+using the last successful cursor and preserving cumulative counts and expanded file projection;
+releasing the final lease cancels the queued retry.
+
+The final isolated release UI used two conversation turns with 120 events each. Repeated activity
+loads showed 100, 120, 220, and 240 steps, reaching both turns. These multi-turn checks did not
+capture separate action timings. On the earlier 100,000-event single-turn fixture, initial
+selection, the first older page, and the second older page took 1,150, 2,026, and 2,748 ms to the
+observed accessibility state. The sidebar's second page load took 10,642 ms; scrolling back to
+the top and observing accessibility state took 17,133 ms. These are automation-inclusive
+action/observation durations, not pure rendering measurements or a diagnosis of the slow actions.
+A Summary initially reported an unavailable
+event file; creating an isolated fake Edit event changed it to one edited file,
+`late-summary-proof.swift`, on the same lease without reselection. Production history and saved
+workflows were preserved.
+
+A later 15-second process sample of isolated app PID 60867, taken during a fast parent selection,
+contained 11,967 main-thread samples; 10,835 were in Mach wait (approximately 90.5%). This sample
+was taken after the slower actions and does not diagnose them or the original minute-long stall.
+The original stall was not reproduced.
+
+Final post-fix validation: 5,500 backend tests passed and 322 opt-in integration tests were skipped.
+All nine native package builds/tests passed with 1,491 tests (17, 102, 19, 206, 237, 697, 55, 63,
+and 95). Format, lint, private-reference guard, and signed release build passed. Publication and final-head
+CI/review results are tracked in PR #3.
