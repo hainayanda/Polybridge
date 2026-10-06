@@ -232,6 +232,24 @@ Measured on this machine. Do not "tidy" these away:
   completion, a `tool_result` with `ok = (item's own status == "completed")` — codex reports no
   per-change status, only one for the whole item. A completion-only item (no prior `item.started`)
   synthesizes its `tool_call`s first, exactly like the shell/MCP completion paths already did.
+- **Native workflow children (measured 0.160.1, 2026-10-06).** The installed CLI uses
+  `collaboration.spawn_agent` with `task_name`, `message`, and `fork_turns="none"`, followed by
+  `collaboration.wait_agent`. It has no child-close tool. Child `SubAgentActivity` and terminal
+  evidence are persisted in session rollouts but are omitted from the exec JSON stream, so the
+  adapter finalizes from bounded, nonce-correlated parent/child evidence after the control process
+  exits. Parent acknowledgement alone is never worker success.
+- **An `agents={...}` override deep-merges ambient roles.** A hostile `agents.default.config_file`
+  replaced the child's model despite the explicit parent model. Native invocations therefore
+  override the selected default role with the packaged `backends/codex_native.toml` profile, pinning
+  `gpt-6.1-sol`, read-only access and approval policy `never`. The real CLI fixture verifies the
+  exact model and provider, inherited effort, two distinct children through persisted parent
+  resume, a refused nested spawn, denied shell writes and blocked network. The operative nested
+  spawn refusal is the thread limit; disabling feature flags alone does not establish that the
+  installed runtime removes its collaboration tools. Re-measure rather than assuming the public
+  release source or a feature name describes this installed binary.
+- Certification uses `PB_CLI_INTEGRATION=1 uv run pytest tests/test_codex_native_subagent_cli.py`
+  against an isolated localhost fake API, with no paid model calls. Native support remains limited
+  to the pinned version/model and fresh sequential read-only workers; no turn-cap support is added.
 
 **opencode (1.18.18)**
 - `run --format json` emits clean JSONL — `step_start`, `tool_use`, `text`, `step_finish`, `error` —
