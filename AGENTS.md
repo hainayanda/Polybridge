@@ -9,6 +9,14 @@ Sibling project: `~/Code/claude-code-bridge` is the single-agent version. Its ha
 (registry, persistence, drainers, cancellation, progress-aware waiting, config editing) was ported
 here; fixes worth having in both should be applied to both.
 
+## User-facing documentation
+
+When a change affects user-facing behavior, setup, permissions, supported capabilities, commands,
+or recovery, update `README.md` and the relevant guides in `docs/` as part of the same change.
+Keep the README concise and link to detailed guides. Update affected tool docstrings and CLI help
+when their contracts change, verify documentation examples and links, and remove resolved draft
+notes once their implemented behavior is covered by maintained documentation.
+
 ## Commands
 
 ```bash
