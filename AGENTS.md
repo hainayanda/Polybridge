@@ -723,7 +723,9 @@ only that task waits; cancellation still works.
 
 ## The Monitor app is a consumer of three frozen contracts (Stage C)
 
-`macos/PolybridgeMonitor` reads `polybridge-ctl --json` (`CTL_JSON_VERSION`, now 4 — adds workflow result-error presentation metadata;
+`macos/PolybridgeMonitor` reads `polybridge-ctl --json` (`CTL_JSON_VERSION`, now 7 — adds separate Monitor cancellation eligibility;
+v6 added native execution metadata, v5 added Run workflow links,
+v4 added workflow result-error presentation metadata;
 v3 added pending messages and workflow ownership/status;
 v2 added `resume_command`), `polybridge-setup --json` (its own `JSON_VERSION`,
 still 1) and `events.jsonl` (`EVENT_LOG_VERSION`, still 1), and acts only through those two
