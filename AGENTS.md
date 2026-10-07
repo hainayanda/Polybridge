@@ -29,7 +29,7 @@ uv run mcp dev src/polybridge/server.py         # MCP Inspector
 uv tool install . --force --no-cache             # reinstall after changes; --no-cache is required
 swiftformat macos && swiftlint lint                  # Monitor app: format, then lint (SwiftFormat 0.62.1, SwiftLint 0.65.0)
 scripts/check-private-refs.sh                        # private-reference guard (CI runs it too)
-for p in macos/PbFoundation/* macos/PbCore/* macos/PbFeatures/* macos/PolybridgeMonitor; do (cd "$p" && swift build && swift test); done  # Monitor app: per-package unit tests
+for p in macos/PbFoundation/* macos/PbCore/* macos/PbFeatures/* macos/PolybridgeMonitor; do (cd "$p" && swift build && swift test --no-parallel); done  # Monitor app: serialize AppKit fixtures with async unit tests
 macos/build-app.sh                               # build the .app into macos/build/ (build only)
 ```
 
@@ -722,6 +722,10 @@ only that task waits; cancellation still works.
   bringing the app forward. `PB_OPEN_MONITOR=0` in conftest stays as a belt-and-braces default.
 
 ## The Monitor app is a consumer of three frozen contracts (Stage C)
+
+Rendering state publishers emit once per changed content, with complete `Equatable` models and
+producer-boundary deduplication where possible. Commands and disposable notifications retain
+their event semantics; preserve explicit clock updates. See `macos/AGENTS.md` for the shared rule.
 
 `macos/PolybridgeMonitor` reads `polybridge-ctl --json` (`CTL_JSON_VERSION`, now 7 — adds separate Monitor cancellation eligibility;
 v6 added native execution metadata, v5 added Run workflow links,
