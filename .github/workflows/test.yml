@@ -59,7 +59,8 @@ jobs:
 
       - name: swift test
         working-directory: ${{ matrix.package }}
-        run: swift test
+        # AppKit layout fixtures share the main actor with async view-model tests.
+        run: swift test --no-parallel
 
   app:
     if: github.event.pull_request.draft != true
