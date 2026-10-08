@@ -790,3 +790,17 @@ Repository and model timings precede the final short-fill, reset and paging-admi
 The folding and background presentation algorithms are unchanged, but the admission and UI paths
 have changed; these experiments do not mount SwiftUI feeds or measure the final UI fixes.
 Raw evidence records both measured and final source hashes.
+
+Installed-app verification at `99c517b` found a separate blocker after review and green CI:
+opening completed activity caused sustained SwiftUI layout work (about 98% CPU after seven
+minutes). A three-second, content-free stack sample placed all 223 main-thread samples in
+SwiftUI graph/layout work. The owned verification process was stopped. This observation is
+an application hang, not automation observation overhead; installed activity verification is
+incomplete until it is resolved. Synthetic variable-height markdown feeds remain responsive,
+but reproduce incorrect bottom positioning and follow-state changes during resizing. Those
+regressions are under investigation and do not yet establish the hang's cause.
+The attempted positioning fixes did not converge across all synthetic shapes and were removed;
+production sources remain at `99c517b`. Their evidence is retained outside the repository.
+The saved Monitor bundle was restored and its signature and executable hash verified; the failed
+candidate remains available for diagnosis. The verified server installation and refreshed client
+registrations remain in place. PR #31 returned to draft, and installation delivery remains incomplete.
