@@ -1,0 +1,5576 @@
+{
+  "version": 1,
+  "date": "2026-10-08",
+  "build": "release",
+  "platform": "macOS 26.6.2 (25G83), arm64",
+  "limitations": [
+    "One app launch per size, not app p50/p95.",
+    "Small observation 15 seconds; large observation 45 seconds.",
+    "Other desktop apps remained running; captures are developer-machine observations.",
+    "Useful state is populated sidebar publication, not rendered pixels.",
+    "Transport attempts exclude login-shell, uv discovery and setup processes."
+  ],
+  "small": {
+    "first_useful_state_ms": 5198.297125,
+    "observed_peak_rss_bytes": 122929152,
+    "transport_attempts": 12,
+    "transport_bytes": 163600,
+    "alive_at_observation_end": true,
+    "observation_ms": 15008.740082994336,
+    "instrumentation": [
+      {
+        "duration_ms": 0.144583,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142626055198083,
+        "peak_rss_bytes": 100122624,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.029583,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142626100425666,
+        "peak_rss_bytes": 111230976,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.025375,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142626100627750,
+        "peak_rss_bytes": 111230976,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.008958,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142626100705583,
+        "peak_rss_bytes": 111230976,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.007291,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142626100748000,
+        "peak_rss_bytes": 111230976,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.007083,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142626100796416,
+        "peak_rss_bytes": 111247360,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 825.271292,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142627122629500,
+        "peak_rss_bytes": 114081792,
+        "stage": "transport",
+        "stderr_bytes": 139,
+        "stdout_bytes": 333
+      },
+      {
+        "duration_ms": 0.173667,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142627122900208,
+        "peak_rss_bytes": 114081792,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 333
+      },
+      {
+        "duration_ms": 0.065041,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142627123039833,
+        "peak_rss_bytes": 114081792,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 881.415167,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142627178792583,
+        "peak_rss_bytes": 114098176,
+        "stage": "transport",
+        "stderr_bytes": 155,
+        "stdout_bytes": 400
+      },
+      {
+        "duration_ms": 0.087208,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142627178980458,
+        "peak_rss_bytes": 114114560,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 400
+      },
+      {
+        "duration_ms": 0.021208,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142627179212333,
+        "peak_rss_bytes": 114130944,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 2435.61325,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142628536806000,
+        "peak_rss_bytes": 114229248,
+        "stage": "transport",
+        "stderr_bytes": 139,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 2.127792,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142628539026291,
+        "peak_rss_bytes": 114229248,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 2522.490166,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142628623713916,
+        "peak_rss_bytes": 114278400,
+        "stage": "transport",
+        "stderr_bytes": 155,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.518125,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142628624311250,
+        "peak_rss_bytes": 114278400,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 525.658291,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142629838129916,
+        "peak_rss_bytes": 115261440,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 21765
+      },
+      {
+        "duration_ms": 1.381959,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142629839609458,
+        "peak_rss_bytes": 115261440,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 21765
+      },
+      {
+        "duration_ms": 301.439166,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142630144513166,
+        "peak_rss_bytes": 115261440,
+        "stage": "transport",
+        "stderr_bytes": 157,
+        "stdout_bytes": 375
+      },
+      {
+        "duration_ms": 0.08425,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142630144683916,
+        "peak_rss_bytes": 115261440,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 375
+      },
+      {
+        "duration_ms": 0.370958,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142630145603375,
+        "peak_rss_bytes": 115261440,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.426583,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142630145655416,
+        "peak_rss_bytes": 115261440,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.307042,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142630159698291,
+        "peak_rss_bytes": 115261440,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.381209,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142630159767125,
+        "peak_rss_bytes": 115261440,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.263666,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142630160051625,
+        "peak_rss_bytes": 115261440,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.277958,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142630160065500,
+        "peak_rss_bytes": 115261440,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 2030.39025,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142630569620625,
+        "peak_rss_bytes": 118505472,
+        "stage": "transport",
+        "stderr_bytes": 157,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 4.903584,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142630574603000,
+        "peak_rss_bytes": 118505472,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 2203.665292,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142632836813250,
+        "peak_rss_bytes": 118505472,
+        "stage": "transport",
+        "stderr_bytes": 155,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.525416,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142632837760208,
+        "peak_rss_bytes": 118505472,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 2357.946125,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142632932765750,
+        "peak_rss_bytes": 118505472,
+        "stage": "transport",
+        "stderr_bytes": 157,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.507667,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142632933335791,
+        "peak_rss_bytes": 118505472,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 9.409625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142632943127041,
+        "peak_rss_bytes": 118505472,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 9.495166,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142632943207666,
+        "peak_rss_bytes": 118505472,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 1928.224291,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142636886254833,
+        "peak_rss_bytes": 122961920,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 2.137667,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142636888482625,
+        "peak_rss_bytes": 122961920,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 1993.664375,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142636951696625,
+        "peak_rss_bytes": 122961920,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.506166,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142636952272708,
+        "peak_rss_bytes": 122961920,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 1705.588583,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142638594246375,
+        "peak_rss_bytes": 122961920,
+        "stage": "transport",
+        "stderr_bytes": 157,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 4.87675,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142638599205291,
+        "peak_rss_bytes": 122961920,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 48085
+      }
+    ]
+  },
+  "large": {
+    "first_useful_state_ms": 12049.075375,
+    "observed_peak_rss_bytes": 158007296,
+    "transport_attempts": 41,
+    "transport_bytes": 3007811,
+    "alive_at_observation_end": true,
+    "observation_ms": 45030.47191697988,
+    "instrumentation": [
+      {
+        "duration_ms": 0.082791,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142670586955625,
+        "peak_rss_bytes": 100106240,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.025625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142670627434625,
+        "peak_rss_bytes": 110723072,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.005833,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142670627528541,
+        "peak_rss_bytes": 110739456,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.004083,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142670627556958,
+        "peak_rss_bytes": 110739456,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.003875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142670627577083,
+        "peak_rss_bytes": 110739456,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.003375,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142670627595125,
+        "peak_rss_bytes": 110739456,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 655.944584,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142671331573041,
+        "peak_rss_bytes": 113917952,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 333
+      },
+      {
+        "duration_ms": 0.17475,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142671331834250,
+        "peak_rss_bytes": 113917952,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 333
+      },
+      {
+        "duration_ms": 0.071625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142671331985750,
+        "peak_rss_bytes": 113917952,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 811.590208,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142671487221583,
+        "peak_rss_bytes": 113999872,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 371
+      },
+      {
+        "duration_ms": 0.084042,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142671487387833,
+        "peak_rss_bytes": 113999872,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 371
+      },
+      {
+        "duration_ms": 0.02825,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142671487608125,
+        "peak_rss_bytes": 113999872,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 996.263834,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142671624052500,
+        "peak_rss_bytes": 114065408,
+        "stage": "transport",
+        "stderr_bytes": 155,
+        "stdout_bytes": 388
+      },
+      {
+        "duration_ms": 0.089791,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142671624242125,
+        "peak_rss_bytes": 114065408,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 388
+      },
+      {
+        "duration_ms": 2108.761792,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142672736554708,
+        "peak_rss_bytes": 114065408,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 370
+      },
+      {
+        "duration_ms": 0.086959,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142672736726500,
+        "peak_rss_bytes": 114065408,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 370
+      },
+      {
+        "duration_ms": 386.455875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142674019484291,
+        "peak_rss_bytes": 114114560,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 387
+      },
+      {
+        "duration_ms": 0.093292,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142674019654916,
+        "peak_rss_bytes": 114114560,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 387
+      },
+      {
+        "duration_ms": 540.965916,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142674161869000,
+        "peak_rss_bytes": 114114560,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 370
+      },
+      {
+        "duration_ms": 0.080667,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142674162031000,
+        "peak_rss_bytes": 114114560,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 370
+      },
+      {
+        "duration_ms": 0.027584,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142674162138000,
+        "peak_rss_bytes": 114114560,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 1200.840416,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142675958823250,
+        "peak_rss_bytes": 114114560,
+        "stage": "transport",
+        "stderr_bytes": 153,
+        "stdout_bytes": 370
+      },
+      {
+        "duration_ms": 0.093584,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142675959027958,
+        "peak_rss_bytes": 114114560,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 370
+      },
+      {
+        "duration_ms": 280.920208,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142676313379083,
+        "peak_rss_bytes": 114114560,
+        "stage": "transport",
+        "stderr_bytes": 155,
+        "stdout_bytes": 387
+      },
+      {
+        "duration_ms": 0.179959,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142676313647166,
+        "peak_rss_bytes": 114114560,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 387
+      },
+      {
+        "duration_ms": 286.28575,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142676581893750,
+        "peak_rss_bytes": 114114560,
+        "stage": "transport",
+        "stderr_bytes": 154,
+        "stdout_bytes": 370
+      },
+      {
+        "duration_ms": 0.076875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142676582051458,
+        "peak_rss_bytes": 114114560,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 370
+      },
+      {
+        "duration_ms": 0.028667,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142676582149791,
+        "peak_rss_bytes": 114114560,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 320.591417,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142678653571333,
+        "peak_rss_bytes": 114114560,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 387
+      },
+      {
+        "duration_ms": 0.216666,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142678653863958,
+        "peak_rss_bytes": 114114560,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 387
+      },
+      {
+        "duration_ms": 336.709875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142678990755041,
+        "peak_rss_bytes": 114114560,
+        "stage": "transport",
+        "stderr_bytes": 155,
+        "stdout_bytes": 370
+      },
+      {
+        "duration_ms": 0.085875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142678990918791,
+        "peak_rss_bytes": 114114560,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 370
+      },
+      {
+        "duration_ms": 0.028708,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142678991029083,
+        "peak_rss_bytes": 114114560,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 1637.355709,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142679620055541,
+        "peak_rss_bytes": 114114560,
+        "stage": "transport",
+        "stderr_bytes": 155,
+        "stdout_bytes": 370
+      },
+      {
+        "duration_ms": 0.140292,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142679620273541,
+        "peak_rss_bytes": 114114560,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 370
+      },
+      {
+        "duration_ms": 303.035083,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142681060908125,
+        "peak_rss_bytes": 114114560,
+        "stage": "transport",
+        "stderr_bytes": 155,
+        "stdout_bytes": 417
+      },
+      {
+        "duration_ms": 0.140375,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142681061175916,
+        "peak_rss_bytes": 114114560,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 417
+      },
+      {
+        "duration_ms": 310.224958,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142681371665500,
+        "peak_rss_bytes": 114114560,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 67584
+      },
+      {
+        "duration_ms": 6.181417,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142681377932791,
+        "peak_rss_bytes": 114114560,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 67584
+      },
+      {
+        "duration_ms": 312.765084,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142681698832875,
+        "peak_rss_bytes": 114114560,
+        "stage": "transport",
+        "stderr_bytes": 157,
+        "stdout_bytes": 375
+      },
+      {
+        "duration_ms": 0.139625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142681699098541,
+        "peak_rss_bytes": 114114560,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 375
+      },
+      {
+        "duration_ms": 1.012417,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142681700976375,
+        "peak_rss_bytes": 114114560,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 1.082708,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142681701042625,
+        "peak_rss_bytes": 114114560,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.85625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142681707434916,
+        "peak_rss_bytes": 114114560,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.921042,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142681707495250,
+        "peak_rss_bytes": 114114560,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.827583,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142681708343666,
+        "peak_rss_bytes": 114114560,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.846083,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142681708361333,
+        "peak_rss_bytes": 114114560,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 383.710709,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142682083883666,
+        "peak_rss_bytes": 121896960,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 67584
+      },
+      {
+        "duration_ms": 5.724833,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142682089706625,
+        "peak_rss_bytes": 121896960,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 67584
+      },
+      {
+        "duration_ms": 278.722917,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142682374252583,
+        "peak_rss_bytes": 121913344,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 375
+      },
+      {
+        "duration_ms": 0.076083,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142682374410791,
+        "peak_rss_bytes": 121913344,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 375
+      },
+      {
+        "duration_ms": 0.863583,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142682375778416,
+        "peak_rss_bytes": 121913344,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.933833,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142682375843583,
+        "peak_rss_bytes": 121913344,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 1588.770833,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142683221793416,
+        "peak_rss_bytes": 121929728,
+        "stage": "transport",
+        "stderr_bytes": 155,
+        "stdout_bytes": 17575
+      },
+      {
+        "duration_ms": 1.862625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142683223739791,
+        "peak_rss_bytes": 121946112,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 17575
+      },
+      {
+        "duration_ms": 1181.731292,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142684314734958,
+        "peak_rss_bytes": 122028032,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 253476
+      },
+      {
+        "duration_ms": 49.021875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142684363839833,
+        "peak_rss_bytes": 124026880,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 253476
+      },
+      {
+        "duration_ms": 1290.699167,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142685654782083,
+        "peak_rss_bytes": 124125184,
+        "stage": "transport",
+        "stderr_bytes": 154,
+        "stdout_bytes": 440
+      },
+      {
+        "duration_ms": 0.064875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142685654930041,
+        "peak_rss_bytes": 124125184,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 440
+      },
+      {
+        "duration_ms": 1037.450333,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142686270293916,
+        "peak_rss_bytes": 124125184,
+        "stage": "transport",
+        "stderr_bytes": 154,
+        "stdout_bytes": 50525
+      },
+      {
+        "duration_ms": 5.222875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142686275599208,
+        "peak_rss_bytes": 124125184,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 50525
+      },
+      {
+        "duration_ms": 899.635792,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142688557437083,
+        "peak_rss_bytes": 124125184,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 253476
+      },
+      {
+        "duration_ms": 41.676958,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142688599202083,
+        "peak_rss_bytes": 124125184,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 253476
+      },
+      {
+        "duration_ms": 1126.837208,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142689409401916,
+        "peak_rss_bytes": 124125184,
+        "stage": "transport",
+        "stderr_bytes": 154,
+        "stdout_bytes": 66283
+      },
+      {
+        "duration_ms": 6.774917,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142689416260958,
+        "peak_rss_bytes": 124125184,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 66283
+      },
+      {
+        "duration_ms": 1131.885292,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142689731338541,
+        "peak_rss_bytes": 124796928,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 175597
+      },
+      {
+        "duration_ms": 17.285084,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142689748716666,
+        "peak_rss_bytes": 125042688,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 175597
+      },
+      {
+        "duration_ms": 727.38025,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142690476311833,
+        "peak_rss_bytes": 125091840,
+        "stage": "transport",
+        "stderr_bytes": 157,
+        "stdout_bytes": 66283
+      },
+      {
+        "duration_ms": 7.107625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142690483503625,
+        "peak_rss_bytes": 125288448,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 66283
+      },
+      {
+        "duration_ms": 823.660292,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142691308454166,
+        "peak_rss_bytes": 131448832,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 93334
+      },
+      {
+        "duration_ms": 9.071667,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142691317629958,
+        "peak_rss_bytes": 131448832,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 93334
+      },
+      {
+        "duration_ms": 1965.616,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142693283853041,
+        "peak_rss_bytes": 131465216,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 1965.708291,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142693283942541,
+        "peak_rss_bytes": 131465216,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 918.269417,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142694247249125,
+        "peak_rss_bytes": 134709248,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 66283
+      },
+      {
+        "duration_ms": 6.914375,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142694254248125,
+        "peak_rss_bytes": 134709248,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 66283
+      },
+      {
+        "duration_ms": 945.4035,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142696237990916,
+        "peak_rss_bytes": 134709248,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 253476
+      },
+      {
+        "duration_ms": 44.582708,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142696282654541,
+        "peak_rss_bytes": 135954432,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 253476
+      },
+      {
+        "duration_ms": 1216.014791,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142697473495291,
+        "peak_rss_bytes": 135987200,
+        "stage": "transport",
+        "stderr_bytes": 154,
+        "stdout_bytes": 66283
+      },
+      {
+        "duration_ms": 6.92825,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142697480512708,
+        "peak_rss_bytes": 136052736,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 66283
+      },
+      {
+        "duration_ms": 1231.467458,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142697514360833,
+        "peak_rss_bytes": 136069120,
+        "stage": "transport",
+        "stderr_bytes": 155,
+        "stdout_bytes": 175597
+      },
+      {
+        "duration_ms": 25.520542,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142697539967083,
+        "peak_rss_bytes": 136413184,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 175597
+      },
+      {
+        "duration_ms": 1018.858375,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142698559077916,
+        "peak_rss_bytes": 136462336,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 66283
+      },
+      {
+        "duration_ms": 6.969666,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142698566131083,
+        "peak_rss_bytes": 136642560,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 66283
+      },
+      {
+        "duration_ms": 1979.053708,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142700547315083,
+        "peak_rss_bytes": 136724480,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 1979.13475,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142700547392791,
+        "peak_rss_bytes": 136724480,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 850.318208,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142701420514000,
+        "peak_rss_bytes": 178814976,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 66283
+      },
+      {
+        "duration_ms": 6.834458,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142701427431416,
+        "peak_rss_bytes": 178814976,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 66283
+      },
+      {
+        "duration_ms": 964.775083,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142703520355041,
+        "peak_rss_bytes": 178814976,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 253476
+      },
+      {
+        "duration_ms": 41.337042,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142703561780333,
+        "peak_rss_bytes": 178814976,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 253476
+      },
+      {
+        "duration_ms": 1128.516333,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142704560894166,
+        "peak_rss_bytes": 178814976,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 66283
+      },
+      {
+        "duration_ms": 6.879,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142704567875708,
+        "peak_rss_bytes": 178814976,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 66283
+      },
+      {
+        "duration_ms": 1150.510458,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142704712554750,
+        "peak_rss_bytes": 178814976,
+        "stage": "transport",
+        "stderr_bytes": 155,
+        "stdout_bytes": 175597
+      },
+      {
+        "duration_ms": 17.183667,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142704729816875,
+        "peak_rss_bytes": 178814976,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 175597
+      },
+      {
+        "duration_ms": 821.052167,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142705551079375,
+        "peak_rss_bytes": 178814976,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 66283
+      },
+      {
+        "duration_ms": 6.782833,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142705557942625,
+        "peak_rss_bytes": 178814976,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 66283
+      },
+      {
+        "duration_ms": 2013.179125,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142707573130708,
+        "peak_rss_bytes": 178814976,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 2013.262167,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142707573209791,
+        "peak_rss_bytes": 178814976,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 998.803583,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142708594144208,
+        "peak_rss_bytes": 178814976,
+        "stage": "transport",
+        "stderr_bytes": 155,
+        "stdout_bytes": 66283
+      },
+      {
+        "duration_ms": 7.094459,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142708601327375,
+        "peak_rss_bytes": 178814976,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 66283
+      },
+      {
+        "duration_ms": 965.823625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142710548222375,
+        "peak_rss_bytes": 178814976,
+        "stage": "transport",
+        "stderr_bytes": 137,
+        "stdout_bytes": 253476
+      },
+      {
+        "duration_ms": 44.376542,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142710592697875,
+        "peak_rss_bytes": 178814976,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 253476
+      },
+      {
+        "duration_ms": 1263.450709,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142711870888166,
+        "peak_rss_bytes": 178814976,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 66283
+      },
+      {
+        "duration_ms": 12.14075,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142711883111708,
+        "peak_rss_bytes": 178814976,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 66283
+      },
+      {
+        "duration_ms": 1364.862375,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142711957919250,
+        "peak_rss_bytes": 178814976,
+        "stage": "transport",
+        "stderr_bytes": 155,
+        "stdout_bytes": 175597
+      },
+      {
+        "duration_ms": 19.648041,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142711977644666,
+        "peak_rss_bytes": 178814976,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 175597
+      },
+      {
+        "duration_ms": 1572.994083,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142713550889166,
+        "peak_rss_bytes": 178814976,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 66283
+      },
+      {
+        "duration_ms": 6.841875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142713557813708,
+        "peak_rss_bytes": 178814976,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 66283
+      }
+    ]
+  },
+  "run_ui_verification": {
+    "fixture": "small, prepared catalog, final nested links",
+    "cold_run_load_ms": 3867.059334,
+    "cached_reopen_automation_ms": 880,
+    "limitations": "Single manual interaction; filtered by fixture ID for unambiguous accessibility selection; automation timing is not pure rendering latency.",
+    "instrumentation": [
+      {
+        "duration_ms": 0.081459,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142926469577291,
+        "peak_rss_bytes": 99663872,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.029041,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142926512999708,
+        "peak_rss_bytes": 110821376,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.005875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142926513104208,
+        "peak_rss_bytes": 110821376,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.003917,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142926513135750,
+        "peak_rss_bytes": 110821376,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.003542,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142926513156708,
+        "peak_rss_bytes": 110821376,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.003333,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142926513175791,
+        "peak_rss_bytes": 110821376,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 228.398375,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142926727179625,
+        "peak_rss_bytes": 113295360,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 333
+      },
+      {
+        "duration_ms": 0.160375,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142926727426458,
+        "peak_rss_bytes": 113295360,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 333
+      },
+      {
+        "duration_ms": 0.066958,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142926727571166,
+        "peak_rss_bytes": 113311744,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 256.120834,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142926754900666,
+        "peak_rss_bytes": 113393664,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 21765
+      },
+      {
+        "duration_ms": 1.351541,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142926756357750,
+        "peak_rss_bytes": 113508352,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 21765
+      },
+      {
+        "duration_ms": 211.980583,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142926972194458,
+        "peak_rss_bytes": 114573312,
+        "stage": "transport",
+        "stderr_bytes": 155,
+        "stdout_bytes": 375
+      },
+      {
+        "duration_ms": 0.083209,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142926972375000,
+        "peak_rss_bytes": 114573312,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 375
+      },
+      {
+        "duration_ms": 0.413166,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142926973135375,
+        "peak_rss_bytes": 114688000,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.453875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142926973174541,
+        "peak_rss_bytes": 114688000,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.353,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142926981594166,
+        "peak_rss_bytes": 114802688,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.428083,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142926981663500,
+        "peak_rss_bytes": 114802688,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.261833,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142926982123208,
+        "peak_rss_bytes": 114802688,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.282291,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142926982143125,
+        "peak_rss_bytes": 114802688,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 1086.473709,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142927599911708,
+        "peak_rss_bytes": 124502016,
+        "stage": "transport",
+        "stderr_bytes": 155,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.524083,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142927600518583,
+        "peak_rss_bytes": 124502016,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 1128.724458,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142927642055666,
+        "peak_rss_bytes": 124813312,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 2.169292,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142927644336125,
+        "peak_rss_bytes": 124813312,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 744.239583,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142928388788125,
+        "peak_rss_bytes": 124878848,
+        "stage": "transport",
+        "stderr_bytes": 157,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 5.072333,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142928393949041,
+        "peak_rss_bytes": 124944384,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 837.30475,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142929231487833,
+        "peak_rss_bytes": 125009920,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.500042,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142929232071875,
+        "peak_rss_bytes": 125026304,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 10.124708,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142929242582708,
+        "peak_rss_bytes": 125059072,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 10.207541,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142929242660750,
+        "peak_rss_bytes": 125059072,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 1218.465958,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142930820394291,
+        "peak_rss_bytes": 131743744,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.50325,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142930820969000,
+        "peak_rss_bytes": 131743744,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 844.162416,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142932100768541,
+        "peak_rss_bytes": 131743744,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 2.172875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142932103035750,
+        "peak_rss_bytes": 131743744,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 1379.5605,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142933482825708,
+        "peak_rss_bytes": 131743744,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 10.63525,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142933493557041,
+        "peak_rss_bytes": 131743744,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 1564.446209,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142934465697791,
+        "peak_rss_bytes": 131743744,
+        "stage": "transport",
+        "stderr_bytes": 154,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.932417,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142934466777208,
+        "peak_rss_bytes": 131743744,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 1282.003375,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142934775877083,
+        "peak_rss_bytes": 131743744,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.511541,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142934776476541,
+        "peak_rss_bytes": 131743744,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 9.292542,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142934786067875,
+        "peak_rss_bytes": 131743744,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 9.375,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142934786147541,
+        "peak_rss_bytes": 131743744,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 1106.246792,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142937588759208,
+        "peak_rss_bytes": 131743744,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.50425,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142937589359500,
+        "peak_rss_bytes": 131743744,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 1096.448584,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142938003953375,
+        "peak_rss_bytes": 131743744,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 2.141458,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142938006195875,
+        "peak_rss_bytes": 131743744,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 856.133,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142938862539333,
+        "peak_rss_bytes": 131743744,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 4.919,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142938867554333,
+        "peak_rss_bytes": 131743744,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 834.561917,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142939702370416,
+        "peak_rss_bytes": 131743744,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.497584,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142939702949125,
+        "peak_rss_bytes": 131743744,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 9.15925,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142939712417958,
+        "peak_rss_bytes": 131743744,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 9.245292,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142939712499916,
+        "peak_rss_bytes": 131743744,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 728.904708,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142940361920083,
+        "peak_rss_bytes": 131743744,
+        "stage": "transport",
+        "stderr_bytes": 154,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.507125,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142940362527125,
+        "peak_rss_bytes": 131743744,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 858.074542,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142942590897166,
+        "peak_rss_bytes": 131743744,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 2.130375,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142942593100625,
+        "peak_rss_bytes": 131743744,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 967.236208,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142943349746500,
+        "peak_rss_bytes": 131743744,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.657792,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142943350488000,
+        "peak_rss_bytes": 131743744,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 958.428667,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142943551719166,
+        "peak_rss_bytes": 131743744,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 4.822417,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142943556622625,
+        "peak_rss_bytes": 131743744,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 688.56775,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142944245425958,
+        "peak_rss_bytes": 131743744,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.501542,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142944246006791,
+        "peak_rss_bytes": 131743744,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 9.338709,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142944255675166,
+        "peak_rss_bytes": 131743744,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 9.394959,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142944255729375,
+        "peak_rss_bytes": 131743744,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 792.747917,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142946149300166,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.501625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142946149882333,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 805.929292,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142947063832208,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 2.134625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142947066049208,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 901.981375,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142947968224833,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 4.773875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142947973064041,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 1487.87975,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142949461260000,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.494333,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142949461851500,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 9.188375,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142949471344625,
+        "peak_rss_bytes": 171196416,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 9.27075,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142949471422000,
+        "peak_rss_bytes": 171196416,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 1459.749917,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142949617730416,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 157,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.496625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142949618295958,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 745.913583,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142952227921875,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 139,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 2.143458,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142952230162958,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 796.663209,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142952429635375,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 154,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.468292,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142952430175875,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 748.780167,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142952979175583,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 4.845208,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142952984109125,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 590.799084,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142953575132333,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.476083,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142953575699875,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 9.038333,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142953585030208,
+        "peak_rss_bytes": 171196416,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 9.095083,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142953585081208,
+        "peak_rss_bytes": 171196416,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 647.628417,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142955105096333,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.510916,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142955105710791,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 1247.906292,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142956880974166,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 2.13625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142956883203666,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 1050.09925,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142957933587500,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 155,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 4.84625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142957938502375,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 987.793541,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142958095786416,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.515791,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142958096402958,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 812.656625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142958751371625,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 155,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.485833,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142958751926833,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 9.251917,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142958761458041,
+        "peak_rss_bytes": 171196416,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 9.328375,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142958761531458,
+        "peak_rss_bytes": 171196416,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 781.493292,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142960889361083,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 155,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.505167,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142960889954250,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 726.9325,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142961509927500,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 2.125375,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142961512141333,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 849.742667,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142962362102583,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 4.909,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142962367105375,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 1031.8875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142963399248500,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.50925,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142963399840625,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 9.189292,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142963409371333,
+        "peak_rss_bytes": 171196416,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 9.268709,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142963409447083,
+        "peak_rss_bytes": 171196416,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 871.804834,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142963774245958,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.492458,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142963774822375,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 851.414083,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142966284412875,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 2.1525,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142966286647500,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 865.600167,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142966768769541,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.499916,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142966769347375,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 842.046875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142967128938458,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 4.918167,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142967133981333,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 784.840958,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142967919073750,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.491667,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142967919645125,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 9.122792,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142967929073625,
+        "peak_rss_bytes": 171196416,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 9.197917,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142967929145416,
+        "peak_rss_bytes": 171196416,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 657.573542,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142969440319583,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 157,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.509416,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142969440917166,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 997.983167,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142970930962583,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 2.131583,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142970933177500,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 2440.234958,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142973373609000,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 7.555417,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142973381274041,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 3218.057167,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142974676108541,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.523459,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142974676717833,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 1897.00875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142975278496125,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 157,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.509875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142975279104500,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 9.392459,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142975288862000,
+        "peak_rss_bytes": 171196416,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 9.4875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142975288951791,
+        "peak_rss_bytes": 171196416,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 770.616042,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142977453613083,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.502542,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142977454194500,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 12.519833,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142978088143041,
+        "peak_rss_bytes": 171196416,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 12.658917,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142978088270625,
+        "peak_rss_bytes": 171196416,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 10.560959,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142978107115208,
+        "peak_rss_bytes": 171196416,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 10.646917,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142978107195166,
+        "peak_rss_bytes": 171196416,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 12.201333,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142978166214666,
+        "peak_rss_bytes": 171196416,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 12.293166,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142978166301083,
+        "peak_rss_bytes": 171196416,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 262.61275,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142978257747666,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 333
+      },
+      {
+        "duration_ms": 0.105917,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142978257954500,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 333
+      },
+      {
+        "duration_ms": 964.601125,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142978272506208,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 2.24025,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142978274831208,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 1142.038167,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142979447109125,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 132390
+      },
+      {
+        "duration_ms": 0.438958,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142979447657708,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 132390
+      },
+      {
+        "duration_ms": 1143.041917,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142979448811541,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 155,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 5.23475,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142979454082083,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 1055.310625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142980514086708,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.534917,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142980514749875,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 1064.764667,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142980516586041,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 131642
+      },
+      {
+        "duration_ms": 0.180667,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142980516859625,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 131642
+      },
+      {
+        "duration_ms": 1061.182333,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142980519973208,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.528667,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142980520560208,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 8.826084,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142980523935208,
+        "peak_rss_bytes": 171196416,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 8.908542,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142980524012958,
+        "peak_rss_bytes": 171196416,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 825.726667,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142981367473708,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 124006
+      },
+      {
+        "duration_ms": 0.214459,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142981367788125,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 124006
+      },
+      {
+        "duration_ms": 1.006167,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142981368904125,
+        "peak_rss_bytes": 171196416,
+        "stage": "workflowReconciliation",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 802.2645,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142982171520958,
+        "peak_rss_bytes": 171196416,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 1249
+      },
+      {
+        "duration_ms": 0.109542,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142982171769416,
+        "peak_rss_bytes": 171196416,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 1249
+      },
+      {
+        "duration_ms": 3867.059334,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142982171985333,
+        "peak_rss_bytes": 171196416,
+        "stage": "workflowLoad",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.509875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142982172550416,
+        "peak_rss_bytes": 171196416,
+        "stage": "workflowContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.534375,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142982172573750,
+        "peak_rss_bytes": 171196416,
+        "stage": "workflowViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.00825,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142982173503583,
+        "peak_rss_bytes": 171196416,
+        "stage": "workflowContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 908.738667,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142983441538916,
+        "peak_rss_bytes": 177946624,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 2.203542,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142983443856541,
+        "peak_rss_bytes": 177946624,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 950.408041,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142983507998541,
+        "peak_rss_bytes": 177946624,
+        "stage": "transport",
+        "stderr_bytes": 154,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.518125,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142983508626791,
+        "peak_rss_bytes": 177946624,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 954.280292,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142984398483708,
+        "peak_rss_bytes": 177946624,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 5.243625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142984403815041,
+        "peak_rss_bytes": 177946624,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 822.102875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142985105436875,
+        "peak_rss_bytes": 177946624,
+        "stage": "transport",
+        "stderr_bytes": 139,
+        "stdout_bytes": 4946
+      },
+      {
+        "duration_ms": 0.225167,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142985105738000,
+        "peak_rss_bytes": 177946624,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4946
+      },
+      {
+        "duration_ms": 822.638333,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142985105803625,
+        "peak_rss_bytes": 177946624,
+        "stage": "workflowLoad",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.358667,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142985106197791,
+        "peak_rss_bytes": 177946624,
+        "stage": "workflowContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.378792,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142985106217541,
+        "peak_rss_bytes": 177946624,
+        "stage": "workflowViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 801.515458,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142985205548458,
+        "peak_rss_bytes": 177946624,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.518542,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142985206150416,
+        "peak_rss_bytes": 177946624,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 9.179375,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142985215693916,
+        "peak_rss_bytes": 177946624,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 9.262417,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142985215778208,
+        "peak_rss_bytes": 177946624,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 701.976708,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142986309883791,
+        "peak_rss_bytes": 177946624,
+        "stage": "transport",
+        "stderr_bytes": 157,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.515875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142986310495458,
+        "peak_rss_bytes": 177946624,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 210.764917,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142987185311958,
+        "peak_rss_bytes": 178814976,
+        "stage": "transport",
+        "stderr_bytes": 157,
+        "stdout_bytes": 21765
+      },
+      {
+        "duration_ms": 2.235666,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142987187657250,
+        "peak_rss_bytes": 178814976,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 21765
+      },
+      {
+        "duration_ms": 267.343042,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142987458971958,
+        "peak_rss_bytes": 178913280,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 375
+      },
+      {
+        "duration_ms": 0.083583,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142987459123500,
+        "peak_rss_bytes": 178913280,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 375
+      },
+      {
+        "duration_ms": 10.920625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142987471758958,
+        "peak_rss_bytes": 178913280,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 11.032542,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142987471865291,
+        "peak_rss_bytes": 178913280,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 1098.49425,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142988255152791,
+        "peak_rss_bytes": 179601408,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 4946
+      },
+      {
+        "duration_ms": 0.219209,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142988255455166,
+        "peak_rss_bytes": 179601408,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4946
+      },
+      {
+        "duration_ms": 1099.037042,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142988255551208,
+        "peak_rss_bytes": 179601408,
+        "stage": "workflowLoad",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.334667,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142988255920625,
+        "peak_rss_bytes": 179601408,
+        "stage": "workflowContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.35325,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142988255938791,
+        "peak_rss_bytes": 179601408,
+        "stage": "workflowViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 1053.408875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142988279706958,
+        "peak_rss_bytes": 179601408,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 2.233375,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142988282015041,
+        "peak_rss_bytes": 179601408,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 817.112292,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142989099354625,
+        "peak_rss_bytes": 179601408,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 4.941917,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142989104383041,
+        "peak_rss_bytes": 179601408,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 807.074125,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142989140106000,
+        "peak_rss_bytes": 179601408,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.509625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142989140695000,
+        "peak_rss_bytes": 179601408,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 737.181542,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142989841849625,
+        "peak_rss_bytes": 179601408,
+        "stage": "transport",
+        "stderr_bytes": 157,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.534042,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142989842483791,
+        "peak_rss_bytes": 179601408,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 9.44725,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142989852434833,
+        "peak_rss_bytes": 179601408,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 9.550125,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142989852533458,
+        "peak_rss_bytes": 179601408,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 10.1725,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142990313707375,
+        "peak_rss_bytes": 179601408,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 10.310083,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142990313834875,
+        "peak_rss_bytes": 179601408,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 877.816541,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142991136552916,
+        "peak_rss_bytes": 180633600,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 4946
+      },
+      {
+        "duration_ms": 0.208,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142991136819916,
+        "peak_rss_bytes": 180633600,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4946
+      },
+      {
+        "duration_ms": 1013.176375,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142991271767375,
+        "peak_rss_bytes": 183025664,
+        "stage": "workflowLoad",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 875.752709,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142991293941125,
+        "peak_rss_bytes": 183025664,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 4380
+      },
+      {
+        "duration_ms": 0.086625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142991294090833,
+        "peak_rss_bytes": 183025664,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4380
+      },
+      {
+        "duration_ms": 0.307958,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142991302574791,
+        "peak_rss_bytes": 183025664,
+        "stage": "workflowReconciliation",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 843.762042,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142992115737875,
+        "peak_rss_bytes": 183025664,
+        "stage": "transport",
+        "stderr_bytes": 155,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.513167,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142992116339916,
+        "peak_rss_bytes": 183025664,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 853.165875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142992155959375,
+        "peak_rss_bytes": 183025664,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 384
+      },
+      {
+        "duration_ms": 0.071625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142992156109541,
+        "peak_rss_bytes": 183025664,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 384
+      },
+      {
+        "duration_ms": 1738.129333,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142992156178041,
+        "peak_rss_bytes": 183025664,
+        "stage": "workflowLoad",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.132584,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142992156328791,
+        "peak_rss_bytes": 183025664,
+        "stage": "workflowContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.14525,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142992156341291,
+        "peak_rss_bytes": 183025664,
+        "stage": "workflowViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.007458,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142992157218166,
+        "peak_rss_bytes": 183025664,
+        "stage": "workflowContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 849.309334,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142992756903166,
+        "peak_rss_bytes": 183025664,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 2.282459,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142992759311791,
+        "peak_rss_bytes": 183025664,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 706.892875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142993466416375,
+        "peak_rss_bytes": 183025664,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 4.981125,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142993471512333,
+        "peak_rss_bytes": 183025664,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 710.442,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142994182201250,
+        "peak_rss_bytes": 183025664,
+        "stage": "transport",
+        "stderr_bytes": 157,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.6675,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142994183041500,
+        "peak_rss_bytes": 183025664,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 9.217208,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142994192648250,
+        "peak_rss_bytes": 183025664,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 9.3,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142994192725541,
+        "peak_rss_bytes": 183025664,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 838.232458,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142994964472666,
+        "peak_rss_bytes": 183025664,
+        "stage": "transport",
+        "stderr_bytes": 155,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.50875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142994965073333,
+        "peak_rss_bytes": 183025664,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 818.281333,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142994975547083,
+        "peak_rss_bytes": 183025664,
+        "stage": "transport",
+        "stderr_bytes": 137,
+        "stdout_bytes": 3327
+      },
+      {
+        "duration_ms": 0.203834,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142994975825458,
+        "peak_rss_bytes": 183025664,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 3327
+      },
+      {
+        "duration_ms": 818.750333,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142994975878041,
+        "peak_rss_bytes": 183025664,
+        "stage": "workflowLoad",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.154959,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142994976066500,
+        "peak_rss_bytes": 183025664,
+        "stage": "workflowContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.181459,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142994976092750,
+        "peak_rss_bytes": 183025664,
+        "stage": "workflowViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 643.569792,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142996849238750,
+        "peak_rss_bytes": 183025664,
+        "stage": "transport",
+        "stderr_bytes": 137,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 2.527292,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142996851907708,
+        "peak_rss_bytes": 183025664,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 799.54375,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142997651690583,
+        "peak_rss_bytes": 183025664,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 4.845,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142997656629791,
+        "peak_rss_bytes": 183025664,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 830.410375,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142997804256208,
+        "peak_rss_bytes": 183025664,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.514875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142997804853666,
+        "peak_rss_bytes": 183025664,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 839.025667,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142997845713375,
+        "peak_rss_bytes": 183025664,
+        "stage": "transport",
+        "stderr_bytes": 137,
+        "stdout_bytes": 3327
+      },
+      {
+        "duration_ms": 0.223209,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142997846026875,
+        "peak_rss_bytes": 183025664,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 3327
+      },
+      {
+        "duration_ms": 839.561208,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142997846089291,
+        "peak_rss_bytes": 183025664,
+        "stage": "workflowLoad",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.162,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142997846268750,
+        "peak_rss_bytes": 183025664,
+        "stage": "workflowContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.174291,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142997846280791,
+        "peak_rss_bytes": 183025664,
+        "stage": "workflowViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 720.527083,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142998377373916,
+        "peak_rss_bytes": 183025664,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.511167,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142998377983125,
+        "peak_rss_bytes": 183025664,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 9.519208,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142998387872000,
+        "peak_rss_bytes": 183025664,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 9.621458,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 142998387969416,
+        "peak_rss_bytes": 183025664,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 681.982916,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143000590118625,
+        "peak_rss_bytes": 183025664,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 3327
+      },
+      {
+        "duration_ms": 0.215459,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143000590420875,
+        "peak_rss_bytes": 183025664,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 3327
+      },
+      {
+        "duration_ms": 682.536416,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143000590477208,
+        "peak_rss_bytes": 183025664,
+        "stage": "workflowLoad",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.173792,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143000590685375,
+        "peak_rss_bytes": 183025664,
+        "stage": "workflowContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.19025,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143000590701625,
+        "peak_rss_bytes": 183025664,
+        "stage": "workflowViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 690.717333,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143000598853416,
+        "peak_rss_bytes": 183025664,
+        "stage": "transport",
+        "stderr_bytes": 157,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.561583,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143000599493458,
+        "peak_rss_bytes": 183025664,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 690.32875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143001091165916,
+        "peak_rss_bytes": 183025664,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 2.134833,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143001093381916,
+        "peak_rss_bytes": 183025664,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 691.642041,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143001785230500,
+        "peak_rss_bytes": 183025664,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 4.867458,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143001790174833,
+        "peak_rss_bytes": 183025664,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 733.6105,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143002524027375,
+        "peak_rss_bytes": 183025664,
+        "stage": "transport",
+        "stderr_bytes": 157,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.504,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143002524625041,
+        "peak_rss_bytes": 183025664,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 9.077875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143002534064000,
+        "peak_rss_bytes": 183025664,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 9.183875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143002534164708,
+        "peak_rss_bytes": 183025664,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 747.302416,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143003354280041,
+        "peak_rss_bytes": 183025664,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.584292,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143003354969375,
+        "peak_rss_bytes": 183025664,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 757.202667,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143003364179583,
+        "peak_rss_bytes": 183025664,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 3327
+      },
+      {
+        "duration_ms": 0.209375,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143003364478916,
+        "peak_rss_bytes": 183025664,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 3327
+      },
+      {
+        "duration_ms": 757.697292,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143003364541500,
+        "peak_rss_bytes": 183025664,
+        "stage": "workflowLoad",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.154417,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143003364729333,
+        "peak_rss_bytes": 183025664,
+        "stage": "workflowContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.169875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143003364744541,
+        "peak_rss_bytes": 183025664,
+        "stage": "workflowViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 628.919833,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143005186893833,
+        "peak_rss_bytes": 183025664,
+        "stage": "transport",
+        "stderr_bytes": 139,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 2.211542,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143005189190083,
+        "peak_rss_bytes": 183025664,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 776.084459,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143005965545375,
+        "peak_rss_bytes": 183025664,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 4.869167,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143005970479125,
+        "peak_rss_bytes": 183025664,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 839.689792,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143006246634375,
+        "peak_rss_bytes": 183025664,
+        "stage": "transport",
+        "stderr_bytes": 137,
+        "stdout_bytes": 3327
+      },
+      {
+        "duration_ms": 0.210709,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143006246927583,
+        "peak_rss_bytes": 183025664,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 3327
+      },
+      {
+        "duration_ms": 840.163834,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143006246980750,
+        "peak_rss_bytes": 183025664,
+        "stage": "workflowLoad",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.163291,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143006247161083,
+        "peak_rss_bytes": 183025664,
+        "stage": "workflowContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.189083,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143006247186666,
+        "peak_rss_bytes": 183025664,
+        "stage": "workflowViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 863.241542,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143006270187041,
+        "peak_rss_bytes": 183025664,
+        "stage": "transport",
+        "stderr_bytes": 155,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.509667,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143006270789791,
+        "peak_rss_bytes": 183025664,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 753.676959,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143006724354208,
+        "peak_rss_bytes": 183025664,
+        "stage": "transport",
+        "stderr_bytes": 155,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.516125,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143006724951041,
+        "peak_rss_bytes": 183025664,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 9.313292,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143006734648750,
+        "peak_rss_bytes": 183025664,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 9.387542,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143006734719208,
+        "peak_rss_bytes": 183025664,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 683.095959,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143008939583625,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 3327
+      },
+      {
+        "duration_ms": 0.209583,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143008939879416,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 3327
+      },
+      {
+        "duration_ms": 683.606041,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143008939934125,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowLoad",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.161666,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143008940130041,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.190958,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143008940158541,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 688.472041,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143008971612416,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 155,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.489125,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143008972177875,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 699.172916,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143009457143125,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 2.216167,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143009459481458,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 647.2655,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143010106984083,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 4.796709,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143010111853291,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 649.418833,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143010761502041,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.498875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143010762090625,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 9.05,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143010771490333,
+        "peak_rss_bytes": 222445568,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 9.118667,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143010771557375,
+        "peak_rss_bytes": 222445568,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 712.084875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143011670121375,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 3327
+      },
+      {
+        "duration_ms": 0.198666,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143011670413500,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 3327
+      },
+      {
+        "duration_ms": 712.581875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143011670464791,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowLoad",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.165583,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143011670649208,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.177,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143011670660416,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 706.133584,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143011688913708,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.55725,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143011689547708,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 588.851792,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143013370599041,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 2.183875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143013372860541,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 738.139291,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143014111186583,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 157,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 4.812625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143014116094916,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 849.77725,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143014532824958,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 137,
+        "stdout_bytes": 3327
+      },
+      {
+        "duration_ms": 0.249084,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143014533174875,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 3327
+      },
+      {
+        "duration_ms": 850.331292,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143014533232291,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowLoad",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.191375,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143014533458916,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.206125,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143014533473250,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 883.502792,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143014616493958,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.509333,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143014617084291,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 812.422208,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143014928740000,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 153,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.50075,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143014929324375,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 9.342625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143014939002666,
+        "peak_rss_bytes": 222445568,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 9.3825,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143014939040125,
+        "peak_rss_bytes": 222445568,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 709.582834,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143017267691708,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 3327
+      },
+      {
+        "duration_ms": 0.216375,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143017267990791,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 3327
+      },
+      {
+        "duration_ms": 710.220125,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143017268087291,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowLoad",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.266875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143017268399291,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.283792,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143017268415958,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 725.927625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143017348995833,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 157,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.584,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143017349658208,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 729.700625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143017683420750,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 2.188375,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143017685689583,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 653.2125,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143018339121666,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 155,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 4.97825,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143018344174583,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 681.278708,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143019025731375,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 157,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.542625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143019026391666,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 9.42325,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143019036217166,
+        "peak_rss_bytes": 222445568,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 9.549084,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143019036336833,
+        "peak_rss_bytes": 222445568,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 749.396459,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143020032167000,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 3327
+      },
+      {
+        "duration_ms": 0.223958,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143020032474916,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 3327
+      },
+      {
+        "duration_ms": 749.921417,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143020032536333,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowLoad",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.195208,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143020032767416,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.213375,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143020032785125,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 788.018833,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143020145105500,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.581875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143020145856166,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 694.055167,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143021776769875,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 2.29525,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143021779154916,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 929.946167,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143022709333083,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 9.027875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143022718481333,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 1090.545209,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143023173294958,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 3327
+      },
+      {
+        "duration_ms": 0.207916,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143023173576583,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 3327
+      },
+      {
+        "duration_ms": 1091.038458,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143023173630125,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowLoad",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.151334,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143023173813750,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.166834,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143023173828916,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 1088.137041,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143023246119916,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.508541,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143023246707125,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 899.994583,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143023618858333,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.491917,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143023619429250,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 9.486166,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143023762396083,
+        "peak_rss_bytes": 222445568,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 9.575666,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143023762481291,
+        "peak_rss_bytes": 222445568,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 784.317667,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143025967510083,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 137,
+        "stdout_bytes": 3327
+      },
+      {
+        "duration_ms": 0.241042,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143025967838125,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 3327
+      },
+      {
+        "duration_ms": 784.953042,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143025967896083,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowLoad",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.182917,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143025968111875,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.199167,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143025968127750,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 779.520792,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143026103915583,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.513625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143026104514583,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 695.952417,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143026553948500,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 2.108625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143026556130125,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 660.562417,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143027216856833,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 4.990334,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143027221937125,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 684.815959,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143027907014083,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.583667,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143027907678083,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 9.506042,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143027917581625,
+        "peak_rss_bytes": 222445568,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 9.588959,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143027917661333,
+        "peak_rss_bytes": 222445568,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 690.656167,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143028673751958,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 3327
+      },
+      {
+        "duration_ms": 0.267875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143028674176750,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 3327
+      },
+      {
+        "duration_ms": 691.339666,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143028674232833,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowLoad",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.155625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143028674421041,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.171375,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143028674436583,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 678.446125,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143028786274583,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 154,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.485083,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143028786828916,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 663.964792,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143030597015875,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 137,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 2.232625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143030599336291,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 838.419792,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143031438031083,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 5.107375,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143031443222375,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 827.402667,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143031510492333,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 3327
+      },
+      {
+        "duration_ms": 0.215625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143031510812708,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 3327
+      },
+      {
+        "duration_ms": 827.926167,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143031510866750,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowLoad",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.148292,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143031511047041,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.164167,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143031511062541,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 794.179583,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143031700655041,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 154,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.492541,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143031701224166,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 611.131666,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143032054584291,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 155,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.501875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143032055174500,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 9.48375,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143032064968125,
+        "peak_rss_bytes": 222445568,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 9.527917,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143032065009750,
+        "peak_rss_bytes": 222445568,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 773.793625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143034305899250,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 3327
+      },
+      {
+        "duration_ms": 0.213334,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143034306199833,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 3327
+      },
+      {
+        "duration_ms": 774.295083,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143034306255958,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowLoad",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.196875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143034306487666,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.212792,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143034306503250,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 790.42075,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143034498133333,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.500208,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143034498715041,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 777.528125,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143034860590250,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 2.21375,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143034862891166,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 661.586625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143035524731250,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 155,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 4.939458,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143035529750583,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 606.246792,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143036136232125,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 155,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.497583,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143036136803583,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 9.30625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143036146415625,
+        "peak_rss_bytes": 222445568,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 9.3885,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143036146494541,
+        "peak_rss_bytes": 222445568,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 639.133125,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143036946782666,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 139,
+        "stdout_bytes": 3327
+      },
+      {
+        "duration_ms": 0.214875,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143036947078458,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 3327
+      },
+      {
+        "duration_ms": 639.62925,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143036947136541,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowLoad",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.181917,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143036947337541,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.19425,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143036947349625,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 614.946458,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143037122876583,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 157,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.500125,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143037123454291,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 16.402708,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143037712936916,
+        "peak_rss_bytes": 222445568,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 16.480167,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143037713010833,
+        "peak_rss_bytes": 222445568,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 14.530708,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143037747282250,
+        "peak_rss_bytes": 222445568,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 14.651125,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143037747397041,
+        "peak_rss_bytes": 222445568,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 1.255791,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143037750330083,
+        "peak_rss_bytes": 222445568,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 1.33225,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143037750401791,
+        "peak_rss_bytes": 222445568,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 771.460667,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143038953016166,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 139,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 2.137541,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143038955257333,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 800.547125,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143039758487500,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 3327
+      },
+      {
+        "duration_ms": 0.20425,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143039758764166,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 3327
+      },
+      {
+        "duration_ms": 800.990458,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143039758820375,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowLoad",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.166458,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143039759020416,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.183042,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143039759036583,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 814.22575,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143039769685500,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 155,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 5.032042,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143039774804291,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 756.260916,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143039883903875,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 157,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.514125,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143039884498041,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 628.393459,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143040403436416,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.490084,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143040404035041,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.982083,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143040405351291,
+        "peak_rss_bytes": 222445568,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 1.003333,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143040405369291,
+        "peak_rss_bytes": 222445568,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 1.158208,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143041083143625,
+        "peak_rss_bytes": 222445568,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 1.255041,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143041083236291,
+        "peak_rss_bytes": 222445568,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 1.137709,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143041089174208,
+        "peak_rss_bytes": 222445568,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 1.186584,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143041089219041,
+        "peak_rss_bytes": 222445568,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 1.166084,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143041129206333,
+        "peak_rss_bytes": 222445568,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 1.231625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143041129268750,
+        "peak_rss_bytes": 222445568,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.014375,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143041132028125,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 645.340958,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143041892595958,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 138,
+        "stdout_bytes": 4946
+      },
+      {
+        "duration_ms": 0.209584,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143041892899500,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4946
+      },
+      {
+        "duration_ms": 645.837333,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143041892957583,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowLoad",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.338416,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143041893331083,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.356791,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143041893348958,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 913.325917,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143042819270750,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 155,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.499167,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143042819856375,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 741.933458,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143043149579250,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 137,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 2.150458,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143043151830041,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 12708
+      },
+      {
+        "duration_ms": 669.303833,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143043821372125,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 4.918625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143043826376000,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 48085
+      },
+      {
+        "duration_ms": 654.181625,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143044480804666,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 157,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.524292,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143044481429458,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 1.026583,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143044482885583,
+        "peak_rss_bytes": 222445568,
+        "stage": "sidebarContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 1.07275,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143044482929458,
+        "peak_rss_bytes": 222445568,
+        "stage": "sidebarViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 656.540958,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143044557950291,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 139,
+        "stdout_bytes": 4946
+      },
+      {
+        "duration_ms": 0.21,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143044558236291,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4946
+      },
+      {
+        "duration_ms": 657.025167,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143044558287625,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowLoad",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.346916,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143044558652333,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowContentReady",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 0.360666,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143044558665833,
+        "peak_rss_bytes": 222445568,
+        "stage": "workflowViewUpdate",
+        "stderr_bytes": 0,
+        "stdout_bytes": 0
+      },
+      {
+        "duration_ms": 621.856334,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143045529941625,
+        "peak_rss_bytes": 222445568,
+        "stage": "transport",
+        "stderr_bytes": 156,
+        "stdout_bytes": 4330
+      },
+      {
+        "duration_ms": 0.485917,
+        "monitor_metric_version": 1,
+        "monotonic_ns": 143045530517791,
+        "peak_rss_bytes": 222445568,
+        "stage": "decode",
+        "stderr_bytes": 0,
+        "stdout_bytes": 4330
+      }
+    ]
+  }
+}

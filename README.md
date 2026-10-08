@@ -90,6 +90,7 @@ including standalone and embedded task views. Monitor offers Cancel for its own 
 and idle caller-owned workflows; linked child views route cancellation to the root.
 See [workflow interaction and recovery](docs/workflows.md) for eligibility and cancellation outcomes.
 
+Older sidebar history loads automatically when you scroll to the bottom.
 History indexing recovers automatically while Monitor retains loaded content. Blocked histories
 show recovery guidance and Retry; damaged derivative catalogs are rebuilt before metadata saves.
 New activity panels
@@ -199,6 +200,9 @@ uv run mcp dev src/polybridge/server.py                 # MCP Inspector
 
 For Monitor, run `swift test --no-parallel` in each package under `macos/`, then
 `swiftformat macos && swiftlint lint` and `./macos/build-app.sh`.
+
+For isolated, no-model loading measurements and opt-in timing instrumentation, see
+[Monitor performance baselines](docs/monitor-performance.md).
 
 Read [the workflow guide](docs/workflows.md) for definitions and execution contracts, and
 [contributor notes](CLAUDE.md) for architecture and harness behavior.
