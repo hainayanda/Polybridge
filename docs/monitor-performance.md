@@ -310,3 +310,231 @@ This is automation observation overhead, not a measured app interaction latency.
 older-task selection, and nested disclosure were verified before that failure; prolonged scroll
 stability is supported by the passing serialized AppKit regression, not a reliable later UI
 measurement. No stable frame-stall distribution or exact pixel latency is claimed.
+
+## Stage 3: lightweight workflow CLI reads
+
+The comparison starts from committed sidebar stage `db89158`. Existing workflow list, saved
+definition, run page, status and detail reads now use a shared read layer before the CLI imports
+the MCP server. MCP decorators and error adaptation stay in the server. Ordinary and bounded
+readers retain their existing caller verification, ownership checks and aggregate metadata
+budgets. Monitor flags do not grant human authority. Mutation, dispatch, inspection and assigned
+input commands keep their previous paths. The sidebar still makes its three sequential reads
+and uses the same polling cadence; background presentation and automatic history loading remain.
+
+`PB_WORKFLOW_READ_METRICS=1` enables content-free stderr records with fixed `import`, `authority`,
+`catalog`, `projection` and `serialization` stages. It is disabled by default. Projection includes
+disk reads and thread scheduling, not just formatting. Catalog bootstrap can occur inside
+authority or projection; these timings overlap and must not be added together. Serialization
+measures JSON encoding, excluding stdout writing. The benchmark additionally measures `ctl`
+import, catalog bootstrap, parent-side decoding and CLI high-water RSS in both revisions.
+Parent launch to worker entry includes interpreter startup, script imports and argument parsing;
+it does not isolate the interpreter alone. The worker's catalog/lineage imports and synthetic
+human-ancestry setup are observation overhead held constant across revisions. Historical internal
+authority/projection spans were unavailable, so no exact before-stage attribution is inferred.
+
+Reproduce the comparison against an archived base and the working checkout with the same
+interpreter. Run small and large concurrently in separate terminals for each revision, then wait
+for both before changing revision or timing mode:
+
+```bash
+mkdir -p /tmp/polybridge-read-before
+git archive db89158 | tar -x -C /tmp/polybridge-read-before
+.venv/bin/python scripts/benchmark-workflow-reads.py --source /tmp/polybridge-read-before \
+  --size small --repeats 10 --series-concurrency paired-sizes --output /tmp/read-before-small.json
+.venv/bin/python scripts/benchmark-workflow-reads.py --source /tmp/polybridge-read-before \
+  --size large --repeats 10 --series-concurrency paired-sizes --output /tmp/read-before-large.json
+.venv/bin/python scripts/benchmark-workflow-reads.py --source . \
+  --size small --repeats 10 --series-concurrency paired-sizes --output /tmp/read-after-small.json
+.venv/bin/python scripts/benchmark-workflow-reads.py --source . \
+  --size large --repeats 10 --series-concurrency paired-sizes --output /tmp/read-after-large.json
+```
+
+Repeat the final pair with `--read-timings off` to observe the default instrumentation path.
+The CLI runner reuses the same deterministic fixtures and complete scenario sequences documented
+above. Each repeat has a fresh synthetic home; filesystem caches remain warm. It never invokes
+an installed CLI, changes personal profiling permissions or dispatches a model. Ten samples give
+descriptive nearest-rank tails, not stable p95 estimates. These CLI completion boundaries are
+separate from app state publication and displayed pixels.
+
+### CLI observations and attribution
+
+[Raw CLI results](benchmarks/monitor-2026-10-08-cli-startup.json) include ten repeats per size,
+source-file hashes, individual process measurements and separate response/diagnostic bytes.
+The base archive is `db89158`; the after source is the uncommitted shared-read implementation.
+Measurements used macOS 26.6.2 arm64 and Python 3.13.5 on the same developer workstation.
+Small and large series ran concurrently in both revisions. Other desktop apps remained running.
+A short 46-test run overlaps approximately the first three seconds of the instrumented after
+series (verified from log timestamps); no full suite or release build
+overlaps those accepted samples. Intermediate timing series are excluded. A timing-disabled
+attempt that overlapped the full suite is also excluded and repeated after validation.
+
+Times below are milliseconds, nearest-rank p50 / p95. After values have read timings enabled.
+The initial inventory row is the existing repeated `workflow-list-page` preparation-to-ready
+proxy, not the complete three-read sidebar sequence or app launch.
+
+| CLI scenario | Small before | Small after | Large before | Large after |
+|---|---:|---:|---:|---:|
+| Initial ready workflow page | 1032 / 1401 | 271 / 517 | 9074 / 10251 | 3406 / 4319 |
+| Task inventory | 102 / 124 | 117 / 297 | 106 / 116 | 143 / 201 |
+| Task summary | 102 / 122 | 126 / 254 | 302 / 330 | 385 / 531 |
+| Saved workflow editor | 498 / 616 | 124 / 192 | 696 / 797 | 365 / 546 |
+| Cold run snapshot + index | 2012 / 2648 | 518 / 944 | 2547 / 3222 | 717 / 1202 |
+| Warm run status | 509 / 631 | 128 / 214 | 480 / 603 | 130 / 269 |
+| Switch run snapshot + index | 1005 / 1140 | 264 / 416 | 1012 / 1160 | 277 / 515 |
+| Unchanged run poll | 525 / 638 | 149 / 206 | 540 / 559 | 130 / 181 |
+| All workflow history pages | 516 / 664 | 147 / 205 | 2069 / 2294 | 599 / 1083 |
+| Terminal blocked history | 104 / 168 | 126 / 201 | 99 / 133 | 123 / 169 |
+
+Unchanged-read p95 meets **500 ms** for both sizes. Initial ready-page p95 meets **1,550 ms
+small / 11,250 ms large**. The base already met the latter proxy targets in this ten-sample
+comparison; the new path provides additional margin. Unchanged task commands were not optimized;
+their noisier after results must not be presented as an improvement.
+
+Process counts are unchanged: initial workflow preparation takes 2 small / 16 large CLI
+processes; cold snapshot plus index takes 4 / 5; switching takes 2 / 2; unchanged polling takes
+1 / 1; complete workflow history takes 1 / 4. Median response payloads also remain unchanged
+at 47.3 / 177.1 KiB for initial preparation, 380.2 / 468.8 KiB for cold snapshots, 4.8 / 4.8 KiB
+for unchanged polls and 47.0 / 685.8 KiB for complete history. Timing diagnostics increase stderr
+bytes, recorded separately; they do not change response JSON. Counts exclude interpreter setup,
+shell/tool discovery and setup-client processes.
+
+Median unchanged-process measurements distinguish the remaining costs:
+
+| Boundary | Small before → after | Large before → after |
+|---|---:|---:|
+| `ctl` import (ms) | 49.6 → 68.1 | 50.1 → 62.6 |
+| Command body (ms) | 363.2 → 19.5 | 366.5 → 21.0 |
+| CLI high-water RSS (MiB) | 77.9 → 36.5 | 78.2 → 36.9 |
+| Parent JSON decoding (ms) | 0.054 → 0.058 | 0.056 → 0.066 |
+
+After-only unchanged-read authority p95 is 7.4 / 9.5 ms, disk/projection p95 7.0 / 11.2 ms,
+and JSON encoding p95 0.074 / 0.090 ms. Parent launch to worker entry has medians 40.8 / 41.4 ms;
+the baseline runner did not collect this boundary and records `null`, not a zero-duration sample.
+These costs include scheduling and instrumentation overhead. Command-body reduction is consistent
+with avoiding server initialization, but the entire old command body cannot be attributed to MCP
+imports alone. Module-exclusion tests establish that the new CLI reads import neither MCP nor
+the server and do not construct a task registry or start its maintenance.
+
+Large initial preparation still spends a median 1,167 ms in catalog bootstrap across its
+16 processes (before 931 ms). After authority p95 is 1,327 ms and disk/projection p95 413 ms,
+with overlapping catalog work. Catalog itself was not optimized. Repeated interpreter/import
+work and bounded preparation remain the next measured bottlenecks; serialization and decoding
+are small here. A later batching proposal can use these residual process counts. This stage
+adds neither batching nor a service, cache or index.
+
+The large saved-definition read also retains ordinary caller verification: its authority p95
+is 378 ms, versus 1.5 ms for definition disk/projection. That security-sensitive scan is a
+separate residual cost from bounded Monitor page preparation; no authority check was skipped
+to meet a latency target.
+
+### Validation boundaries
+
+Response characterization before extraction passed 108 tests. New subprocess tests reject
+MCP/server imports and task-registry construction for every routed read command. Expected
+human and managed-role outcomes use synthetic saved definitions and durable ownership receipts,
+alongside invalid/undecidable authority, snapshot guards, preparation/blocked history, active
+pages, nested headers, stale cursors and concurrent snapshot-change regressions. The independent
+read-only review found a parity-test gap: two adapters sharing a mocked reader could agree on
+the same mistake. Real ownership/receipt tests now assert expected scope independently.
+
+An initial stale test mock read ordinary workflow collections before the test home was isolated.
+The audited read path calls no raw task/run/definition writers, but refreshes of existing
+derivative catalogs cannot be ruled out. Subsequent tests and all performance measurements used
+synthetic history. A sandboxed full-suite attempt was stopped because process inspection was
+blocked; its identity failures are not counted as final verification. The full suite was rerun
+with process inspection available. No model integration tests, installation, commits, pushes
+or GitHub mutations were performed.
+
+All nine serialized Swift suites passed: PbCommon 17, PbUI 113, PbUtilities 19,
+MonitorCore 210, PbRepository 255, MainWindowFeature 820, MenuBarFeature 55,
+SettingsFeature 63 and the app target 95 tests. SwiftFormat lint found no files requiring
+formatting; SwiftLint reported zero violations across 507 files. The private-reference and
+whitespace guards passed. The isolated release build verified its signature; its executable
+SHA-256 is unchanged from the committed sidebar stage
+(`a5d6c911eda8bbb49c6d24869c49189c77b6a0605f0376ec500f8bbfc2770e9d`).
+
+Final full Python verification passed **6,039 tests, 327 skipped** in 610 seconds, with model
+integrations disabled. Affected read/authority/tooling suites passed **280 tests**. An earlier
+full run had five failures: one stale server-reader test hook and four client subprocess tests
+whose isolated HOME did not yet exist. The hook was moved to the shared reader without relaxing
+its behavior assertions, the HOME directory was created, and the client/catalog rerun passed
+357 tests with one skipped. The final full run above follows those fixes. The earlier stage's
+workflow timeout failures did not recur. Independent code and numeric reviews found no remaining
+blocking findings in the shared-read implementation and accepted CLI results.
+
+The final clean timing-disabled series also has ten repeats per size, with no full tests,
+builds or app observations overlapping it. Disabled-path p95 is **273.5 / 194.6 ms** for unchanged
+polls, **582.2 / 5,407.6 ms** for initial ready workflow pages, **1,092.5 / 1,099.3 ms** for cold
+workflow opening, **263.3 / 297.4 ms** for warm reopening and **314.7 / 1,259.1 ms** for complete
+history pagination (small / large). It meets the unchanged-read and inventory targets too.
+All raw read-stage maps are empty, confirming timing output is disabled. On/off series were
+collected in different workstation intervals; slower values in the disabled series do not
+establish negative instrumentation overhead. Source hashes match the final timing-enabled code.
+
+### Actual app observations and remaining startup work
+
+[Raw app results](benchmarks/monitor-2026-10-08-cli-startup-app.json) contain ten after launches
+per size. The before comparison reuses the ten final sidebar-stage launches from
+`monitor-2026-10-08-sidebar.json`, corresponding to committed `db89158`. The release executable
+hash is identical, as are the profiler and fixture definitions. New after launches were serialized
+with fresh synthetic homes, 18-second small / 45-second large windows and warm filesystem caches.
+No tests, builds, benchmarks or UI automation overlapped them. Before and after occurred in
+different workstation intervals with other desktop apps running. RSS sampling and opt-in app
+timings have observation overhead in both series.
+
+| App boundary (milliseconds, p50 / p95) | Small before | Small after | Large before | Large after |
+|---|---:|---:|---:|---:|
+| Launch to populated sidebar state | 3517 / 3692 | 1659 / 3813 | 10492 / 10588 | 11036 / 12680 |
+| Main-actor preparation | 0.023 / 0.088 | 0.029 / 0.096 | 0.032 / 0.236 | 0.057 / 0.189 |
+| Background build | 0.359 / 0.670 | 0.630 / 0.949 | 1.159 / 12.198 | 1.962 / 8.426 |
+| Main-actor comparison/application | 0.026 / 0.100 | 0.080 / 0.106 | 0.048 / 2.569 | 0.451 / 1.454 |
+| Presentation enqueue to worker entry | 0.016 / 0.244 | 0.025 / 0.352 | 0.020 / 0.360 | 0.028 / 0.482 |
+| Capture to applied state | 0.868 / 55.646 | 0.961 / 59.816 | 2.454 / 48.508 | 2.790 / 54.166 |
+
+All 20 after launches reached populated state and remained alive through the observation window.
+The small median improves, but its descriptive p95 remains above **2,500 ms**. Large median and
+p95 are higher than before and remain above **6,000 ms**. These app observations do not demonstrate
+a broad startup improvement despite the CLI gains. Different workstation intervals and ten
+samples limit causal and tail conclusions; the higher values are reported rather than discarded.
+Readiness still means populated state publication, not displayed pixels or complete retained history.
+
+The background sidebar behavior remains intact: all 119 small / 214 large build records report
+background execution; 86/116 small and 178/208 large applications write zero presentation fields.
+Large build p95 8.426 ms meets the existing 100 ms target. The sum of the largest measured main-actor
+preparation and application events bounds their combined work at **0.237 ms small / 5.188 ms large**,
+below 16 ms. Scheduling p95 is reported separately above (maximum 4.474 / 10.909 ms), and capture-to-
+application includes further main-actor waiting. These metrics do not measure SwiftUI frame stalls.
+
+Median sampled peak app RSS is 126.0 → 126.4 MiB small and 154.6 → 154.9 MiB large. Descriptive
+RSS p95 is 126.3 → 145.2 MiB small and 168.8 → 156.1 MiB large. This is a sampled lower bound,
+separate from CLI child high-water memory; no total process-tree memory reduction is claimed.
+Median transport attempts in fixed windows increase from 26 → 32 small and 58 → 72.5
+large, with transferred KiB 370 → 502 and 5,411 → 7,650. More polls can finish when reads are faster;
+these counts do not show batching or a changed polling cadence. Discovery, shell and setup-client
+processes remain outside these counts.
+
+One large after launch completed small preparatory responses around 1.6, 3.9, 6.2 and 8.5 seconds,
+then larger ready responses around 10.5–10.7 seconds; populated state followed at 10.8 seconds.
+The repeated intervals are consistent with the existing preparation/retry schedule dominating
+startup even when individual reads are faster. This is an inference from transport timestamps and
+the unchanged scheduling code, not an isolated causal experiment. The next plan should investigate
+bounded preparation rounds and retry scheduling alongside residual process/import work. Ordinary
+large-definition authority scans remain another measured cost. Serialization and sidebar building
+are smaller here. No target miss authorizes batching, a persistent service, cache or index in this
+stage; Issue #23 requires further startup work and remains outside this stage's closure scope.
+
+A separate fresh-large-fixture launch captured 20 seconds of stacks at 10 ms intervals, starting
+two seconds after launch. It used the profiler's private-bundle and owned-PID cleanup, with its
+`observe` helper forced to sample the first launch so preparation was still cold. The capture
+succeeded (exit 0) and is excluded from latency quantiles. `SidebarPresentationBuilder.compute`,
+`build` and `prepareIndexes` appeared on `com.apple.root.utility-qos.cooperative`; the main thread
+most often waited in the event loop/Mach receive path (1,597 of 1,688 sampled main-thread stacks).
+This supports investigating preparation/waiting rather than claiming a new sidebar CPU bottleneck.
+It does not establish a frame-stall distribution or displayed-content latency. No accessibility
+automation ran during these observations; the prior stage's automation-overhead limitation is
+unchanged. Local stacks contain device metadata and are not published; their numeric observations
+are retained in the app result artifact.
+
+Final independent read-only Codex review recomputed the app and timing-disabled CLI findings,
+checked baseline provenance, source/executable hashes and stack evidence, and found no remaining
+findings. The final private-reference and whitespace guards passed after report updates.

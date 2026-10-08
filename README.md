@@ -203,6 +203,8 @@ For Monitor, run `swift test --no-parallel` in each package under `macos/`, then
 
 For isolated, no-model loading measurements and opt-in timing instrumentation, see
 [Monitor performance baselines](docs/monitor-performance.md).
+Workflow listing, status, and detail CLI reads share the MCP read implementation and avoid
+initializing the MCP server; their permissions and versioned responses are unchanged.
 
 Read [the workflow guide](docs/workflows.md) for definitions and execution contracts, and
 [contributor notes](CLAUDE.md) for architecture and harness behavior.
