@@ -144,7 +144,8 @@ struct ParallelColumnView: View {
             }
             ActivityFeedView(rows: model.activityRows, start: model.start, history: model.history,
                              isLoading: model.isLoading, tailValue: ActivityFeedTail(liveStep: model.liveStep, pendingMessages: model.pendingMessages),
-                             paginationRevision: model.paginationRevision, isVisible: model.isVisible, state: state, onLoadMore: model.onLoadMore) {
+                             paginationRevision: model.paginationRevision, isVisible: model.isVisible,
+                             showsPromptBubble: false, state: state, onLoadMore: model.onLoadMore) {
                 ForEach(model.pendingMessages) { message in
                     PromptBubbleView(text: message.text, caption: "Pending", isPending: true)
                 }

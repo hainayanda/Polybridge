@@ -691,7 +691,7 @@ Baseline actual-app observations covered standalone horizontal reversals, manual
 paging and workflow-pane horizontal reversals (ten each). Their CUA action and accessibility
 observation times are retained separately in the raw artifact. They are automation round trips,
 not displayed-frame measurements or an equivalent comparison to automatic history paging.
-Complete final actual-app interaction validation remains pending while the Mac is locked.
+Complete final actual-app interaction validation remains pending; automation is intermittent after resuming.
 Neither the visible-interaction p95 target of 100 ms nor the final main-actor target of 16 ms is
 claimed from the repository experiment.
 
@@ -725,12 +725,12 @@ The final repository experiment was rerun after the duplicate-record correction 
 heavy verification. Its earlier optimized run is retained as exploratory evidence; differences between
 those runs do not establish a speedup attributable to deduplication.
 
-Final source checks so far: 873 MainWindowFeature tests, 259 PbRepository tests, 212 MonitorCore tests,
+Final source checks so far: 874 MainWindowFeature tests, 259 PbRepository tests, 212 MonitorCore tests,
 6,047 Python unit tests (327 skipped), and 16 benchmark tooling tests passed. Exact CI versions
 SwiftFormat 0.62.1 and SwiftLint 0.65.0 pass; the private-reference guard and whitespace check pass.
 Native hosted tests cover automatic pagination, prepend plus concurrent arrivals, live-follow
 suppression, eviction/restoration, and completed anchor restoration after widening and narrowing.
-The final isolated release build and 95 app-consumer tests pass. Independent read-only Codex review
+The final isolated release build (45.38 seconds after the prompt fix) and 95 app-consumer tests pass. Independent read-only Codex review
 round three found no actionable findings. The isolated release-app check
 found a paging admission race: the feed could retain its loading indicator when the controller
 declined a stale request. The final acceptance handoff and regression tests correct this; rejected
@@ -756,9 +756,20 @@ and waiting on the event loop. It does not establish frame-stall durations.
 Repeated automation errors included invalid/ambiguous elements and missing windows. The bundle-ID
 automation call subsequently confirmed the Mac was locked. Only one final horizontal AX round trip
 completed (5,765 ms including automation); it is not displayed latency or a usable ten-sample tail.
-Task-detail and workflow-pane actual-app checks, matched ten-observation interaction sets for all
-three sizes, native lazy horizontal scrolling and exact app-level anchor restoration remain unverified.
-The displayed 100 ms target is unverified. These limitations remain explicit while unlock is pending;
+After resuming, the standalone Parallel tool disclosure responded and moving its vertical scrollbar
+to the oldest edge loaded 101 to 151 steps; subsequent observations showed 251 steps. The workflow
+bottom pane also displayed automatic history with 101 steps and no manual controls. These are
+functional observations on the pre-review-fix release, not matched timing samples. Automation still
+reported missing windows, ambiguous links and timeouts, including 51-second and 69-second round trips.
+After the GitHub review fix, the rebuilt release app opened Task detail, expanded its tool group,
+and automatically paged into a previous resume member (569 steps). The workflow bottom pane
+expanded its group and automatically advanced from 151 to 201 steps at the oldest edge. The shared
+feed now preserves Task detail's prompt bubble and hides it in both Parallel surfaces, whose explicit
+header toggle owns prompt visibility. Hosted regression tests reproduced the duplicate prompt before
+the fix and passed afterward, followed by all 874 affected suite tests.
+Matched ten-observation sets for all three sizes, native lazy horizontal scrolling and exact
+app-level anchor restoration remain unverified.
+The displayed 100 ms target is unverified. These limitations remain explicit;
 unit/native-hosted coverage does not substitute for the missing actual-app checks.
 
 Repository and model timings precede the final short-fill, reset and paging-admission fixes.

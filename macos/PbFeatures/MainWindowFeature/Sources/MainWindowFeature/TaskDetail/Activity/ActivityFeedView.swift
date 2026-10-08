@@ -61,6 +61,7 @@ private final class ActivityFeedPosition {
 private struct ActivityFeedKey: Equatable {
     let rows: [ActivityRow]
     let tail: ActivityFeedTail
+    let showsPromptBubble: Bool
     let expandedGroups: Set<String>
     let viewport: CGSize
     let history: EventHistoryState
@@ -92,6 +93,8 @@ struct ActivityFeedView<Tail: View>: View {
     var isVisible = true
     var emptyText: String?
     var horizontalPadding: CGFloat = 0
+    /// Task detail owns its started-row prompt; Parallel owns it in the toggled column header.
+    var showsPromptBubble = true
     let state: ParallelColumnUIState
     let onLoadMore: (() -> Bool)?
     @ViewBuilder let tail: () -> Tail
@@ -161,7 +164,8 @@ struct ActivityFeedView<Tail: View>: View {
                     observePosition()
                 })
             }
-            .task(id: ActivityFeedKey(rows: shown, tail: tailValue, expandedGroups: state.expandedGroups, viewport: viewportSize, history: history,
+            .task(id: ActivityFeedKey(rows: shown, tail: tailValue, showsPromptBubble: showsPromptBubble,
+                                     expandedGroups: state.expandedGroups, viewport: viewportSize, history: history,
                                      loading: isLoading, visible: isVisible, paginationRevision: paginationRevision, restoring: restoring,
                                      restorationFrame: restoring ? state.anchor.flatMap { frames[$0.id] } : nil)) {
                 await settle(proxy)
@@ -223,7 +227,7 @@ struct ActivityFeedView<Tail: View>: View {
         case .single(let row):
             switch row.kind {
             case .separator(let text): TurnSeparatorRow(text: text, timestamp: row.timestamp)
-            case .item(let item): TimelineRow(model: TimelineRowModel(item: item, start: start, live: row.live))
+            case .item(let item): TimelineRow(model: TimelineRowModel(item: item, start: start, live: row.live, showsPromptBubble: showsPromptBubble))
             }
         }
     }
