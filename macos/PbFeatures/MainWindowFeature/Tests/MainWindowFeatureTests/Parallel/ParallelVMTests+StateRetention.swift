@@ -14,7 +14,7 @@ extension ParallelVMTests {
         harness.tasksSubject.send([first, last])
         await waitUntil { harness.sut.columns.count == 1 && harness.sut.isPresentationSettled }
         let state = harness.sut.columnState(for: "first")
-        state.showAll = true
+        state.retainedFirstID = "retained-row"
         state.expandedGroups = ["tools"]
         state.followLive.suspend()
         state.anchor = ParallelVerticalAnchor(id: "older-row", index: 2, relativeOffset: 14)
@@ -23,7 +23,7 @@ extension ParallelVMTests {
         await waitUntil { harness.sut.columns.first?.id == "last" && harness.sut.isPresentationSettled }
         let migrated = harness.sut.columnState(for: "last")
         #expect(migrated === state)
-        #expect(migrated.showAll && migrated.expandedGroups == ["tools"])
+        #expect(migrated.retainedFirstID == "retained-row" && migrated.expandedGroups == ["tools"])
         #expect(!migrated.followLive.isFollowing)
         #expect(migrated.anchor == ParallelVerticalAnchor(id: "older-row", index: 2, relativeOffset: 14))
         #expect(harness.sut.retainedColumnStateCount == 1)

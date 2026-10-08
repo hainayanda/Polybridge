@@ -35,6 +35,13 @@ import Testing
         let leasesBox: Box<[String: MockEventStreamLease]>
         let releasedBox: Box<Set<String>>
         let runningInSubtreesBox: Box<[String]?>
+        let eventsBox: Box<[String: [TaskEvent]]>
+        let historyBox: Box<[String: EventHistoryState]>
+        let historySubjectsBox: Box<[String: CurrentValueSubject<EventHistoryState, Never>]>
+        let loadCallsBox: Box<[String]>
+        let loadAdmissionBox: Box<Bool>
+        let acquireEffectBox: Box<((String) -> Void)?>
+        let conversationPagesBox: Box<[TaskHistoryPage?]>
     }
 
     func makeSUT(groupName: String = "g1", leasePool: ParallelTestLeasePool? = nil,
@@ -54,6 +61,13 @@ import Testing
         let leasesBox = Box<[String: MockEventStreamLease]>([:])
         let releasedBox = Box<Set<String>>([])
         let runningInSubtreesBox = Box<[String]?>(nil)
+        let eventsBox = Box<[String: [TaskEvent]]>([:])
+        let historyBox = Box<[String: EventHistoryState]>([:])
+        let historySubjectsBox = Box<[String: CurrentValueSubject<EventHistoryState, Never>]>([:])
+        let loadCallsBox = Box<[String]>([])
+        let loadAdmissionBox = Box(true)
+        let acquireEffectBox = Box<((String) -> Void)?>(nil)
+        let conversationPagesBox = Box<[TaskHistoryPage?]>([])
 
         given(useCase).tasksPublisher().willReturn(tasksSubject.eraseToAnyPublisher())
         given(useCase).snapshotsPublisher().willReturn(snapshotsSubject.eraseToAnyPublisher())
@@ -62,7 +76,6 @@ import Testing
         given(useCase).titlesPublisher().willReturn(titlesSubject.eraseToAnyPublisher())
         given(useCase).task(.any).willProduce { tasksBox.value[$0] }
         given(useCase).title(.any).willProduce { titlesBox.value[$0] ?? "Task \($0.prefix(8))" }
-        given(useCase).events(for: .any).willReturn([])
         given(useCase).items(for: .any).willProduce { itemsBox.value[$0] ?? [] }
         given(useCase).itemsPublisher(for: .any).willProduce { id in
             if let subject = itemSubjectsBox.value[id] { return subject.eraseToAnyPublisher() }
@@ -73,17 +86,6 @@ import Testing
         given(useCase).eventsAvailabilityPublisher(for: .any).willProduce { id in
             Just(availabilityBox.value[id] ?? .loading).eraseToAnyPublisher()
         }
-        given(useCase).acquireEventLease(.any).willProduce { id in
-            let lease = MockEventStreamLease()
-            let token = leasePool?.acquire(id)
-            given(lease).taskID.willReturn(id)
-            given(lease).release().willProduce {
-                releasedBox.value.insert(id)
-                if let token { leasePool?.release(token) }
-            }
-            leasesBox.value[id] = lease
-            return lease
-        }
         given(useCase).runningInSubtrees(of: .any).willProduce { ids in runningInSubtreesBox.value ?? ids }
         given(useCase).cancelAll(.any).willReturn()
         given(useCase).beginTakeover(taskID: .any).willReturn()
@@ -92,12 +94,16 @@ import Testing
 
         let sut = ParallelVM(groupName: groupName, useCase: useCase, routing: routing, buildColumns: buildColumns)
         sut.updateViewport(offset: 0, width: 100_000)
-        return SUT(
+        let harness = SUT(
             sut: sut, useCase: useCase, routing: routing, tasksSubject: tasksSubject, snapshotsSubject: snapshotsSubject,
             busySubject: busySubject, outcomesSubject: outcomesSubject, titlesSubject: titlesSubject,
             tasksBox: tasksBox, titlesBox: titlesBox, itemsBox: itemsBox, itemSubjectsBox: itemSubjectsBox, availabilityBox: availabilityBox,
-            leasesBox: leasesBox, releasedBox: releasedBox, runningInSubtreesBox: runningInSubtreesBox
+            leasesBox: leasesBox, releasedBox: releasedBox, runningInSubtreesBox: runningInSubtreesBox,
+            eventsBox: eventsBox, historyBox: historyBox, historySubjectsBox: historySubjectsBox,
+            loadCallsBox: loadCallsBox, loadAdmissionBox: loadAdmissionBox, acquireEffectBox: acquireEffectBox, conversationPagesBox: conversationPagesBox
         )
+        configureHistory(harness, leasePool: leasePool)
+        return harness
     }
     
     // MARK: - Fresh listing entry (F4-40)
@@ -477,8 +483,6 @@ import Testing
         await waitUntil { sut.columns.count == 2 && sut.isPresentationSettled }
         #expect(sut.headerSubtitle.hasPrefix("2 agents · Can edit this repo, Read-only ·"))
     }
-    
-    // MARK: - Footer (F4-40)
     
     @Test func givenEveryMemberSharesAnEnforcementFact_whenComputingTheFooter_thenItReflectsTheSharedFact() async {
         // given

@@ -631,3 +631,137 @@ this stage. SwiftFormat reported no changes needed; SwiftLint reported zero viol
 private-reference guard and diff whitespace check passed. The final release product compiled
 and the local app bundle assembled successfully without installation. Independent read-only
 Codex review found no remaining code or report blockers after the raw metric evidence was added.
+
+## Stage 5: automatic activity pagination (verification in progress)
+
+Task detail, standalone Parallel and the workflow's bottom Parallel pane share a lazy vertical
+activity feed. It positions at latest activity, reveals older loaded rows in batches of 100, and
+requests bounded history near the oldest visible edge after positioning or restoration settles.
+Only visible Parallel columns initiate pagination; neighboring columns retain activity leases.
+Short viewports permit one automatic older-history operation per positioning or interaction episode;
+intentional upward scrolling or a tool disclosure replenishes that budget. This prevents a collapsed
+group with unchanged visible height from draining its conversation on mount. Valid empty decoded
+pages still commit their cursor; the UI fill budget does not turn them into reader failures.
+A mounted feed retains lightweight geometry for rows it has measured; column eviction discards
+that view-owned geometry. Loaded history and its measurements can grow through requested paging.
+Show all and manual Load more controls are removed; failed history reads retain explicit Retry.
+Initial resume-chain history forms a recent suffix: the newest member is paged before the previous
+member is revealed. If a resumed turn is newly discovered while someone is reading, existing rows
+and the reading anchor remain visible; its seeded tail may leave a gap until requested pagination
+fills that turn. The app does not drain unrequested history to close that gap automatically.
+
+Event deduplication, incremental folding and prepend reconstruction run on each stream's serialized
+utility queue. History completion follows its committed item snapshot. Task-detail and Parallel
+presentations use immutable snapshots and background workers, with complete equality at application.
+Parallel acquires resident resume-member leases in cancellable batches of at most four attempted
+members or four milliseconds, yielding between batches. A single synchronous acquisition can exceed
+four milliseconds; the budget bounds additional attempts, not an uninterruptible call's duration.
+
+The repository experiment ran 150 observations (ten per scenario and logical 8/64/256 group size)
+with synthetic logs and no model calls. Each logical size uses the same sixteen resident streams;
+these labels establish resident repository behavior, not whole-group UI scaling. All 3,360 recorded
+read/fold boundaries ran off the main thread. Thirty unchanged-poll observations produced zero folds
+and zero publications. Initial/page/prepend publication counts were not measured.
+
+| Repository boundary | Descriptive p50 ms | Descriptive p95 ms |
+| --- | ---: | ---: |
+| Initial settlement | 113.82 | 167.32 |
+| Older-page settlement | 59.86 | 61.56 |
+| Prepend settlement | 58.50 | 62.17 |
+| Controlled burst settlement | 62.33 | 64.93 |
+| Older-page folding | 0.61 | 3.50 |
+| Older-page reading | 15.93 | 21.18 |
+
+Settlement includes the test observer's approximately 50 ms sampling floor. These are internal
+boundaries, not displayed-content latency. Ten observations provide descriptive tails, not stable
+tail estimates. Process RSS high-water was 52,363,264 bytes, including the test runner and previous
+cases; it is not a per-scenario or per-conversation memory estimate. Raw numeric results are in
+[monitor-2026-10-08-activity.json](benchmarks/monitor-2026-10-08-activity.json).
+
+Reproduce the repository experiment with `POLYBRIDGE_MONITOR_METRICS=1` and
+`PB_ACTIVITY_REPOSITORY_BENCHMARK_OUTPUT=/tmp/activity.json` plus
+`PB_ACTIVITY_REPOSITORY_METRICS_PATH=/tmp/activity.log` while running
+`swift test --no-parallel --filter benchmarkActivityRepository > /tmp/activity.log 2>&1`
+from `macos/PbCore/PbRepository`. Parse the final log after the process exits to include buffered
+metric lines; keep the original raw numeric observations. Fixture generation uses
+`scripts/benchmark-parallel.py --conversations 8 --chain 16 --activity long --workflow` with a new
+synthetic `--fixture-home`; repeat for 64 and 256. No production history is read or modified.
+
+Baseline actual-app observations covered standalone horizontal reversals, manual detail history
+paging and workflow-pane horizontal reversals (ten each). Their CUA action and accessibility
+observation times are retained separately in the raw artifact. They are automation round trips,
+not displayed-frame measurements or an equivalent comparison to automatic history paging.
+Complete final actual-app interaction validation remains pending while the Mac is locked.
+Neither the visible-interaction p95 target of 100 ms nor the final main-actor target of 16 ms is
+claimed from the repository experiment.
+
+The final model experiment contains 840 observations: ten per scenario across 8/64/256 conversations,
+1/16 resume members, and sparse/long feeds (2/256 tool calls per member). All 1,623 completed
+presentation builds ran off the main thread. Resident columns were at most four and leased members
+at most 64. Unchanged complete inputs produced zero builds and zero rendering writes. Batched lease
+acquisition creates more intermediate changed loading presentations than the previous single batch;
+the increased build count is not a duplicate-poll publication regression.
+
+| Largest model fixture, descriptive p95 | Stage 4 ms | Stage 5 ms |
+| --- | ---: | ---: |
+| Background build: viewport crossing | 74.20 | 5.41 |
+| Background build: rapid reversal | 80.40 | 3.99 |
+| Main-actor viewport work: crossing | 41.93 | 12.88 |
+| Main-actor viewport work: reversal | 43.39 | 16.91 |
+| Initial membership preparation | 281.37 | 248.96 |
+
+The background build target is met in this model experiment. Crossing meets the 16 ms viewport
+boundary; reversal and initial membership preparation remain above it. For resident activity changes,
+preparation/application p95 were 0.49/0.65 ms. Scheduling p95 was 0.05 ms during crossings and reversals.
+These boundaries can nest and must not be added as independent timings. Recent-suffix preparation
+builds one turn initially instead of folding all sixteen seeded tails; the comparison intentionally
+includes that reduced work and is not an equivalent full-history throughput ratio. Internal model
+settlement includes the test observer's roughly 60 ms sampling floor and is not displayed latency.
+
+Reproduce the model experiment from the repository root with `POLYBRIDGE_MONITOR_METRICS=1` and
+`PB_PARALLEL_BENCHMARK_OUTPUT=/tmp/parallel.json` while running
+`swift test --package-path macos/PbFeatures/MainWindowFeature --disable-build-manifest-caching --no-parallel --filter benchmarkParallelResidency > /tmp/parallel.log 2>&1`.
+The final repository experiment was rerun after the duplicate-record correction without concurrent
+heavy verification. Its earlier optimized run is retained as exploratory evidence; differences between
+those runs do not establish a speedup attributable to deduplication.
+
+Final source checks so far: 873 MainWindowFeature tests, 259 PbRepository tests, 212 MonitorCore tests,
+6,047 Python unit tests (327 skipped), and 16 benchmark tooling tests passed. Exact CI versions
+SwiftFormat 0.62.1 and SwiftLint 0.65.0 pass; the private-reference guard and whitespace check pass.
+Native hosted tests cover automatic pagination, prepend plus concurrent arrivals, live-follow
+suppression, eviction/restoration, and completed anchor restoration after widening and narrowing.
+The final isolated release build and 95 app-consumer tests pass. Independent read-only Codex review
+round three found no actionable findings. The isolated release-app check
+found a paging admission race: the feed could retain its loading indicator when the controller
+declined a stale request. The final acceptance handoff and regression tests correct this; rejected
+task-detail requests also produce zero observable presentation writes. The rebuilt eight-conversation
+Parallel feed automatically advanced from 51 to 101 steps, then settled without a loading indicator.
+Neighboring columns retained their 51-step seed until entering the viewport. No Show all or manual
+Load more controls appeared in the settled Parallel accessibility tree.
+A computer-automation observation also waited about 18,773 seconds while the Mac
+was unavailable; that interval is excluded from interaction latency measurements.
+
+The final release-app observation includes initial loading, normal polls, attempted accessibility
+scrolling and a locked display; it is not a matched scenario sample. All 95 recorded background
+presentation builds, 153 page reads and 153 folds ran off the main thread. Aggregate descriptive
+preparation p50/p95 were 7.57/16.77 ms, comparison/application 0.075/0.195 ms, build 15.04/36.48 ms
+and scheduling 0.23/195.73 ms. These correlated, mixed-boundary records cannot establish the
+interaction target. Preparation exceeds 16 ms in this observation; scheduling remains material.
+Recorded process RSS high-water was 240,238,592 bytes; a single `ps` lifetime CPU snapshot was 66.4%,
+not a scenario average or peak. Maximum recorded residency was seven columns and 112 members;
+the actual viewport differs from the fixed model benchmark and no four-column app limit is claimed.
+A separate perturbed three-second stack sample included main-thread display-cycle/layout work
+and waiting on the event loop. It does not establish frame-stall durations.
+
+Repeated automation errors included invalid/ambiguous elements and missing windows. The bundle-ID
+automation call subsequently confirmed the Mac was locked. Only one final horizontal AX round trip
+completed (5,765 ms including automation); it is not displayed latency or a usable ten-sample tail.
+Task-detail and workflow-pane actual-app checks, matched ten-observation interaction sets for all
+three sizes, native lazy horizontal scrolling and exact app-level anchor restoration remain unverified.
+The displayed 100 ms target is unverified. These limitations remain explicit while unlock is pending;
+unit/native-hosted coverage does not substitute for the missing actual-app checks.
+
+Repository and model timings precede the final short-fill, reset and paging-admission fixes.
+The folding and background presentation algorithms are unchanged, but the admission and UI paths
+have changed; these experiments do not mount SwiftUI feeds or measure the final UI fixes.
+Raw evidence records both measured and final source hashes.

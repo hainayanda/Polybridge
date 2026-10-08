@@ -46,6 +46,12 @@ extension ParallelVMTests {
         // then — the still-running conversation sorts first (`Lineage.parallelColumnOrder`), its
         // column's `task` is the CURRENT (newest) member, and its timeline carries a separator ahead
         // of each of its 2 follow-ups
+        #expect(sut.columns.first?.rows.filter { if case .separator = $0.kind { return true }; return false }.isEmpty == true,
+            "only the newest contiguous activity suffix is initially rendered")
+        sut.columns.first?.onLoadMore?()
+        await waitUntil { sut.columns.first?.paginationRevision == 1 && sut.isPresentationSettled }
+        sut.columns.first?.onLoadMore?()
+        await waitUntil { sut.columns.first?.paginationRevision == 2 && sut.isPresentationSettled }
         let runningColumn = sut.columns.first
         #expect(runningColumn?.task.taskID == "a3")
         #expect(runningColumn?.start == agentATurn1.startedAt, "rows time from the first turn, not the current one")

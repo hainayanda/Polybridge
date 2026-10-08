@@ -207,6 +207,7 @@ Workflow listing, status, and detail CLI reads share the MCP read implementation
 initializing the MCP server; their permissions and versioned responses are unchanged.
 Parallel and workflow activity columns render lazily and limit detailed feed work to the viewport
 and neighboring columns, preserving each column's reading state while the group remains open.
+Activity history loads automatically as you scroll toward older entries, with explicit retry on errors.
 
 Read [the workflow guide](docs/workflows.md) for definitions and execution contracts, and
 [contributor notes](CLAUDE.md) for architecture and harness behavior.

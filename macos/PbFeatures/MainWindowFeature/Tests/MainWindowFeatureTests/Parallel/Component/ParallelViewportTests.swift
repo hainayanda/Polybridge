@@ -79,7 +79,6 @@ import Testing
         // given
         _ = NSApplication.shared
         let state = ParallelColumnUIState()
-        state.showAll = true
         state.expandedGroups = ["retained-tool"]
         state.followLive.suspend()
         let model = try column(id: "reading", rows: 20)
@@ -114,7 +113,6 @@ import Testing
         // then
         let replacement = try #require(descendants(host).compactMap { $0 as? NSScrollView }.first)
         #expect(abs(replacement.documentVisibleRect.minY - 330) < 3)
-        #expect(state.showAll)
         #expect(state.expandedGroups == ["retained-tool"])
         #expect(!state.followLive.isFollowing)
         #expect(state.anchor?.id == anchor.id)
@@ -144,7 +142,6 @@ import Testing
         // given
         _ = NSApplication.shared
         let state = ParallelColumnUIState()
-        state.showAll = true
         state.followLive.suspend()
         let model = try column(id: "reflow", rows: 20)
         let host = NSHostingView(rootView: ParallelColumnView(model: model, state: state).frame(width: 420, height: 500))
@@ -159,24 +156,30 @@ import Testing
             return descendants(host).compactMap { $0 as? NSScrollView }.contains { ($0.documentView?.bounds.height ?? 0) > 2000 }
         }
         let scroll = try #require(descendants(host).compactMap { $0 as? NSScrollView }.first)
-        await waitUntil { state.anchor != nil }
+        await waitUntil { host.layoutSubtreeIfNeeded(); return state.anchor != nil && state.viewportPositioned }
         let originalHeight = try #require(scroll.documentView?.bounds.height)
-        let readingOffset = originalHeight / 20 + 80
+        let readingOffset = originalHeight / 2 + 80
         scroll.contentView.scroll(to: CGPoint(x: 0, y: readingOffset))
         scroll.reflectScrolledClipView(scroll.contentView)
-        await waitUntil { abs(state.scrollOffset - readingOffset) < 2 && state.anchor != nil }
+        var lastReadingAnchor: ParallelVerticalAnchor?
+        await waitUntil {
+            host.layoutSubtreeIfNeeded()
+            let current = state.anchor
+            let settled = current == lastReadingAnchor && current?.id != "row0" && abs(state.scrollOffset - readingOffset) < 2
+            lastReadingAnchor = current
+            return settled
+        }
         let anchor = try #require(state.anchor)
         #expect(anchor.id != "row0")
         // when
         host.rootView = ParallelColumnView(model: model, state: state).frame(width: 650, height: 500)
         window.setContentSize(CGSize(width: 650, height: 500))
-        await waitUntil {
-            host.layoutSubtreeIfNeeded()
-            return scroll.contentView.bounds.width > 600 && abs(scroll.documentVisibleRect.minY - readingOffset) > 5
-        }
+        await awaitResizedReadingPosition(host: host, scroll: scroll, state: state, previousOffset: readingOffset) { $0 > 600 }
         let restoredOffset = scroll.documentVisibleRect.minY
         #expect(scroll.contentView.bounds.width > 600)
-        #expect((scroll.documentView?.bounds.height ?? .infinity) < originalHeight - 100)
+        #expect(state.viewportPositioned)
+        #expect(state.anchor?.id == anchor.id)
+        #expect(abs((state.anchor?.relativeOffset ?? .infinity) - anchor.relativeOffset) < 3)
         #expect(abs(restoredOffset - readingOffset) > 5)
         // A real native move obtains a fresh measured anchor after restoration, rather than
         // merely asserting the saved value that the restoration phase intentionally retains.
@@ -186,6 +189,17 @@ import Testing
         // then
         #expect(state.anchor?.id == anchor.id)
         #expect(abs((state.anchor?.relativeOffset ?? .infinity) - anchor.relativeOffset + 1) < 3)
+        #expect(!state.followLive.isFollowing)
+        // Returning to the narrower column must also finish restoration with fresh geometry.
+        let wideAnchor = try #require(state.anchor)
+        let wideOffset = scroll.documentVisibleRect.minY
+        host.rootView = ParallelColumnView(model: model, state: state).frame(width: 420, height: 500)
+        window.setContentSize(CGSize(width: 420, height: 500))
+        await awaitResizedReadingPosition(host: host, scroll: scroll, state: state, previousOffset: wideOffset) { $0 < 400 }
+        #expect(state.viewportPositioned)
+        #expect(state.anchor?.id == wideAnchor.id)
+        #expect(abs((state.anchor?.relativeOffset ?? .infinity) - wideAnchor.relativeOffset) < 3)
+        #expect(abs(scroll.documentVisibleRect.minY - wideOffset) > 5)
         #expect(!state.followLive.isFollowing)
     }
 
@@ -200,6 +214,17 @@ import Testing
         #expect(cell == ParallelColumnCell(model: callbackChange, state: state, size: cell.size))
         #expect(cell != ParallelColumnCell(model: model, state: ParallelColumnUIState(), size: cell.size))
         #expect(cell != ParallelColumnCell(model: model, state: state, size: CGSize(width: 421, height: 500)))
+    }
+
+    private func awaitResizedReadingPosition(
+        host: NSView, scroll: NSScrollView, state: ParallelColumnUIState,
+        previousOffset: CGFloat, widthMatches: (CGFloat) -> Bool
+    ) async {
+        await waitUntil {
+            host.layoutSubtreeIfNeeded()
+            return widthMatches(scroll.contentView.bounds.width) && state.viewportPositioned
+                && abs(scroll.documentVisibleRect.minY - previousOffset) > 5
+        }
     }
 
     private func column(id: String, rows count: Int) throws -> ParallelColumnModel {

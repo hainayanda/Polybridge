@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import MonitorCore
 import SwiftUI
 
 // MARK: - ParallelColumnUIState
@@ -8,7 +9,6 @@ import SwiftUI
 @Observable
 @MainActor
 final class ParallelColumnUIState {
-    var showAll = false
     var expandedGroups: Set<String> = []
     @ObservationIgnored private var followState = FollowLiveScrollState()
     private var followsLive = true
@@ -24,6 +24,14 @@ final class ParallelColumnUIState {
     var recentFirstID: String?
     @ObservationIgnored var anchor: ParallelVerticalAnchor?
     @ObservationIgnored var scrollOffset: CGFloat = 0
+    @ObservationIgnored var viewportPositioned = false
+    @ObservationIgnored var activityMembers: Set<String> = []
+    @ObservationIgnored var oldestSequences: [String: Int] = [:]
+    @ObservationIgnored var paginationRevision = 0
+    @ObservationIgnored var inventoryMembers: [String: TaskInfo] = [:]
+    @ObservationIgnored var inventorySession: String?
+    @ObservationIgnored var inventoryCursor: String?
+    @ObservationIgnored var inventoryComplete = false
 }
 
 // MARK: - ParallelVerticalAnchor
@@ -38,12 +46,21 @@ struct ParallelVerticalAnchor: Equatable {
         var upper = ids.count
         while lower < upper {
             let middle = lower + (upper - lower) / 2
-            guard let frame = frames[ids[middle]] else { return nil }
+            guard let frame = frames[ids[middle]] else {
+                return captureMeasured(ids: ids, frames: frames, viewportHeight: viewportHeight, offset: offset)
+            }
             if frame.maxY <= offset { lower = middle + 1 } else { upper = middle }
         }
         guard lower < ids.count, let frame = frames[ids[lower]],
               frame.minY < offset + viewportHeight else { return nil }
         return Self(id: ids[lower], index: lower, relativeOffset: frame.minY - offset)
+    }
+
+    private static func captureMeasured(ids: [String], frames: [String: CGRect], viewportHeight: CGFloat, offset: CGFloat) -> Self? {
+        let visible = frames.filter { $0.value.maxY > offset && $0.value.minY < offset + viewportHeight }
+        guard let first = visible.min(by: { $0.value.minY < $1.value.minY }),
+              let index = ids.firstIndex(of: first.key) else { return nil }
+        return Self(id: first.key, index: index, relativeOffset: first.value.minY - offset)
     }
 
     func offset(in frame: CGRect) -> CGFloat {
@@ -98,7 +115,9 @@ struct ParallelScrollObserver: NSViewRepresentable {
     var columnIDs: [String] = []
     var columnStride: CGFloat = 0
     var restorationOffset: CGFloat?
+    var restorationActive = false
     var onViewportSize: ((CGSize) -> Void)?
+    var onUpwardIntent: (() -> Void)?
     let onPosition: (CGFloat, CGFloat, CGFloat) -> Void
 
     func makeNSView(context: Context) -> ParallelScrollObservationView {
@@ -107,11 +126,17 @@ struct ParallelScrollObserver: NSViewRepresentable {
         return view
     }
 
+    static func dismantleNSView(_ view: ParallelScrollObservationView, coordinator: ()) {
+        view.removeWheelMonitor()
+    }
+
     func updateNSView(_ view: ParallelScrollObservationView, context: Context) {
         view.axis = axis
         view.onPosition = onPosition
         view.onViewportSize = onViewportSize
-        view.configure(ids: columnIDs, stride: columnStride, restorationOffset: restorationOffset)
+        view.onUpwardIntent = onUpwardIntent
+        view.updateWheelMonitor()
+        view.configure(ids: columnIDs, stride: columnStride, restorationOffset: restorationOffset, restorationActive: restorationActive)
     }
 }
 
@@ -121,17 +146,22 @@ final class ParallelScrollObservationView: NSView {
     var axis = ParallelScrollObserver.Axis.horizontal
     var onPosition: ((CGFloat, CGFloat, CGFloat) -> Void)?
     var onViewportSize: ((CGSize) -> Void)?
+    var onUpwardIntent: (() -> Void)?
+    private var wheelMonitor: Any?
     private weak var observedScrollView: NSScrollView?
     private var subscriptions = Set<AnyCancellable>()
     private var ids: [String] = []
     private var stride: CGFloat = 0
     private var pendingOffset: CGFloat?
+    private var applyingRestoration = false
     private var requestedOffset: CGFloat?
+    private var restorationActive = false
     private var lastOffset: CGFloat = 0
     private var lastReported: CGRect?
     private var lastViewportSize: CGSize?
 
-    func configure(ids: [String], stride: CGFloat, restorationOffset: CGFloat?) {
+    func configure(ids: [String], stride: CGFloat, restorationOffset: CGFloat?, restorationActive: Bool) {
+        self.restorationActive = restorationActive
         if axis == .horizontal, ids != self.ids || stride != self.stride,
            let anchor = ParallelHorizontalAnchor.capture(ids: self.ids, stride: self.stride, offset: lastOffset) {
             pendingOffset = anchor.offset(ids: ids, stride: stride)
@@ -149,6 +179,7 @@ final class ParallelScrollObservationView: NSView {
         super.viewDidMoveToWindow()
         if window == nil {
             subscriptions.removeAll()
+            removeWheelMonitor()
             observedScrollView = nil
             lastReported = nil
             lastViewportSize = nil
@@ -164,46 +195,94 @@ final class ParallelScrollObservationView: NSView {
         guard window != nil, let scroll = enclosingScrollView, scroll !== observedScrollView,
               let document = scroll.documentView else { return }
         subscriptions.removeAll()
+        removeWheelMonitor()
         observedScrollView = scroll
+        updateWheelMonitor()
         scroll.contentView.postsBoundsChangedNotifications = true
+        scroll.contentView.postsFrameChangedNotifications = true
         document.postsFrameChangedNotifications = true
         for (name, object) in [
             (NSView.boundsDidChangeNotification, scroll.contentView),
+            (NSView.frameDidChangeNotification, scroll.contentView),
             (NSView.frameDidChangeNotification, document)
         ] {
             NotificationCenter.default
-.publisher(for: name, object: object)
-                .receive(on: DispatchQueue.main)
-                .sink { [weak self] _ in self?.report() }
+                .publisher(for: name, object: object)
+                .sink { [weak self] _ in self?.report(observeExternalMovement: name == NSView.boundsDidChangeNotification) }
                 .store(in: &subscriptions)
         }
         report()
     }
 
-    private func report() {
+    func updateWheelMonitor() {
+        guard onUpwardIntent != nil, observedScrollView?.window != nil else {
+            removeWheelMonitor()
+            return
+        }
+        guard wheelMonitor == nil else { return }
+        wheelMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            self?.observeWheelIntent(event)
+            return event
+        }
+    }
+
+    func removeWheelMonitor() {
+        if let wheelMonitor { NSEvent.removeMonitor(wheelMonitor) }
+        wheelMonitor = nil
+    }
+
+    private func observeWheelIntent(_ event: NSEvent) {
+        guard axis == .vertical, let scroll = observedScrollView, event.window === scroll.window,
+              scroll.bounds.contains(scroll.convert(event.locationInWindow, from: nil)),
+              event.scrollingDeltaY > 0, event.momentumPhase.isEmpty,
+              event.phase.isEmpty || event.phase.contains(.began) else { return }
+        onUpwardIntent?()
+    }
+
+    /// Observe an upward reading move before a queued layout restoration can replace it.
+    /// Content shrinkage and viewport resizing remain layout changes, not user scroll evidence.
+    private func observeExternalUpwardScroll(visible: CGRect, document: NSView, length: CGFloat, viewport: CGFloat) {
+        let offset = document.isFlipped ? visible.minY : document.bounds.maxY - visible.maxY
+        guard axis == .vertical, let lastReported, offset < lastOffset - 0.5,
+              length >= lastReported.width - 0.5, viewport == lastReported.height else { return }
+        pendingOffset = nil
+        requestedOffset = nil
+        lastOffset = offset
+        self.lastReported = CGRect(x: offset, y: 0, width: length, height: viewport)
+        onPosition?(offset, length, viewport)
+    }
+
+    private func report(observeExternalMovement: Bool = false) {
         guard let scroll = observedScrollView, let document = scroll.documentView else { return }
         let visible = scroll.documentVisibleRect
-        if visible.size != lastViewportSize {
-            lastViewportSize = visible.size
-            onViewportSize?(visible.size)
+        let viewportSize = scroll.contentView.bounds.size
+        if viewportSize != lastViewportSize {
+            lastViewportSize = viewportSize
+            onViewportSize?(viewportSize)
         }
         let length = axis == .horizontal ? document.bounds.width : document.bounds.height
-        let viewport = axis == .horizontal ? visible.width : visible.height
+        let viewport = axis == .horizontal ? viewportSize.width : viewportSize.height
+        if observeExternalMovement, !applyingRestoration {
+            observeExternalUpwardScroll(visible: visible, document: document, length: length, viewport: viewport)
+        }
         let horizontalLayoutReady = axis != .horizontal || abs(length - CGFloat(ids.count) * stride) < 2
+        if restorationActive, pendingOffset == nil, let requestedOffset { pendingOffset = requestedOffset }
         if let pendingOffset, viewport > 0, horizontalLayoutReady {
             self.pendingOffset = nil
             let target = min(max(0, pendingOffset), max(0, length - viewport))
             var point = scroll.contentView.bounds.origin
             if axis == .horizontal { point.x = target } else { point.y = document.isFlipped ? target : max(0, document.bounds.maxY - viewport - target) }
             if abs((axis == .horizontal ? point.x : point.y) - (axis == .horizontal ? visible.minX : visible.minY)) > 0.5 {
+                applyingRestoration = true
                 scroll.contentView.scroll(to: point)
                 scroll.reflectScrolledClipView(scroll.contentView)
+                applyingRestoration = false
             }
         }
         let updated = scroll.documentVisibleRect
         lastOffset = axis == .horizontal ? updated.minX : (document.isFlipped ? updated.minY : document.bounds.maxY - updated.maxY)
         let report = CGRect(x: lastOffset, y: 0, width: length, height: viewport)
-        if report != lastReported {
+        if report != lastReported || restorationActive {
             lastReported = report
             onPosition?(lastOffset, length, viewport)
         }

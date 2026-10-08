@@ -104,6 +104,14 @@ no embedded terminal anywhere in this package (piece 1 of the Monitor architectu
   teardown releases all remaining work. Preserve lightweight per-conversation scroll, disclosure and
   live-follow state while the group remains open. Build immutable presentation values off the main
   actor and publish only complete values that changed.
+- Task-detail and both Parallel activity surfaces share automatic older-history pagination.
+  Initialize at latest activity; load near the oldest visible edge only after positioning settles.
+  Reveal retained rows in batches of 100 before reading another bounded event page. Only visible
+  Parallel columns initiate pagination; neighbors may hold leases. Preserve logical reading anchors
+  through prepends and regrouping, and keep live-follow paused while reading or restoring.
+  Bound automatic short-feed filling so collapsed groups cannot drain history on mount; renewed
+  upward scrolling or disclosure interaction permits more. Monitor scroll intent only for visible feeds.
+  Page loading ends after the corresponding item snapshot commits, never before background folding.
 - `.id(name)` for `buildParallelView(name:)`'s per-group VM reset is applied at that call site,
   wrapping the whole `ParallelView(vm)` value — never inside `ParallelView.body`. `ParallelView` owns
   `@State var viewModel: VM`, and that state is tied to the view's own identity as seen by its

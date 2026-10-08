@@ -13,6 +13,9 @@ public enum MonitorMetrics {
         case sidebarPreparation, sidebarScheduling, sidebarBuild, sidebarApply, sidebarUpdateLatency
         case parallelPreparation, parallelScheduling, parallelBuild, parallelApply, parallelUpdateLatency
         case parallelViewport, parallelLeases
+        case activityFold, activityPageRead
+        case activityViewport, activityPaginationRequest, activityScrollRestore
+        case detailPreparation, detailBuild, detailApply, detailUpdateLatency
     }
 
     private static let enabled = ProcessInfo.processInfo.environment["POLYBRIDGE_MONITOR_METRICS"] == "1"

@@ -98,7 +98,7 @@ extension ParallelVMTests {
         harness.sut.didDisappear()
     }
 
-    @Test func givenLongResumeChains_whenOnlyThreeColumnsAreResident_thenAllTheirTurnsAreLeased() async {
+    @Test func givenLongResumeChains_whenOnlyThreeColumnsAreResident_thenAllTheirTurnsAreLeased() async throws {
         let harness = makeSUT()
         harness.sut.updateViewport(offset: 0, width: 842)
         var tasks: [TaskInfo] = []
@@ -110,12 +110,22 @@ extension ParallelVMTests {
             }
         }
         harness.tasksBox.value = Dictionary(uniqueKeysWithValues: tasks.map { ($0.taskID, $0) })
+        let event = try #require(TaskEvent(line: "{\"v\":1,\"seq\":1,\"kind\":\"assistant_text\",\"text\":\"synthetic turn\"}"))
+        for task in tasks {
+            harness.itemsBox.value[task.taskID] = Timeline.items(from: [event])
+            harness.availabilityBox.value[task.taskID] = .available
+        }
         harness.sut.didAppear()
         harness.tasksSubject.send(tasks)
         await waitUntil { harness.sut.columns.count == 8 && harness.sut.isPresentationSettled }
         #expect(harness.sut.residentColumnCount == 3)
         #expect(harness.sut.leasedMemberCount == 48)
-        #expect(harness.sut.columns.filter(\.isResident).allSatisfy { $0.rows.count == 15 })
+        for column in harness.sut.columns where column.isResident {
+            #expect(column.rows.count == 1)
+            #expect(column.rows.first?.taskID == column.task.taskID, "seeded historical turns stay hidden behind the chronological frontier")
+            #expect(column.history.hasMore, "the fifteen previous seeded turns remain available")
+            #expect(harness.sut.columnState(for: column.id).activityMembers == [column.task.taskID])
+        }
         harness.sut.didDisappear()
     }
 

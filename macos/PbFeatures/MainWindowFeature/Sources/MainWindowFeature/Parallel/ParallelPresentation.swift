@@ -16,6 +16,8 @@ struct ParallelColumnPresentation: Equatable, Sendable {
     var liveStep: LiveStep?
     var pendingMessages: [PendingMessage] = []
     var isLoading = true
+    var history = EventHistoryState()
+    var paginationRevision = 0
     var summary: String?
     let start: Date?
     let memberTaskIDs: Set<String>
@@ -106,6 +108,12 @@ enum ParallelPresentationBuilder {
 
 /// Residency is based on geometry, never SwiftUI's speculative appearance callbacks.
 enum ParallelResidency {
+    nonisolated static func visibleIndices(count: Int, offset: CGFloat, width: CGFloat, stride: CGFloat) -> Range<Int> {
+        guard count > 0, width.isFinite, width > 0, offset.isFinite, stride.isFinite, stride > 0 else { return 0 ..< 0 }
+        let left = min(max(0, offset), max(0, CGFloat(count) * stride - width))
+        return min(count - 1, Int(floor(left / stride))) ..< min(count, Int(ceil((left + width) / stride)))
+    }
+
     nonisolated static func indices(count: Int, offset: CGFloat, width: CGFloat, stride: CGFloat) -> Range<Int> {
         guard count > 0, width.isFinite, width > 0, offset.isFinite, stride.isFinite, stride > 0 else { return 0 ..< 0 }
         let maximum = max(0, CGFloat(count) * stride - width)
@@ -120,6 +128,7 @@ struct ParallelColumnRenderValue: Equatable {
     let presentation: ParallelColumnPresentation
     let animatesArrival: Bool
     let isResident: Bool
+    let isVisible: Bool
 }
 
 extension ParallelColumnModel {
@@ -132,6 +141,8 @@ extension ParallelColumnModel {
         value.liveStep = liveStep
         value.pendingMessages = pendingMessages
         value.isLoading = isLoading
-        return ParallelColumnRenderValue(presentation: value, animatesArrival: animatesArrival, isResident: isResident)
+        value.history = history
+        value.paginationRevision = paginationRevision
+        return ParallelColumnRenderValue(presentation: value, animatesArrival: animatesArrival, isResident: isResident, isVisible: isVisible)
     }
 }

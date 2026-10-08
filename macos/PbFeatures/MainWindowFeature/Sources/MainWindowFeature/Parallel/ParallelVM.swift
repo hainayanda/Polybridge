@@ -1,8 +1,3 @@
-//
-//  ParallelVM.swift
-//  MainWindowFeature
-//
-
 import Combine
 import Foundation
 import Mockable
@@ -14,8 +9,7 @@ import PbUtilities
 
 // MARK: - ParallelUseCase
 
-/// The Parallel screen's data needs over `TaskListRepository`, `TaskSnapshotRepository`,
-/// `TaskActionRepository`, `EventStreamRepository` and `TakeoverService`.
+/// Data and action boundary for Parallel conversation presentation.
 @Mockable
 @MainActor
 protocol ParallelUseCase: Sendable {
@@ -24,41 +18,40 @@ protocol ParallelUseCase: Sendable {
     func snapshotsPublisher() -> AnyPublisher<[String: TaskInfo], Never>
     func busyPublisher() -> AnyPublisher<Set<String>, Never>
     func outcomesPublisher() -> AnyPublisher<[String: String], Never>
-    /// Titles load off-main, separately from the listing itself (F4-11/MS-LIST-5, the same gap
-    /// Codex review caught on `SidebarVM` in Phase 4b) — a column must refresh when one arrives even
-    /// though the listing itself did not change.
     func titlesPublisher() -> AnyPublisher<[String: String], Never>
 
-    /// The fresh listing entry for a member (F4-40: "using the fresh listing entry") — never a
-    /// cached copy retained by this screen.
+    /// Returns the fresh listing entry.
     func task(_ id: String) -> TaskInfo?
     func title(_ taskID: String) -> String
 
-    /// Decision 6: one lease per member, acquired while its column is on screen.
     func acquireEventLease(_ taskID: String) -> any EventStreamLease
     func events(for taskID: String) -> [TaskEvent]
     func items(for taskID: String) -> [TimelineItem]
     func itemsPublisher(for taskID: String) -> AnyPublisher<[TimelineItem], Never>
     func prompt(for taskID: String) -> String?
-    /// Whether the member's event log could actually be read the last time it was tailed (Monitor
-    /// piece 12, Design point 4) — mirrors `TaskDetailUseCase.eventsAvailability(for:)`/
-    /// `eventsAvailabilityPublisher(for:)`, backed by the same `EventStreamRepository`, so a column
-    /// can tell "nothing has happened yet" apart from "there is no log to read at all" and show a
-    /// skeleton only for the former.
+    func eventHistory(for taskID: String) -> EventHistoryState
+    func eventHistoryPublisher(for taskID: String) -> AnyPublisher<EventHistoryState, Never>
+    func conversationHistory(sessionID: String, cursor: String?) async throws -> TaskHistoryPage?
+    @discardableResult func loadMoreEvents(_ taskID: String) -> Bool
+    /// Distinguishes pending activity from a missing or unreadable log.
     func eventsAvailability(for taskID: String) -> EventAvailability
     func eventsAvailabilityPublisher(for taskID: String) -> AnyPublisher<EventAvailability, Never>
 
     func runningInSubtrees(of ids: [String]) -> [String]
     func cancelAll(_ ids: [String]) async
-    /// The durable outcome line a column shows — TaskDetail's own refusal channel.
     func setOutcome(_ id: String, _ text: String?)
 
-    /// Dispatches into `TakeoverService` synchronously; the VM routes to the task screen immediately
-    /// after calling this. Take over always opens Terminal.app.
+    /// Starts Terminal takeover synchronously before routing.
     func beginTakeover(taskID: String)
 }
 
-/// Optional readiness seam keeps existing previews and isolated use cases independent of storage.
+extension ParallelUseCase {
+    func eventHistory(for _: String) -> EventHistoryState { EventHistoryState() }
+    func eventHistoryPublisher(for id: String) -> AnyPublisher<EventHistoryState, Never> { Just(eventHistory(for: id)).eraseToAnyPublisher() }
+    @discardableResult func loadMoreEvents(_: String) -> Bool { false }
+    func conversationHistory(sessionID _: String, cursor _: String?) async throws -> TaskHistoryPage? { nil }
+}
+
 @MainActor
 protocol ParallelActivityReadiness {
     func activityReadyPublisher() -> AnyPublisher<Bool, Never>
@@ -66,8 +59,6 @@ protocol ParallelActivityReadiness {
 
 // MARK: - ParallelRouting
 
-/// Navigation the Parallel screen performs: routing to a member's own task screen, either from
-/// "Open task" or right after an embedded takeover.
 @Mockable
 @MainActor
 protocol ParallelRouting: Sendable {
@@ -76,18 +67,8 @@ protocol ParallelRouting: Sendable {
 
 // MARK: - ParallelVM
 
-/// View model for the Parallel screen: one column per group member, ported from the old
-/// `ParallelView.swift`/`ParallelColumn` with no behaviour change. The column's outcome line is always
-/// secondary-coloured; only TaskDetail's header turns red for "Refused".
-///
-/// Monitor piece 13: a column is one agent CONVERSATION (a resume chain, `MonitorCore.Conversation`),
-/// not one task — a resumed member inherits its parent's `group`, so before this every resume turn
-/// was its own `TaskNode` group member and so its own column (an orchestrator resuming 2 agents ×
-/// 8 rounds showed as 16 columns). Membership/order come from `Lineage.sections(_:).parallel.first`'s
-/// `conversations` (built once per `tasksPublisher` emission). Detailed activity leases are held
-/// for every member of resident conversations; off-screen conversations retain lightweight headers.
-/// Source updates freshen metadata from `useCase.task(_:)` (F4-40). Immutable resident inputs build
-/// independently off-main, while complete rendering equality guards main-actor publication.
+/// Presents complete conversation membership with bounded resident activity leases.
+/// Immutable value inputs build off-main; complete equality guards UI publication.
 @Observable
 @MainActor
 final class ParallelVM: ParallelViewModel {
@@ -123,13 +104,7 @@ final class ParallelVM: ParallelViewModel {
     @ObservationIgnored private var latestSnapshots: [String: TaskInfo] = [:]
     @ObservationIgnored private var latestBusy: Set<String> = []
     @ObservationIgnored private var latestOutcomes: [String: String] = [:]
-    /// Every task id belonging to any of this group's conversations (Monitor piece 13) — the lease
-    /// diff set and cancel-all's target list. A superset of the old top-level-only `memberIDs`,
-    /// since it now also names each conversation's earlier, already-terminal turns.
     @ObservationIgnored private var memberIDs: [String] = []
-    /// This group's conversations as of the last `tasksPublisher` emission — membership and order
-    /// only. `recompute()` always re-reads each member's own `useCase.task(_:)` before building a
-    /// column (F4-40), never a `TaskInfo` cached here.
     @ObservationIgnored private var conversations: [Conversation] = []
     @ObservationIgnored private var workflowTaskIDs: [String]?
     @ObservationIgnored private var workflowFocusedTaskIDs: Set<String>?
@@ -140,6 +115,20 @@ final class ParallelVM: ParallelViewModel {
     @ObservationIgnored private var viewportOffset: CGFloat = 0
     @ObservationIgnored private var viewportWidth: CGFloat = 0
     @ObservationIgnored private var residentIDs: Set<String> = []
+    @ObservationIgnored private var visibleIDs: Set<String> = []
+    @ObservationIgnored private var neededMemberIDs: Set<String> = []
+    @ObservationIgnored private lazy var history = ParallelActivityHistory(useCase: useCase,
+        onInventory: { [weak self] in self?.recomputeMembersAndLeases() },
+        onChange: { [weak self] memberID in self?.historyDidChange(memberID) })
+
+    @ObservationIgnored private lazy var acquisition = ParallelLeaseAcquisition(acquire: { [weak self] id in
+        guard let self, didSubscribe, neededMemberIDs.contains(id), leases[id] == nil else { return false }
+        acquireLease(id)
+        return true
+    }, onBurst: { [weak self] ids, start in self?.didAcquire(ids, start: start) }, onFinish: { [weak self] in
+        guard let self else { return }
+        history.update(conversations: orderedConversations, visible: visibleIDs, states: uiStates)
+    })
     @ObservationIgnored private var uiStates: [String: ParallelColumnUIState] = [:]
     @ObservationIgnored private var descriptors: [String: ParallelColumnPresentation] = [:]
     @ObservationIgnored private var presentations: [String: ParallelColumnPresentation] = [:]
@@ -151,7 +140,7 @@ final class ParallelVM: ParallelViewModel {
     @ObservationIgnored private var epoch: UInt64 = 0
     @ObservationIgnored private var scheduledStart: UInt64?
     @ObservationIgnored private var latencyStart: UInt64?
-    var isPresentationSettled: Bool { worker == nil && pendingInputs == nil }
+    var isPresentationSettled: Bool { worker == nil && pendingInputs == nil && acquisition.isSettled }
     var leasedMemberCount: Int { leases.count }
     var residentColumnCount: Int { residentIDs.count }
     var retainedColumnStateCount: Int { uiStates.count }
@@ -179,7 +168,9 @@ final class ParallelVM: ParallelViewModel {
             + ParallelLayout.dividerWidth
         let interval = ParallelResidency.indices(count: orderedConversations.count, offset: offset, width: width, stride: stride)
         let next = Set(interval.map { orderedConversations[$0].id })
-        guard next != residentIDs else { return }
+        let shown = ParallelResidency.visibleIndices(count: orderedConversations.count, offset: offset, width: width, stride: stride)
+        let nextVisible = Set(shown.map { orderedConversations[$0].id })
+        guard next != residentIDs || nextVisible != visibleIDs else { return }
         let inputs = updateResidency()
         publishColumns()
         schedule(inputs)
@@ -201,8 +192,7 @@ final class ParallelVM: ParallelViewModel {
         subscribeIfNeeded()
     }
 
-    /// Workflow membership comes from persisted dispatch associations, never group names. The
-    /// existing Parallel feed, actions and per-member leases remain the activity implementation.
+    /// Workflow membership follows persisted dispatch associations.
     func setWorkflowTaskIDs(_ ids: [String], focusedTaskIDs: Set<String>? = nil, titles: [String: String] = [:]) {
         workflowTaskIDs = ids
         workflowFocusedTaskIDs = focusedTaskIDs
@@ -210,17 +200,20 @@ final class ParallelVM: ParallelViewModel {
         if didSubscribe { recomputeMembersAndLeases() }
     }
     
-    /// Idempotent teardown releases leases and subscriptions; reopening starts fresh.
     func didDisappear() {
         epoch &+= 1
         revision &+= 1
         worker?.cancel()
+        acquisition.cancel()
+        neededMemberIDs.removeAll()
+        history.teardown()
         pendingInputs = nil
         desiredInputs.removeAll()
         completedInputs.removeAll()
         presentations.removeAll()
         descriptors.removeAll()
         residentIDs.removeAll()
+        visibleIDs.removeAll()
         uiStates.removeAll()
         orderedConversations.removeAll()
         viewportWidth = 0
@@ -259,9 +252,7 @@ final class ParallelVM: ParallelViewModel {
         publishDialog("Cancel every running task in this group?") {
             AlertAction(title: "Cancel all", role: .destructive) { [weak self] in
                 guard let self else { return }
-                // Membership is read at confirm time, not when the dialog opened: the dialog promises
-                // the whole group, and a member that joined meanwhile (a new root, or a resume, which
-                // `runningInSubtrees` never reaches via `spawned_by`) is part of it (PR #1 review).
+                // Resolve membership at confirmation so newly resumed tasks are included.
                 let ids = useCase.runningInSubtrees(of: memberIDs)
                 Task { [useCase] in await useCase.cancelAll(ids) }
             }
@@ -335,21 +326,13 @@ final class ParallelVM: ParallelViewModel {
             .store(in: &cancellables)
     }
     
-    /// Resolves complete group membership for headers and actions. Geometry subsequently selects
-    /// which conversations own detailed activity leases.
+    /// Resolves membership before viewport residency.
     private func recomputeMembersAndLeases() {
         let preparation = MonitorMetrics.begin()
         let group = Lineage.sections(latestTasks).parallel.first { $0.name == groupName }
-        let groupConversations: [Conversation]
-        if let workflowTaskIDs {
-            let byID = Dictionary(uniqueKeysWithValues: latestTasks.map { ($0.taskID, $0) })
-            let associated = workflowTaskIDs.compactMap { byID[$0] }
-            groupConversations = WorkflowOrchestratorConversation.conversations(associated).filter { conversation in
-                workflowFocusedTaskIDs.map { focus in conversation.members.contains { focus.contains($0.taskID) } } ?? true
-            }
-        } else {
-            groupConversations = WorkflowOrchestratorConversation.conversations(group?.conversations.flatMap(\.members) ?? [])
-        }
+        let groupConversations = ParallelMembership.conversations(tasks: latestTasks, group: group?.conversations ?? [],
+            workflowTaskIDs: workflowTaskIDs, focusedTaskIDs: workflowFocusedTaskIDs)
+.map { ParallelMembership.extending($0, states: uiStates) }
         let newIDs = groupConversations.flatMap { $0.members.map(\.taskID) }
         memberIDs = newIDs
         let migration = ParallelStateMigration.mapping(previous: conversations, current: groupConversations, retained: Set(uiStates.keys))
@@ -361,14 +344,7 @@ final class ParallelVM: ParallelViewModel {
         let empty = groupConversations.isEmpty
         if isEmpty != empty { isEmpty = empty }
 
-        // Freedom/repo diversity is read from each conversation's FIRST member (its starting
-        // configuration) — one entry per agent, not one per turn.
-        let firstMembers = groupConversations.map(\.first)
-        let freedoms = Set(firstMembers.compactMap(\.freedom).map { AccessLabel.text(freedom: $0) }).sorted().joined(separator: ", ")
-        let repos = Set(firstMembers.map { Format.repoName($0.repoPath) }).sorted().joined(separator: ", ")
-        let count = groupConversations.count
-        let subtitle = "\(count) agent\(count == 1 ? "" : "s") · \(freedoms) · \(repos)"
-        + (group?.startedAt.map { " · started \(Format.time($0))" } ?? "")
+        let subtitle = ParallelHeader.subtitle(groupConversations, startedAt: group?.startedAt)
         if headerSubtitle != subtitle { headerSubtitle = subtitle }
 
         MonitorMetrics.end(preparation, stage: .parallelPreparation, residentColumns: residentIDs.count, leasedMembers: leases.count)
@@ -381,6 +357,7 @@ final class ParallelVM: ParallelViewModel {
         let generation = UUID()
         leaseGenerations[taskID] = generation
         leases[taskID] = useCase.acquireEventLease(taskID)
+        if let owner = ownerByMember[taskID] { history.acquire(taskID, conversationID: owner, state: columnState(for: owner)) }
         itemsByTask[taskID] = useCase.items(for: taskID)
         availabilityByTask[taskID] = useCase.eventsAvailability(for: taskID)
         itemCancellables[taskID] = useCase.itemsPublisher(for: taskID)
@@ -389,6 +366,7 @@ final class ParallelVM: ParallelViewModel {
                 guard let self else { return }
                 guard leaseGenerations[taskID] == generation, itemsByTask[taskID] != items else { return }
                 itemsByTask[taskID] = items
+                history.changedItems(taskID)
                 refreshActivity(memberID: taskID)
             }
         availabilityCancellables[taskID] = useCase.eventsAvailabilityPublisher(for: taskID)
@@ -397,11 +375,13 @@ final class ParallelVM: ParallelViewModel {
                 guard let self else { return }
                 guard leaseGenerations[taskID] == generation, availabilityByTask[taskID] != availability else { return }
                 availabilityByTask[taskID] = availability
+                history.changedItems(taskID)
                 refreshActivity(memberID: taskID)
             }
     }
 
     private func releaseLease(_ taskID: String) {
+        history.release(taskID)
         leases[taskID]?.release()
         leases[taskID] = nil
         leaseGenerations[taskID] = nil
@@ -413,8 +393,7 @@ final class ParallelVM: ParallelViewModel {
         availabilityByTask[taskID] = nil
     }
     
-    /// Source changes freshen metadata for every conversation (F4-40), then capture value inputs
-    /// for resident columns. Activity and viewport hot paths reuse this ownership/order skeleton.
+    /// Refresh metadata, retaining the ownership skeleton for activity and viewport updates.
     private func recompute() {
         let preparationStart = MonitorMetrics.begin()
         defer { MonitorMetrics.end(preparationStart, stage: .parallelPreparation, residentColumns: residentIDs.count, leasedMembers: leases.count) }
@@ -446,10 +425,17 @@ final class ParallelVM: ParallelViewModel {
         let interval = ParallelResidency.indices(count: orderedConversations.count, offset: viewportOffset,
                                                  width: viewportWidth, stride: stride)
         residentIDs = Set(interval.map { orderedConversations[$0].id })
-        let leaseStart = MonitorMetrics.begin()
+        let shown = ParallelResidency.visibleIndices(count: orderedConversations.count, offset: viewportOffset,
+                                                     width: viewportWidth, stride: stride)
+        visibleIDs = Set(shown.map { orderedConversations[$0].id })
         let needed = Set(orderedConversations.filter { residentIDs.contains($0.id) }.flatMap { $0.members.map(\.taskID) })
+        let leaseStart = MonitorMetrics.begin()
         for id in Set(leases.keys).subtracting(needed) { releaseLease(id) }
-        for id in needed.subtracting(Set(leases.keys)) { acquireLease(id) }
+        neededMemberIDs = needed
+        history.update(conversations: orderedConversations, visible: visibleIDs, states: uiStates)
+        let shownConversations = orderedConversations.filter { visibleIDs.contains($0.id) }
+        let neighbors = orderedConversations.filter { residentIDs.contains($0.id) && !visibleIDs.contains($0.id) }
+        acquisition.update(order: ParallelLeaseOrder.members(shownConversations) + ParallelLeaseOrder.members(neighbors), existing: Set(leases.keys))
         MonitorMetrics.end(leaseStart, stage: .parallelLeases, residentColumns: residentIDs.count, leasedMembers: leases.count)
         for id in Set(presentations.keys).subtracting(residentIDs) {
             presentations[id] = nil
@@ -460,6 +446,30 @@ final class ParallelVM: ParallelViewModel {
             inputs[conversation.id] = captureInput(conversation)
         }
         return inputs
+    }
+
+    private func didAcquire(_ ids: [String], start: UInt64?) {
+        let preparation = MonitorMetrics.begin()
+        defer { MonitorMetrics.end(preparation, stage: .parallelPreparation, residentColumns: residentIDs.count, leasedMembers: leases.count) }
+        MonitorMetrics.end(start, stage: .parallelLeases, residentColumns: residentIDs.count, leasedMembers: leases.count)
+        var inputs = desiredInputs
+        for id in Set(ids.compactMap { ownerByMember[$0] }) {
+            if let conversation = conversationByID[id] { inputs[id] = captureInput(conversation) }
+        }
+        schedule(inputs)
+    }
+
+    private func loadOlder(_ id: String) -> Bool {
+        guard visibleIDs.contains(id), residentIDs.contains(id) else { return false }
+        return history.retryOlder(id)
+    }
+
+    private func historyDidChange(_ memberID: String) {
+        guard leases[memberID] != nil else { return }
+        // History completion follows repository folding; capture its committed items directly.
+        itemsByTask[memberID] = useCase.items(for: memberID)
+        availabilityByTask[memberID] = useCase.eventsAvailability(for: memberID)
+        refreshActivity(memberID: memberID)
     }
 
     private func refreshActivity(memberID: String) {
@@ -473,13 +483,16 @@ final class ParallelVM: ParallelViewModel {
     }
 
     private func captureInput(_ conversation: Conversation) -> ParallelColumnInput {
-        let members = conversation.members.map { member in
+        let members = conversation.members.filter { history.isRevealed($0.taskID, conversationID: conversation.id) }.map { member in
             let snapshot = WorkflowNodePresentation.merged(latestSnapshots[member.taskID], with: member)
             return ParallelMemberInput(task: snapshot, items: itemsByTask[member.taskID] ?? [],
                 prompt: snapshot.raw["display_prompt"]?.stringValue ?? useCase.prompt(for: member.taskID),
                 availability: availabilityByTask[member.taskID] ?? .loading)
         }
-        return ParallelColumnInput(base: basePresentation(conversation), members: members,
+        var base = basePresentation(conversation)
+        base.history = history.state(for: conversation.id, allAcquired: conversation.members.allSatisfy { leases[$0.taskID] != nil })
+        base.paginationRevision = history.revision(for: conversation.id)
+        return ParallelColumnInput(base: base, members: members,
             events: useCase.events(for: conversation.current.taskID), snapshot: latestSnapshots[conversation.current.taskID])
     }
 
@@ -519,6 +532,11 @@ final class ParallelVM: ParallelViewModel {
             column.onDidPresent = { [weak self] in self?.arrivalTracker.didPresent(conversation.id) }
             column.memberTaskIDs = presentation.memberTaskIDs
             column.isResident = residentIDs.contains(column.id)
+            column.isVisible = visibleIDs.contains(column.id)
+            column.history = presentation.history
+            column.paginationRevision = presentation.paginationRevision
+            column.onLoadMore = column.isVisible && (column.history.hasMore || column.history.error != nil)
+                ? { [weak self] in self?.loadOlder(conversation.id) ?? false } : nil
             return column
         }
         guard columns.map(\.renderValue) != next.map(\.renderValue) else { return }
@@ -570,31 +588,13 @@ final class ParallelVM: ParallelViewModel {
     }
 
     private func didTapTakeover(taskID: String) {
-        guard WorkflowNodePresentation.allowsTerminal(latestSnapshots[taskID] ?? useCase.task(taskID)) else { return }
-        guard let task = useCase.task(taskID) else { return }
-        let isRunning = task.status.isRunning
-        let title = isRunning ? "Take over this task?" : "Continue this session in a terminal?"
-        let buttonTitle = isRunning ? "Stop it and take over" : "Continue in terminal"
-        let message = "The headless run is stopped first if it is still going, then the same conversation opens in Terminal.app. It runs "
-        + "under your own default permissions, not \(task.freedom ?? "this task's freedom")."
-        publishDialog(title, description: message) {
-            AlertAction(title: buttonTitle) { [weak self] in
-                guard let self else { return }
-                guard !refuseIfConversationMovedOn(from: taskID) else { return }
-                // Dispatches synchronously into a service-owned task, then routes immediately —
-                // decision 5's call path, kept exact (`ParallelView.swift:~123-127`).
-                useCase.beginTakeover(taskID: taskID)
-                routing.selectTask(taskID)
+        let dialog = ParallelTakeover.dialog(taskID: taskID,
+            task: useCase.task(taskID), snapshot: latestSnapshots[taskID]) { [weak self] in
+                guard let self else { return nil }
+                let current = conversations.first { $0.members.contains { $0.taskID == taskID } }?.current.taskID
+                return (useCase, routing, current)
             }
-        }
-    }
-
-    /// Refuse takeover when a conversation gained a newer member while its dialog was open.
-    private func refuseIfConversationMovedOn(from dialogTaskID: String) -> Bool {
-        let conversation = conversations.first { $0.members.contains { $0.taskID == dialogTaskID } }
-        let currentID = conversation?.current.taskID
-        guard currentID != dialogTaskID else { return false }
-        useCase.setOutcome(currentID ?? dialogTaskID, "The conversation moved on — review and try again.")
-        return true
+        guard let dialog else { return }
+        publishDialog(dialog)
     }
 }

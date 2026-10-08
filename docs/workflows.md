@@ -1202,9 +1202,13 @@ The workflow inspector uses left-aligned child links, groups repeated invocation
 workflow identity, and keeps individual run targets distinct. Repeated-run groups start collapsed;
 disclosure changes use the sidebar animation and preserve the chosen state during polling.
 
-Parallel cells retain at least six recent activity rows and use spare cell height to show more
-recent history. Older rows leave the recent view only when space is needed. **Show all** reveals
-the complete history and suspends follow-live; it does not resize the cell.
+Task detail, Parallel, and the workflow activity pane start at recent activity. Scrolling toward
+the top automatically reveals older loaded rows and requests bounded older event pages. There
+is no Show all or Load more button. Reading position and tool disclosures survive loading and
+Parallel viewport eviction; only visible columns initiate older-page requests. Errors pause
+automatic loading and expose **Retry older activity**. Scrolling back to the latest activity
+resumes live following. Short feeds pause automatic filling after one additional history load;
+scroll upward or change a tool disclosure to request more.
 Canvas zoom controls share a consistent height. The workflow editor bounds its canvas to its
 pane so the left edge remains reachable without changing saved node positions.
 
@@ -1236,8 +1240,10 @@ projection cannot leave stale authority ready. Derivative schema upgrades rebuil
 without rewriting historical metadata.
 
 Activity initially reads the newest 100 events and tails new events from that boundary.
-**Load more** reads one older byte window, with a 1 MiB scan ceiling and the existing response
-byte ceilings. Cursors bind file identity and snapshot integrity; replacement or truncation
+Approaching within 200 points of the oldest visible activity automatically reads one older
+byte window, with a 1 MiB scan ceiling and the existing response byte ceilings. Each conversation
+allows one older-history operation at a time. Loaded rows are revealed in batches of up to 100
+before another event page is requested. Cursors bind file identity and snapshot integrity; replacement or truncation
 requires a fresh generation. Loaded pages retain tool-call/result pairing across boundaries and
 preserve the scroll anchor when older events prepend. Deliberate selection or filter changes
 reset paging. `get_task_event_page` exposes the bounded cursor reader to MCP callers; existing
