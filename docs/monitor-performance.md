@@ -796,9 +796,16 @@ opening completed activity caused sustained SwiftUI layout work (about 98% CPU a
 minutes). A three-second, content-free stack sample placed all 223 main-thread samples in
 SwiftUI graph/layout work. The owned verification process was stopped. This observation is
 an application hang, not automation observation overhead; installed activity verification is
-incomplete until it is resolved. Synthetic variable-height markdown feeds remain responsive,
-but reproduce incorrect bottom positioning and follow-state changes during resizing. Those
-regressions are under investigation and do not yet establish the hang's cause.
+incomplete until it is resolved. The installed-app hang was not reproduced in the synthetic
+variable-height markdown feed experiments. Those experiments reproduced incorrect bottom
+positioning and follow-state changes during resizing; synthetic responsiveness was not
+quantitatively measured. These regressions do not establish the hang's cause.
+The CPU number is one Monitor-process observation from macOS `ps %cpu`, whose local manual
+describes a decaying average over up to a minute. It is not a scenario peak; its normalization
+to a core or total machine capacity was not independently established. `sample` reports native
+physical-footprint strings `116.1M` and peak `116.2M`; the preserved evidence and local manual
+do not establish the `M` scale. Byte values are unavailable, and these rounded footprint values
+are excluded from comparisons with the separate RSS measurements.
 The attempted positioning fixes did not converge across all synthetic shapes and were removed;
 production sources remain at `99c517b`. Their evidence is retained outside the repository.
 The saved Monitor bundle was restored and its signature and executable hash verified; the failed
