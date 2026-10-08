@@ -772,6 +772,15 @@ app-level anchor restoration remain unverified.
 The displayed 100 ms target is unverified. These limitations remain explicit;
 unit/native-hosted coverage does not substitute for the missing actual-app checks.
 
+The post-review eight-conversation release observation is preserved separately as
+`actual_app_post_review` with raw content-free timing records. Its mixed load/interaction/poll
+sample includes all three surfaces, not matched per-scenario tails. Parallel preparation p95 was
+6.18 ms and application 0.072 ms, but background build p95 was 200.65 ms and scheduling 151.42 ms.
+Task-detail build/application p95 were 85.59/0.342 ms; page read/fold p95 were 614.91/31.18 ms.
+All recorded presentation builds, reads and folds were off-main. Recorded RSS high-water was
+396,722,176 bytes after requested history and multiple surfaces. These observations reinforce the
+remaining scheduling/read/build costs; they do not establish the displayed interaction target.
+
 Repository and model timings precede the final short-fill, reset and paging-admission fixes.
 The folding and background presentation algorithms are unchanged, but the admission and UI paths
 have changed; these experiments do not mount SwiftUI feeds or measure the final UI fixes.
