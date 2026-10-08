@@ -6,6 +6,21 @@ import Testing
 
 struct MonitorMetricsTests {
     @Test
+    func givenParallelCounts_whenEncoded_thenOnlyNumericResidencyCounters() throws {
+        // given
+        let data = MonitorMetrics.encoded(stage: .parallelBuild, elapsedNanoseconds: 0, bytes: 0, peakRSSBytes: 0,
+                                          residentColumns: 4, leasedMembers: 64, builtColumns: -1)
+        // when
+        let record = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        // then
+        #expect(record["resident_columns"] as? Int == 4)
+        #expect(record["leased_members"] as? Int == 64)
+        #expect(record["built_columns"] as? Int == 0)
+        #expect(Set(record.keys) == ["monitor_metric_version", "stage", "duration_ms", "stdout_bytes", "stderr_bytes",
+                                     "peak_rss_bytes", "monotonic_ns", "resident_columns", "leased_members", "built_columns"])
+    }
+
+    @Test
     func givenMeasurement_whenEncoded_thenOnlyFixedLabelsAndNumericMetadata() throws {
         // given
         let data = MonitorMetrics.encoded(stage: .decode, elapsedNanoseconds: 2_500_000, bytes: 128, peakRSSBytes: 4096)

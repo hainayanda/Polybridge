@@ -538,3 +538,96 @@ are retained in the app result artifact.
 Final independent read-only Codex review recomputed the app and timing-disabled CLI findings,
 checked baseline provenance, source/executable hashes and stack evidence, and found no remaining
 findings. The final private-reference and whitespace guards passed after report updates.
+
+## Stage 4: viewport-bound Parallel activity
+
+This stage targets interaction after launch, in both standalone Parallel groups and the activity
+columns beneath the workflow canvas. The existing startup findings and unmet startup targets remain
+unchanged. Detailed feeds are resident for viewport-intersecting columns plus one neighbor on each
+side; complete lightweight group metadata remains available for ordering, summaries and actions.
+Viewport measurements, rather than speculative lazy-view appearance, determine activity leases.
+
+### Reproduction and boundaries
+
+Create fixtures only in a new, empty synthetic HOME:
+
+```sh
+.venv/bin/python scripts/benchmark-parallel.py --fixture-home /tmp/pb-parallel-64 --conversations 64 --chain 16 --activity long --workflow
+.venv/bin/python scripts/profile-monitor.py --app 'macos/build/Polybridge Monitor.app' --home /tmp/pb-parallel-64 --output /tmp/pb-parallel-profile --seconds 300
+.venv/bin/python scripts/benchmark-parallel.py --fixture-home /tmp/pb-parallel-64 --append-burst 32
+```
+
+The fixture matrix is 8/64/256 conversations, one/16 resume checkpoints per conversation, and
+sparse/long activity. Sparse checkpoints contain eight normalized events (two paired tool calls);
+long checkpoints contain 516 (256 paired calls). Every checkpoint has a deterministic summary and
+resume ancestry. `--workflow` adds one saved definition and one completed execution associated
+with every checkpoint, allowing the same data to exercise the embedded workflow pane. Wrapper
+commands permit reads only. Burst notices deliberately stress tailing after synthetic completion;
+they do not simulate a real live-agent lifecycle.
+
+The opt-in Swift benchmark uses the same conversation, checkpoint and tool-call counts:
+
+```sh
+cd macos/PbFeatures/MainWindowFeature
+POLYBRIDGE_MONITOR_METRICS=1 PB_PARALLEL_BENCHMARK_OUTPUT=/tmp/pb-parallel-model-results.json swift test --no-parallel --filter benchmarkParallelResidency
+```
+
+Model-settlement timestamps measure computed presentation application, not displayed frames.
+This benchmark uses a debug test build with generated Mockable dependencies. Its settlement
+observer polls every 50 ms; elapsed settlement includes that observation floor. Precise internal
+preparation, scheduling, build and application boundaries come from opt-in MonitorMetrics records.
+The package's existing test target cannot compile in release mode: release omits source mocks and
+DEBUG preview fixtures referenced by tests. Two attempted optimized test builds failed before
+collecting observations. The release app is built and assessed separately.
+The eager comparator measures timeline computation over every column, excluding CLI reads, view
+layout and SwiftUI rendering; it is not a baseline of the entire old application. CUA action and
+accessibility observation round trips include automation overhead and must not be substituted for
+input-to-visible-update latency. Stack sampling is a separate perturbed diagnostic run. Ten
+observations provide descriptive tails, not stable tail estimates.
+
+### Final model measurements and remaining validation
+
+The final post-retention debug run completed 840 observations across all 12 fixture shapes and
+seven scenarios (ten observations per shape/scenario). All 720 completed presentation builds ran
+off the main thread. VM-owned residency remained at most four columns and 64 checkpoint leases
+for the measured viewport. Unchanged polls produced no builds or presentation publications.
+Raw numeric observations are in [monitor-2026-10-08-parallel.json](benchmarks/monitor-2026-10-08-parallel.json).
+
+For 256 conversations with 16 checkpoints and long feeds, descriptive p95 measurements were:
+
+| Boundary | Milliseconds |
+| --- | ---: |
+| Former eager all-column timeline CPU comparator | 5109.31 |
+| Resident background build during viewport crossing | 74.20 |
+| Resident background build during rapid reversal | 80.40 |
+| Changed resident activity: preparation / application | 1.89 / 0.96 |
+| Prompt toggle: preparation / application | 1.00 / 1.38 |
+| Viewport main-actor work, including lease reacquisition | 41.93 |
+| Lease reacquisition within viewport work | 33.95 |
+| Initial mock membership preparation | 281.37 |
+
+The background build target is met in these observations; the 16 ms main-actor target is unmet
+for viewport transitions and initial membership preparation. These boundaries measure different
+amounts of work: the eager comparator processes the whole group, while resident builds process
+nearby columns. They establish reduced computation, not an equivalent whole-app speedup ratio.
+
+An earlier debug run exposed repeated full ancestry construction during conversation grouping.
+Grouping now indexes ancestry and grouping keys once per input, with parity tests; the final run
+passed without relaxing assertions. The interrupted exploratory run is not included in final
+statistics.
+
+Actual-app baseline scrolling was observed for 8, 64 and 256 columns. Automation round trips
+were slow and one app-binding operation stalled; overlapping exploratory runs cannot establish
+a matched before/after latency or memory comparison. Final optimized displayed-frame latency,
+embedded-pane interaction verification, native stall profiling and traversal memory validation
+remain incomplete. The visible-interaction p95 target of 100 ms is therefore unverified. SwiftUI
+may retain lazy view snapshots after eviction; the proven bounds apply to VM-owned heavy models
+and leases, not a guarantee of constant total process memory. Lease reacquisition is the clearest
+remaining measured interaction cost.
+
+Final verification: 845 MainWindowFeature tests and 17 Python benchmark/profile tooling tests
+passed after the retention fixes. MonitorCore (211) and PbRepository (255) suites passed during
+this stage. SwiftFormat reported no changes needed; SwiftLint reported zero violations. The
+private-reference guard and diff whitespace check passed. The final release product compiled
+and the local app bundle assembled successfully without installation. Independent read-only
+Codex review found no remaining code or report blockers after the raw metric evidence was added.

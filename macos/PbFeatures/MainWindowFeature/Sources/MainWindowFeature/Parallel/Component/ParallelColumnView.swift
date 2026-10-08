@@ -2,9 +2,8 @@
 //  ParallelColumnView.swift
 //  MainWindowFeature
 //
-//  Dumb component: a Model plus two action closures the VM supplies; the "show all" and tool-card
-//  expansion are local `@State`, allowed per the root AGENTS.md's Component Models section
-//  ("components may hold local @State").
+//  Presentation and action closures come from the VM. Lightweight reading and disclosure state
+//  survives viewport eviction; measured row geometry stays local to this mounted activity view.
 //
 //  Monitor piece 13: a column is one agent CONVERSATION (a resume chain), not one task — `rows` is
 //  the whole conversation's concatenated timeline (`MonitorCore.ConversationTimeline`, the same
@@ -60,6 +59,7 @@ struct ParallelColumnModel: Identifiable {
     var animatesArrival = false
     var onDidPresent: () -> Void = {}
     var memberTaskIDs: Set<String> = []
+    var isResident = true
 
     /// "<repo name> · <Backend>" plus "· N turns" when `turns > 1` — the task header's subtitle,
     /// without the session id.
@@ -126,28 +126,42 @@ struct ParallelRowMeasurement: Equatable {
 struct ParallelColumnScrollKey: Equatable {
     let rowIDs: [String]
     let viewport: CGSize
+    var isLoading = false
+    var nativeViewport: CGSize = .zero
+}
+
+// MARK: - ParallelScrollPosition
+
+@MainActor
+private final class ParallelScrollPosition {
+    var offset: CGFloat = 0
+    var contentHeight: CGFloat = 0
+    var viewportHeight: CGFloat = 0
 }
 
 // MARK: - ParallelColumnView
 
 struct ParallelColumnView: View {
     let model: ParallelColumnModel
-    @State private var showAll = false
-    @State private var expandedGroups: Set<String> = []
+    @State private var state: ParallelColumnUIState
     @State private var seenRowIDs: Set<String> = []
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var followLive = FollowLiveScrollState()
     @State private var rowHeights: [String: CGFloat] = [:]
     @State private var rowWidths: [String: CGFloat] = [:]
     @State private var viewportHeight: CGFloat = 0
     @State private var viewportWidth: CGFloat = 0
     @State private var tailHeight: CGFloat = 0
-    @State private var retainedFirstID: String?
-    @State private var recentFirstID: String?
     @State private var adaptingToBottom = false
+    @State private var rowFrames: [String: CGRect] = [:]
+    @State private var restoring = true
+    @State private var restorationOffset: CGFloat?
+    @State private var nativeViewportSize: CGSize = .zero
+    @State private var position = ParallelScrollPosition()
 
-    init(model: ParallelColumnModel) {
+    init(model: ParallelColumnModel, state: ParallelColumnUIState? = nil) {
         self.model = model
+        let retainedState = state ?? ParallelColumnUIState()
+        _state = State(initialValue: retainedState)
         // Revealing older history is not a new activity arrival.
         _seenRowIDs = State(initialValue: Set(model.activityRows.map(\.id)))
     }
@@ -161,8 +175,8 @@ struct ParallelColumnView: View {
     private var availableHeight: CGFloat { max(0, viewportHeight - tailHeight - 53) }
 
     var body: some View {
-        let shown = ParallelColumnModel.visibleRows(model.activityRows, showAll: showAll, availableHeight: availableHeight,
-                                                   heights: measuredHeights, retainedFirstID: retainedFirstID, previousFirstID: recentFirstID)
+        let shown = ParallelColumnModel.visibleRows(model.activityRows, showAll: state.showAll, availableHeight: availableHeight,
+                                                   heights: measuredHeights, retainedFirstID: state.retainedFirstID, previousFirstID: state.recentFirstID)
         VStack(alignment: .leading, spacing: 10) {
             header
             if let message = model.outcomeMessage {
@@ -184,14 +198,14 @@ struct ParallelColumnView: View {
         .frame(maxHeight: .infinity, alignment: .top)
         .opensFileLinks(repoPath: model.task.repoPath)
         .onChange(of: measuredHeights) { _, _ in
-            if !showAll, retainedFirstID == nil, shown.allSatisfy({ measuredHeights[$0.id] != nil }) {
-                recentFirstID = shown.first?.id
+            if !state.showAll, state.retainedFirstID == nil, shown.allSatisfy({ measuredHeights[$0.id] != nil }) {
+                state.recentFirstID = shown.first?.id
             }
         }
         .onChange(of: shown.map(\.id)) { _, _ in
-            if followLive.isFollowing { adaptingToBottom = true }
-            if !showAll, retainedFirstID == nil, shown.allSatisfy({ measuredHeights[$0.id] != nil }) {
-                recentFirstID = shown.first?.id
+            if state.followLive.isFollowing { adaptingToBottom = true }
+            if !state.showAll, state.retainedFirstID == nil, shown.allSatisfy({ measuredHeights[$0.id] != nil }) {
+                state.recentFirstID = shown.first?.id
             }
         }
     }
@@ -237,15 +251,20 @@ struct ParallelColumnView: View {
                     scrollingFeed(shown, width: viewport.size.width)
                         .frame(width: viewport.size.width, height: viewport.size.height)
                         .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
-                            if followLive.isFollowing,
+                            if state.followLive.isFollowing,
                                size != CGSize(width: viewportWidth, height: viewportHeight) {
                                 adaptingToBottom = true
+                            }
+                            if !state.followLive.isFollowing,
+                               size != CGSize(width: viewportWidth, height: viewportHeight) {
+                                restoring = true
+                                restorationOffset = nil
                             }
                             viewportHeight = size.height
                             viewportWidth = size.width
                         }
                         .overlay(alignment: .topLeading) {
-                            if !showAll, retainedFirstID == nil,
+                            if !state.showAll, state.retainedFirstID == nil,
                                let candidate = ParallelColumnModel.measurementCandidate(model.activityRows, shown: shown,
                                                                                          availableHeight: availableHeight, heights: measuredHeights) {
                                 rowView(candidate)
@@ -266,17 +285,12 @@ struct ParallelColumnView: View {
                         }
                 }
                     .task(id: ParallelColumnScrollKey(rowIDs: shown.map(\.id),
-                                                     viewport: CGSize(width: viewportWidth, height: viewportHeight))) {
-                        await Task.yield()
-                        guard !Task.isCancelled else { return }
-                        guard followLive.isFollowing else { adaptingToBottom = false; return }
-                        var transaction = Transaction()
-                        transaction.disablesAnimations = true
-                        withTransaction(transaction) { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
-                        adaptingToBottom = false
+                                                     viewport: CGSize(width: viewportWidth, height: viewportHeight),
+                                                     isLoading: model.isLoading, nativeViewport: nativeViewportSize)) {
+                        await settleScroll(shown, proxy: proxy)
                     }
                     .followLiveScroll(token: ActivityUpdateToken(rows: model.rows, liveStep: model.liveStep, pendingMessages: model.pendingMessages),
-                                      enabled: followLive.isFollowing, proxy: proxy, target: Self.bottomID)
+                                      enabled: !restoring && state.followLive.isFollowing, proxy: proxy, target: Self.bottomID)
             }
         }
     }
@@ -284,7 +298,8 @@ struct ParallelColumnView: View {
     private static let bottomID = "column-bottom"
 
     private func scrollingFeed(_ shown: [ActivityRow], width: CGFloat) -> some View {
-        ScrollView {
+        let shownIDs = shown.map(\.id)
+        return ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 ForEach(shown) { row in
                     rowView(row)
@@ -295,14 +310,18 @@ struct ParallelColumnView: View {
                             rowHeights[row.id] = measurement.size.height
                             rowWidths[row.id] = measurement.viewportWidth
                         }
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("parallel-column-document")) } action: { frame in
+                            rowFrames[row.id] = frame
+                            if restoring { restoreAnchor(shown) }
+                        }
                         .pbFadeIn(animate: !seenRowIDs.contains(row.id))
                         .onAppear { seenRowIDs.insert(row.id) }
                 }
                 VStack(alignment: .leading, spacing: 20) {
-                    if model.activityRows.count > ParallelColumnModel.windowSize, !showAll {
+                    if model.activityRows.count > ParallelColumnModel.windowSize, !state.showAll {
                         Button("Show all \(ParallelColumnModel.itemCount(model.rows)) steps") {
-                            followLive.suspend()
-                            withAnimation(PbMotion.disclosure(reduceMotion: reduceMotion)) { showAll = true }
+                            state.followLive.suspend()
+                            withAnimation(PbMotion.disclosure(reduceMotion: reduceMotion)) { state.showAll = true }
                         }
                         .buttonStyle(.link)
                         .font(.pb(.secondary))
@@ -323,19 +342,76 @@ struct ParallelColumnView: View {
                 Color.clear.frame(height: 1).id(Self.bottomID)
             }
             .padding(.bottom, 12)
-            .background(LiveScrollPositionObserver { offset, contentHeight, viewportHeight in
-                if adaptingToBottom {
-                    // Native layout can report a temporary upward offset while history is
-                    // prepended. Keep the bottom baseline until scroll restoration completes.
-                    followLive.observe(offset: max(0, contentHeight - viewportHeight),
-                                       contentHeight: contentHeight, viewportHeight: viewportHeight)
-                    return
-                }
-                let wasFollowing = followLive.isFollowing
-                followLive.observe(offset: offset, contentHeight: contentHeight, viewportHeight: viewportHeight)
-                if wasFollowing, !followLive.isFollowing { retainedFirstID = shown.first?.id }
-                if followLive.isFollowing { retainedFirstID = nil }
+            .coordinateSpace(name: "parallel-column-document")
+            .background(ParallelScrollObserver(axis: .vertical, restorationOffset: restorationOffset,
+                                               onViewportSize: observeViewportSize) { offset, contentHeight, viewportHeight in
+                position.offset = offset
+                position.contentHeight = contentHeight
+                position.viewportHeight = viewportHeight
+                completeRestorationIfReady()
+                observeScroll(shownIDs)
             })
+        }
+    }
+
+    private func observeViewportSize(_ size: CGSize) {
+        guard size != nativeViewportSize else { return }
+        if nativeViewportSize != .zero, !state.followLive.isFollowing {
+            restoring = true
+            restorationOffset = nil
+        }
+        nativeViewportSize = size
+    }
+
+    private func settleScroll(_ shown: [ActivityRow], proxy: ScrollViewProxy) async {
+        await Task.yield()
+        guard !Task.isCancelled, !model.isLoading, viewportHeight > 0, nativeViewportSize.height > 0 else { return }
+        if restoring {
+            restoreAnchor(shown)
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            if state.followLive.isFollowing { restoring = false } else { completeRestorationIfReady() }
+            observeScroll(shown.map(\.id))
+        }
+        guard !restoring, state.followLive.isFollowing else { adaptingToBottom = false; return }
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
+        adaptingToBottom = false
+    }
+
+    private func completeRestorationIfReady() {
+        guard restoring, !model.isLoading, position.viewportHeight > 0,
+              let restorationOffset else { return }
+        let target = min(max(0, restorationOffset), max(0, position.contentHeight - position.viewportHeight))
+        if abs(position.offset - target) < 1 { restoring = false }
+    }
+
+    private func observeScroll(_ shownIDs: [String]) {
+        guard !restoring else { return }
+        state.scrollOffset = position.offset
+        if let anchor = ParallelVerticalAnchor.capture(ids: shownIDs, frames: rowFrames,
+                                                       viewportHeight: position.viewportHeight, offset: position.offset) {
+            state.anchor = anchor
+        }
+        if adaptingToBottom {
+            state.followLive.observe(offset: max(0, position.contentHeight - position.viewportHeight),
+                                     contentHeight: position.contentHeight, viewportHeight: position.viewportHeight)
+            return
+        }
+        let wasFollowing = state.followLive.isFollowing
+        state.followLive.observe(offset: position.offset, contentHeight: position.contentHeight, viewportHeight: position.viewportHeight)
+        if wasFollowing, !state.followLive.isFollowing { state.retainedFirstID = shownIDs.first }
+        if state.followLive.isFollowing { state.retainedFirstID = nil }
+    }
+
+    private func restoreAnchor(_ shown: [ActivityRow]) {
+        guard !state.followLive.isFollowing else { return }
+        if let anchor = state.anchor,
+           let id = anchor.resolvedID(in: shown.map(\.id)), let frame = rowFrames[id] {
+            restorationOffset = anchor.offset(in: frame)
+        } else {
+            restorationOffset = state.scrollOffset
         }
     }
 
@@ -343,9 +419,9 @@ struct ParallelColumnView: View {
     private func rowView(_ row: ActivityRow) -> some View {
         switch row {
         case .toolGroup(let group):
-            ToolGroupCardView(group: group, start: model.start, isExpanded: expandedGroups.contains(group.id)) {
+            ToolGroupCardView(group: group, start: model.start, isExpanded: state.expandedGroups.contains(group.id)) {
                 withAnimation(PbMotion.disclosure(reduceMotion: reduceMotion)) {
-                    if !expandedGroups.insert(group.id).inserted { expandedGroups.remove(group.id) }
+                    if !state.expandedGroups.insert(group.id).inserted { state.expandedGroups.remove(group.id) }
                 }
             }
         case .single(let row):

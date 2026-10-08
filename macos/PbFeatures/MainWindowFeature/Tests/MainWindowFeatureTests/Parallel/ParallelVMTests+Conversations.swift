@@ -36,7 +36,7 @@ extension ParallelVMTests {
         tasksSubject.send(members)
 
         // then — two columns, one per agent conversation, never six
-        await waitUntil { sut.columns.count == 2 }
+        await waitUntil { sut.columns.count == 2 && sut.isPresentationSettled }
         #expect(sut.headerSubtitle.hasPrefix("2 agents"))
         #expect(
             Set(leasesBox.value.keys) == ["a1", "a2", "a3", "b1", "b2", "b3"],
@@ -77,7 +77,7 @@ extension ParallelVMTests {
         for member in members { tasksBox.value[member.taskID] = member }
         sut.didAppear()
         tasksSubject.send(members)
-        await waitUntil { sut.columns.count == 1 }
+        await waitUntil { sut.columns.count == 1 && sut.isPresentationSettled }
 
         // when
         sut.didDisappear()

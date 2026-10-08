@@ -10,24 +10,6 @@ import Testing
 
 @MainActor
 @Suite struct ParallelVMTests {
-    func task(
-        id: String, backend: String = "claude", status: String = "running", startedAt: Date? = .now,
-        group: String? = "g1", freedom: String? = nil, sessionID: String? = "sess-1234567890",
-        summary: String? = nil, enforcement: [String: JSONValue]? = nil, parentTaskID: String? = nil
-    ) -> TaskInfo {
-        var object: [String: JSONValue] = [
-            "task_id": .string(id), "backend": .string(backend), "status": .string(status)
-        ]
-        if let startedAt { object["started_at"] = .string(ISO8601DateFormatter().string(from: startedAt)) }
-        if let group { object["group"] = .string(group) }
-        if let freedom { object["freedom"] = .string(freedom) }
-        if let sessionID { object["session_id"] = .string(sessionID) }
-        if let summary { object["summary"] = .string(summary) }
-        if let enforcement { object["enforcement"] = .object(enforcement) }
-        if let parentTaskID { object["parent_task_id"] = .string(parentTaskID) }
-        return TaskInfo(.object(object))!
-    }
-    
     /// A plain mutable box read by a `willProduce` closure registered exactly once — `Mockable`'s
     /// FIFO stub queue does not reliably swap a member's answer for the very next call (see the
     /// Phase 3/4a/4b reports). Mutating a box sidesteps it.
@@ -48,13 +30,15 @@ import Testing
         let tasksBox: Box<[String: TaskInfo]>
         let titlesBox: Box<[String: String]>
         let itemsBox: Box<[String: [TimelineItem]]>
+        let itemSubjectsBox: Box<[String: PassthroughSubject<[TimelineItem], Never>]>
         let availabilityBox: Box<[String: EventAvailability]>
         let leasesBox: Box<[String: MockEventStreamLease]>
         let releasedBox: Box<Set<String>>
         let runningInSubtreesBox: Box<[String]?>
     }
 
-    func makeSUT(groupName: String = "g1") -> SUT {
+    func makeSUT(groupName: String = "g1", leasePool: ParallelTestLeasePool? = nil,
+                 buildColumns: @escaping ParallelColumnsBuild = ParallelPresentationBuilder.buildColumns) -> SUT {
         let useCase = MockParallelUseCase()
         let routing = MockParallelRouting()
         let tasksSubject = PassthroughSubject<[TaskInfo], Never>()
@@ -65,6 +49,7 @@ import Testing
         let tasksBox = Box<[String: TaskInfo]>([:])
         let titlesBox = Box<[String: String]>([:])
         let itemsBox = Box<[String: [TimelineItem]]>([:])
+        let itemSubjectsBox = Box<[String: PassthroughSubject<[TimelineItem], Never>]>([:])
         let availabilityBox = Box<[String: EventAvailability]>([:])
         let leasesBox = Box<[String: MockEventStreamLease]>([:])
         let releasedBox = Box<Set<String>>([])
@@ -79,7 +64,10 @@ import Testing
         given(useCase).title(.any).willProduce { titlesBox.value[$0] ?? "Task \($0.prefix(8))" }
         given(useCase).events(for: .any).willReturn([])
         given(useCase).items(for: .any).willProduce { itemsBox.value[$0] ?? [] }
-        given(useCase).itemsPublisher(for: .any).willProduce { id in Just(itemsBox.value[id] ?? []).eraseToAnyPublisher() }
+        given(useCase).itemsPublisher(for: .any).willProduce { id in
+            if let subject = itemSubjectsBox.value[id] { return subject.eraseToAnyPublisher() }
+            return Just(itemsBox.value[id] ?? []).eraseToAnyPublisher()
+        }
         given(useCase).prompt(for: .any).willReturn(nil)
         given(useCase).eventsAvailability(for: .any).willProduce { availabilityBox.value[$0] ?? .loading }
         given(useCase).eventsAvailabilityPublisher(for: .any).willProduce { id in
@@ -87,8 +75,12 @@ import Testing
         }
         given(useCase).acquireEventLease(.any).willProduce { id in
             let lease = MockEventStreamLease()
+            let token = leasePool?.acquire(id)
             given(lease).taskID.willReturn(id)
-            given(lease).release().willProduce { releasedBox.value.insert(id) }
+            given(lease).release().willProduce {
+                releasedBox.value.insert(id)
+                if let token { leasePool?.release(token) }
+            }
             leasesBox.value[id] = lease
             return lease
         }
@@ -98,11 +90,12 @@ import Testing
         given(useCase).setOutcome(.any, .any).willReturn()
         given(routing).selectTask(.any).willReturn()
 
-        let sut = ParallelVM(groupName: groupName, useCase: useCase, routing: routing)
+        let sut = ParallelVM(groupName: groupName, useCase: useCase, routing: routing, buildColumns: buildColumns)
+        sut.updateViewport(offset: 0, width: 100_000)
         return SUT(
             sut: sut, useCase: useCase, routing: routing, tasksSubject: tasksSubject, snapshotsSubject: snapshotsSubject,
             busySubject: busySubject, outcomesSubject: outcomesSubject, titlesSubject: titlesSubject,
-            tasksBox: tasksBox, titlesBox: titlesBox, itemsBox: itemsBox, availabilityBox: availabilityBox,
+            tasksBox: tasksBox, titlesBox: titlesBox, itemsBox: itemsBox, itemSubjectsBox: itemSubjectsBox, availabilityBox: availabilityBox,
             leasesBox: leasesBox, releasedBox: releasedBox, runningInSubtreesBox: runningInSubtreesBox
         )
     }
@@ -124,7 +117,7 @@ import Testing
         
         // when
         tasksSubject.send([task1])
-        await waitUntil { sut.columns.count == 1 }
+        await waitUntil { sut.columns.count == 1 && sut.isPresentationSettled }
         
         // then
         #expect(sut.columns.first?.task.status == .running)
@@ -155,7 +148,7 @@ import Testing
         tasksBox.value["t1"] = task1
         sut.didAppear()
         tasksSubject.send([task1])
-        await waitUntil { sut.columns.count == 1 }
+        await waitUntil { sut.columns.count == 1 && sut.isPresentationSettled }
         #expect(sut.columns.first?.title == "Task t1")
         
         // when — no further `tasksSubject` emission, only the title arriving.
@@ -196,7 +189,7 @@ import Testing
         tasksBox.value["t1"] = task1
         sut.didAppear()
         tasksSubject.send([task1])
-        await waitUntil { sut.columns.count == 1 }
+        await waitUntil { sut.columns.count == 1 && sut.isPresentationSettled }
         
         // then — the listing's own `summary` field is never shown
         #expect(sut.columns.first?.summary == nil)
@@ -223,7 +216,7 @@ import Testing
         tasksBox.value["t1"] = task1
         sut.didAppear()
         tasksSubject.send([task1])
-        await waitUntil { sut.columns.count == 1 }
+        await waitUntil { sut.columns.count == 1 && sut.isPresentationSettled }
         var capturedEvent: ViewEvent?
         let cancellable = sut.objectDidPublishViewEvent.publisher.sink { capturedEvent = $0 }
         
@@ -256,7 +249,7 @@ import Testing
         tasksBox.value["t1"] = task1
         sut.didAppear()
         tasksSubject.send([task1])
-        await waitUntil { sut.columns.count == 1 }
+        await waitUntil { sut.columns.count == 1 && sut.isPresentationSettled }
         var capturedEvent: ViewEvent?
         let cancellable = sut.objectDidPublishViewEvent.publisher.sink { capturedEvent = $0 }
         
@@ -373,7 +366,7 @@ import Testing
         tasksSubject.send([task1, task2])
         
         // then
-        await waitUntil { sut.columns.count == 2 }
+        await waitUntil { sut.columns.count == 2 && sut.isPresentationSettled }
         #expect(Set(leasesBox.value.keys) == ["t1", "t2"])
     }
     
@@ -391,7 +384,7 @@ import Testing
         tasksBox.value["t2"] = task2
         sut.didAppear()
         tasksSubject.send([task1, task2])
-        await waitUntil { sut.columns.count == 2 }
+        await waitUntil { sut.columns.count == 2 && sut.isPresentationSettled }
         
         // when — task2 no longer belongs to the group
         tasksSubject.send([task1])
@@ -399,7 +392,7 @@ import Testing
         // then — `leasesBox` only records acquisitions and never removes an entry on release, so
         // `leasesBox.value["t1"] != nil` alone would still pass even if task1's lease were incorrectly
         // released too (Codex review finding); assert `releasedBox` directly to rule that out.
-        await waitUntil { sut.columns.count == 1 }
+        await waitUntil { sut.columns.count == 1 && sut.isPresentationSettled }
         #expect(releasedBox.value.contains("t2"))
         #expect(!releasedBox.value.contains("t1"))
         #expect(leasesBox.value["t1"] != nil)
@@ -417,18 +410,19 @@ import Testing
         tasksBox.value["t1"] = task1
         sut.didAppear()
         tasksSubject.send([task1])
-        await waitUntil { sut.columns.count == 1 }
+        await waitUntil { sut.columns.count == 1 && sut.isPresentationSettled }
         
         // when
         sut.didDisappear()
         
         // then
         #expect(releasedBox.value.contains("t1"))
-        #expect(sut.columns.isEmpty == false) // `didDisappear` does not clear already-built columns
+        #expect(sut.columns.isEmpty) // teardown discards heavy presentation values
         
         // when — reappearing resubscribes and reacquires
         releasedBox.value.removeAll()
         leasesBox.value.removeAll()
+        sut.updateViewport(offset: 0, width: 100_000)
         sut.didAppear()
         tasksSubject.send([task1])
         
@@ -449,7 +443,7 @@ import Testing
         tasksBox.value["t1"] = task1
         sut.didAppear()
         tasksSubject.send([task1])
-        await waitUntil { sut.columns.count == 1 }
+        await waitUntil { sut.columns.count == 1 && sut.isPresentationSettled }
         #expect(sut.columns.first?.showPrompt == false)
         
         // when
@@ -457,6 +451,7 @@ import Testing
         
         // then
         #expect(sut.showPrompt)
+        await waitUntil { sut.columns.first?.showPrompt == true && sut.isPresentationSettled }
         #expect(sut.columns.first?.showPrompt == true)
     }
     
@@ -479,7 +474,7 @@ import Testing
         tasksSubject.send([task1, task2])
         
         // then
-        await waitUntil { sut.columns.count == 2 }
+        await waitUntil { sut.columns.count == 2 && sut.isPresentationSettled }
         #expect(sut.headerSubtitle.hasPrefix("2 agents · Can edit this repo, Read-only ·"))
     }
     
@@ -499,7 +494,7 @@ import Testing
         tasksBox.value["t2"] = task2
         sut.didAppear()
         tasksSubject.send([task1, task2])
-        await waitUntil { sut.columns.count == 2 }
+        await waitUntil { sut.columns.count == 2 && sut.isPresentationSettled }
         #expect(sut.footerText == ParallelVM.fallbackFooter)
         
         // when — both snapshots share the same enforcement fact
@@ -531,7 +526,7 @@ import Testing
         tasksSubject.send([task1])
 
         // then
-        await waitUntil { sut.columns.count == 1 }
+        await waitUntil { sut.columns.count == 1 && sut.isPresentationSettled }
         #expect(sut.columns.first?.isLoading == true)
         #expect(sut.columns.first?.liveStep?.text == "Thinking…")
     }
@@ -552,7 +547,7 @@ import Testing
         tasksSubject.send([task1])
 
         // then — an available-but-empty log is a real empty state, never a skeleton.
-        await waitUntil { sut.columns.count == 1 }
+        await waitUntil { sut.columns.count == 1 && sut.isPresentationSettled }
         #expect(sut.columns.first?.isLoading == false)
     }
 
@@ -572,7 +567,7 @@ import Testing
         tasksSubject.send([task1])
 
         // then — an unreadable log keeps its own honest empty message, never a skeleton.
-        await waitUntil { sut.columns.count == 1 }
+        await waitUntil { sut.columns.count == 1 && sut.isPresentationSettled }
         #expect(sut.columns.first?.isLoading == false)
     }
 
@@ -594,7 +589,7 @@ import Testing
         tasksSubject.send([task1])
 
         // then — real content already exists, so the shimmer never shows even while still `.loading`.
-        await waitUntil { sut.columns.count == 1 }
+        await waitUntil { sut.columns.count == 1 && sut.isPresentationSettled }
         #expect(sut.columns.first?.isLoading == false)
     }
 }

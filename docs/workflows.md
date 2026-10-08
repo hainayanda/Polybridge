@@ -191,6 +191,10 @@ shows the canvas above the same agent activity columns used by Parallel. Paralle
 those columns. Highlighting comes from recorded task state. Agent names and colored dots identify
 backends; vendor logos are unnecessary.
 
+Both Parallel and the workflow's activity pane load detailed feeds for visible columns and one
+neighbor on either side. Off-screen tasks still contribute to group status and actions. Returning
+to a column restores its expanded activity and reading position while refreshing its feed.
+
 Task detail headers wrap the task title across the pane and show the repository beneath it.
 Status and actions share a toolbar in the main window, standalone task window, and embedded workflow task view.
 

@@ -74,27 +74,6 @@ protocol ParallelRouting: Sendable {
     func selectTask(_ taskID: String)
 }
 
-// MARK: - ParallelLayout
-
-/// The column-width rule (Monitor piece 12, Design point 3): columns fill the available width rather
-/// than a fixed 900pt budget, so there is no empty band on the right when the window is wide — with a
-/// 420pt reading-width floor, below which columns keep their old fixed width and the row scrolls horizontally
-/// instead of squeezing further. A pure function so it is testable without a SwiftUI rendering
-/// harness.
-enum ParallelLayout {
-    /// The width of the hairline `Divider` drawn after every column (`ParallelView`'s `ForEach`) —
-    /// subtracted from `availableWidth` before dividing, so `memberCount` columns plus their dividers
-    /// together account for the whole row rather than overflowing it by a few points.
-    static let dividerWidth: CGFloat = 1
-    static let minimumColumnWidth: CGFloat = 420
-
-    static func columnWidth(memberCount: Int, availableWidth: CGFloat) -> CGFloat {
-        let count = max(1, memberCount)
-        let usableWidth = max(0, availableWidth - CGFloat(count) * dividerWidth)
-        return max(minimumColumnWidth, usableWidth / CGFloat(count))
-    }
-}
-
 // MARK: - ParallelVM
 
 /// View model for the Parallel screen: one column per group member, ported from the old
@@ -105,10 +84,10 @@ enum ParallelLayout {
 /// not one task — a resumed member inherits its parent's `group`, so before this every resume turn
 /// was its own `TaskNode` group member and so its own column (an orchestrator resuming 2 agents ×
 /// 8 rounds showed as 16 columns). Membership/order come from `Lineage.sections(_:).parallel.first`'s
-/// `conversations` (built once per `tasksPublisher` emission); a lease is held for every member of
-/// every conversation — TaskDetail's own per-member-lease pattern — and every column is rebuilt from
-/// each member's freshest `useCase.task(_:)` on every recompute (F4-40), never a value cached at the
-/// last `tasksPublisher` emission.
+/// `conversations` (built once per `tasksPublisher` emission). Detailed activity leases are held
+/// for every member of resident conversations; off-screen conversations retain lightweight headers.
+/// Source updates freshen metadata from `useCase.task(_:)` (F4-40). Immutable resident inputs build
+/// independently off-main, while complete rendering equality guards main-actor publication.
 @Observable
 @MainActor
 final class ParallelVM: ParallelViewModel {
@@ -129,9 +108,13 @@ final class ParallelVM: ParallelViewModel {
     
     @ObservationIgnored private let useCase: any ParallelUseCase
     @ObservationIgnored private let routing: any ParallelRouting
+    @ObservationIgnored private let buildColumns: ParallelColumnsBuild
     @ObservationIgnored private var cancellables = Set<AnyCancellable>()
     @ObservationIgnored private var itemCancellables: [String: AnyCancellable] = [:]
     @ObservationIgnored private var availabilityCancellables: [String: AnyCancellable] = [:]
+    @ObservationIgnored private var leaseGenerations: [String: UUID] = [:]
+    @ObservationIgnored private var ownerByMember: [String: String] = [:]
+    @ObservationIgnored private var conversationByID: [String: Conversation] = [:]
     @ObservationIgnored private var leases: [String: any EventStreamLease] = [:]
     @ObservationIgnored private var itemsByTask: [String: [TimelineItem]] = [:]
     @ObservationIgnored private var availabilityByTask: [String: EventAvailability] = [:]
@@ -154,13 +137,62 @@ final class ParallelVM: ParallelViewModel {
     @ObservationIgnored private var initialMembershipResolved = false
     @ObservationIgnored private var activityReady = false
     @ObservationIgnored private var arrivalTracker = PanelArrivalTracker()
+    @ObservationIgnored private var viewportOffset: CGFloat = 0
+    @ObservationIgnored private var viewportWidth: CGFloat = 0
+    @ObservationIgnored private var residentIDs: Set<String> = []
+    @ObservationIgnored private var uiStates: [String: ParallelColumnUIState] = [:]
+    @ObservationIgnored private var descriptors: [String: ParallelColumnPresentation] = [:]
+    @ObservationIgnored private var presentations: [String: ParallelColumnPresentation] = [:]
+    @ObservationIgnored private var completedInputs: [String: ParallelColumnInput] = [:]
+    @ObservationIgnored private var desiredInputs: [String: ParallelColumnInput] = [:]
+    @ObservationIgnored private var worker: Task<Void, Never>?
+    @ObservationIgnored private var pendingInputs: [String: ParallelColumnInput]?
+    @ObservationIgnored private var revision: UInt64 = 0
+    @ObservationIgnored private var epoch: UInt64 = 0
+    @ObservationIgnored private var scheduledStart: UInt64?
+    @ObservationIgnored private var latencyStart: UInt64?
+    var isPresentationSettled: Bool { worker == nil && pendingInputs == nil }
+    var leasedMemberCount: Int { leases.count }
+    var residentColumnCount: Int { residentIDs.count }
+    var retainedColumnStateCount: Int { uiStates.count }
+    @ObservationIgnored private var orderedConversations: [Conversation] = []
+    @ObservationIgnored private var arrivals: Set<String> = []
+    @ObservationIgnored private(set) var presentationWriteCount = 0
+    @ObservationIgnored private(set) var builtColumnCount = 0
+    @ObservationIgnored private(set) var sourceUpdateCount = 0
+
+    func columnState(for id: String) -> ParallelColumnUIState {
+        if let state = uiStates[id] { return state }
+        let state = ParallelColumnUIState()
+        if conversationByID[id] != nil { uiStates[id] = state }
+        return state
+    }
+
+    func updateViewport(offset: CGFloat, width: CGFloat) {
+        guard viewportOffset != offset || viewportWidth != width else { return }
+        let start = MonitorMetrics.begin()
+        defer { MonitorMetrics.end(start, stage: .parallelViewport, residentColumns: residentIDs.count, leasedMembers: leases.count) }
+        viewportOffset = offset
+        viewportWidth = width
+        guard didSubscribe else { return }
+        let stride = ParallelLayout.columnWidth(memberCount: orderedConversations.count, availableWidth: width)
+            + ParallelLayout.dividerWidth
+        let interval = ParallelResidency.indices(count: orderedConversations.count, offset: offset, width: width, stride: stride)
+        let next = Set(interval.map { orderedConversations[$0].id })
+        guard next != residentIDs else { return }
+        let inputs = updateResidency()
+        publishColumns()
+        schedule(inputs)
+    }
     
     // MARK: - Init
     
-    init(groupName: String, useCase: any ParallelUseCase, routing: any ParallelRouting) {
+    init(groupName: String, useCase: any ParallelUseCase, routing: any ParallelRouting,
+         buildColumns: @escaping ParallelColumnsBuild = ParallelPresentationBuilder.buildColumns) {
         self.groupName = groupName
         self.useCase = useCase
         self.routing = routing
+        self.buildColumns = buildColumns
     }
     
     // MARK: - ParallelViewModel Methods
@@ -178,15 +210,29 @@ final class ParallelVM: ParallelViewModel {
         if didSubscribe { recomputeMembersAndLeases() }
     }
     
-    /// Idempotent teardown (root AGENTS.md rule 7): releases every outstanding lease, cancels every
-    /// subscription, and resets `didSubscribe` so a reappearing screen (the detail pane can be
-    /// revisited) subscribes and re-acquires leases fresh.
+    /// Idempotent teardown releases leases and subscriptions; reopening starts fresh.
     func didDisappear() {
+        epoch &+= 1
+        revision &+= 1
+        worker?.cancel()
+        pendingInputs = nil
+        desiredInputs.removeAll()
+        completedInputs.removeAll()
+        presentations.removeAll()
+        descriptors.removeAll()
+        residentIDs.removeAll()
+        uiStates.removeAll()
+        orderedConversations.removeAll()
+        viewportWidth = 0
+        columns.removeAll()
         cancellables.removeAll()
         itemCancellables.removeAll()
         availabilityCancellables.removeAll()
         for lease in leases.values { lease.release() }
         leases.removeAll()
+        leaseGenerations.removeAll()
+        ownerByMember.removeAll()
+        conversationByID.removeAll()
         itemsByTask.removeAll()
         availabilityByTask.removeAll()
         memberIDs.removeAll()
@@ -197,8 +243,15 @@ final class ParallelVM: ParallelViewModel {
     }
     
     func didTapViewPrompt() {
+        let start = MonitorMetrics.begin()
         showPrompt.toggle()
-        recompute()
+        for id in descriptors.keys { descriptors[id]?.showPrompt = showPrompt }
+        var inputs = desiredInputs
+        for id in inputs.keys { inputs[id]?.base.showPrompt = showPrompt }
+        publishColumns()
+        schedule(inputs)
+        MonitorMetrics.end(start, stage: .parallelPreparation,
+            residentColumns: residentIDs.count, leasedMembers: leases.count)
     }
     
     func didTapCancelAll() {
@@ -220,12 +273,14 @@ final class ParallelVM: ParallelViewModel {
     private func subscribeIfNeeded() {
         guard !didSubscribe else { return }
         didSubscribe = true
+        let subscriptionEpoch = epoch
         if let readiness = useCase as? any ParallelActivityReadiness {
             readiness.activityReadyPublisher()
 .receive(on: DispatchQueue.main)
 .sink { [weak self] ready in
-                self?.activityReady = ready
-                self?.recompute()
+                guard let self, didSubscribe, epoch == subscriptionEpoch else { return }
+                activityReady = ready
+                recompute()
             }
 .store(in: &cancellables)
         } else { activityReady = true }
@@ -233,7 +288,9 @@ final class ParallelVM: ParallelViewModel {
         useCase.tasksPublisher()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] tasks in
-                guard let self else { return }
+                guard let self, didSubscribe, epoch == subscriptionEpoch else { return }
+                sourceUpdateCount += 1
+                guard !initialMembershipResolved || latestTasks != tasks else { return }
                 initialMembershipResolved = true
                 latestTasks = tasks
                 recomputeMembersAndLeases()
@@ -243,7 +300,7 @@ final class ParallelVM: ParallelViewModel {
         useCase.snapshotsPublisher()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] snapshots in
-                guard let self else { return }
+                guard let self, didSubscribe, epoch == subscriptionEpoch else { return }
                 latestSnapshots = snapshots
                 recompute()
             }
@@ -252,7 +309,7 @@ final class ParallelVM: ParallelViewModel {
         useCase.busyPublisher()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] busy in
-                guard let self else { return }
+                guard let self, didSubscribe, epoch == subscriptionEpoch else { return }
                 latestBusy = busy
                 recompute()
             }
@@ -261,7 +318,7 @@ final class ParallelVM: ParallelViewModel {
         useCase.outcomesPublisher()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] outcomes in
-                guard let self else { return }
+                guard let self, didSubscribe, epoch == subscriptionEpoch else { return }
                 latestOutcomes = outcomes
                 recompute()
             }
@@ -271,16 +328,17 @@ final class ParallelVM: ParallelViewModel {
         // when it changes on its own, not only when an unrelated publisher happens to fire afterward.
         useCase.titlesPublisher()
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.recompute() }
+            .sink { [weak self] _ in
+                guard let self, didSubscribe, epoch == subscriptionEpoch else { return }
+                recompute()
+            }
             .store(in: &cancellables)
     }
     
-    /// Recomputes this group's conversations (Monitor piece 13 — `ParallelGroup.conversations`, one
-    /// per agent) and diffs the FLATTENED member set against the currently-leased one, acquiring a
-    /// lease for every newly-seen member and releasing one for every member that dropped out —
-    /// TaskDetail's own `recomputeMembersAndLeases` pattern, extended across every member of every
-    /// conversation rather than one task per column.
+    /// Resolves complete group membership for headers and actions. Geometry subsequently selects
+    /// which conversations own detailed activity leases.
     private func recomputeMembersAndLeases() {
+        let preparation = MonitorMetrics.begin()
         let group = Lineage.sections(latestTasks).parallel.first { $0.name == groupName }
         let groupConversations: [Conversation]
         if let workflowTaskIDs {
@@ -293,16 +351,15 @@ final class ParallelVM: ParallelViewModel {
             groupConversations = WorkflowOrchestratorConversation.conversations(group?.conversations.flatMap(\.members) ?? [])
         }
         let newIDs = groupConversations.flatMap { $0.members.map(\.taskID) }
-        let newIDSet = Set(newIDs)
-        let oldIDSet = Set(memberIDs)
-
-        for id in newIDSet.subtracting(oldIDSet) { acquireLease(id) }
-        for id in oldIDSet.subtracting(newIDSet) { releaseLease(id) }
         memberIDs = newIDs
+        let migration = ParallelStateMigration.mapping(previous: conversations, current: groupConversations, retained: Set(uiStates.keys))
+        uiStates = migration.compactMapValues { uiStates[$0] }
         conversations = groupConversations
 
-        canCancelAll = group?.anyRunning == true
-        isEmpty = groupConversations.isEmpty
+        let cancellable = group?.anyRunning == true
+        if canCancelAll != cancellable { canCancelAll = cancellable }
+        let empty = groupConversations.isEmpty
+        if isEmpty != empty { isEmpty = empty }
 
         // Freedom/repo diversity is read from each conversation's FIRST member (its starting
         // configuration) — one entry per agent, not one per turn.
@@ -310,17 +367,19 @@ final class ParallelVM: ParallelViewModel {
         let freedoms = Set(firstMembers.compactMap(\.freedom).map { AccessLabel.text(freedom: $0) }).sorted().joined(separator: ", ")
         let repos = Set(firstMembers.map { Format.repoName($0.repoPath) }).sorted().joined(separator: ", ")
         let count = groupConversations.count
-        headerSubtitle = "\(count) agent\(count == 1 ? "" : "s") · \(freedoms) · \(repos)"
+        let subtitle = "\(count) agent\(count == 1 ? "" : "s") · \(freedoms) · \(repos)"
         + (group?.startedAt.map { " · started \(Format.time($0))" } ?? "")
+        if headerSubtitle != subtitle { headerSubtitle = subtitle }
 
+        MonitorMetrics.end(preparation, stage: .parallelPreparation, residentColumns: residentIDs.count, leasedMembers: leases.count)
         recompute()
     }
     
-    /// Two independent subscriptions, deliberately not combined into one: a tailer can append new
-    /// items with no availability change (and vice versa) — see `TaskDetailVM.acquireMemberLease`'s
-    /// identical reasoning.
+    /// Items and availability change independently, so each keeps its own subscription.
     private func acquireLease(_ taskID: String) {
         guard leases[taskID] == nil else { return }
+        let generation = UUID()
+        leaseGenerations[taskID] = generation
         leases[taskID] = useCase.acquireEventLease(taskID)
         itemsByTask[taskID] = useCase.items(for: taskID)
         availabilityByTask[taskID] = useCase.eventsAvailability(for: taskID)
@@ -328,21 +387,24 @@ final class ParallelVM: ParallelViewModel {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] items in
                 guard let self else { return }
+                guard leaseGenerations[taskID] == generation, itemsByTask[taskID] != items else { return }
                 itemsByTask[taskID] = items
-                recompute()
+                refreshActivity(memberID: taskID)
             }
         availabilityCancellables[taskID] = useCase.eventsAvailabilityPublisher(for: taskID)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] availability in
                 guard let self else { return }
+                guard leaseGenerations[taskID] == generation, availabilityByTask[taskID] != availability else { return }
                 availabilityByTask[taskID] = availability
-                recompute()
+                refreshActivity(memberID: taskID)
             }
     }
 
     private func releaseLease(_ taskID: String) {
         leases[taskID]?.release()
         leases[taskID] = nil
+        leaseGenerations[taskID] = nil
         itemCancellables[taskID]?.cancel()
         itemCancellables[taskID] = nil
         availabilityCancellables[taskID]?.cancel()
@@ -351,83 +413,162 @@ final class ParallelVM: ParallelViewModel {
         availabilityByTask[taskID] = nil
     }
     
-    /// Rebuilds every column from the freshest available state — always re-reading `useCase.task(_:)`
-    /// for each member rather than a `TaskInfo` cached at the last `tasksPublisher` emission, so a
-    /// busy/outcome/snapshot-only update still reflects a member's current fields (F4-40). Only the
-    /// membership/order skeleton (`conversations`) is held between `tasksPublisher` emissions.
+    /// Source changes freshen metadata for every conversation (F4-40), then capture value inputs
+    /// for resident columns. Activity and viewport hot paths reuse this ownership/order skeleton.
     private func recompute() {
+        let preparationStart = MonitorMetrics.begin()
+        defer { MonitorMetrics.end(preparationStart, stage: .parallelPreparation, residentColumns: residentIDs.count, leasedMembers: leases.count) }
         let freshened = conversations.map { conversation in
             Conversation(members: conversation.members.map { useCase.task($0.taskID) ?? $0 })
         }
-        let ordered = Lineage.parallelColumnOrder(freshened)
-        let resolved = workflowTaskIDs.map { ids in
-            let known = Set(latestTasks.map(\.taskID))
-            return ids.allSatisfy { known.contains($0) }
-        } ?? true
-        let arrivals = arrivalTracker.update(ordered.map { (id: $0.id, startedAt: $0.first.startedAt) },
-                                             authoritative: activityReady && initialMembershipResolved && resolved)
-        columns = ordered.map { conversation in
-            var column = makeColumnModel(for: conversation)
-            column.animatesArrival = arrivals.contains(column.id)
-            column.onDidPresent = { [weak self] in self?.arrivalTracker.didPresent(conversation.id) }
-            column.memberTaskIDs = Set(conversation.members.map(\.taskID))
-            return column
+        orderedConversations = Lineage.parallelColumnOrder(freshened)
+        conversationByID = Dictionary(uniqueKeysWithValues: orderedConversations.map { ($0.id, $0) })
+        ownerByMember = [:]
+        for conversation in orderedConversations {
+            for member in conversation.members { ownerByMember[member.taskID] = conversation.id }
         }
-
-        let footerTasks = ordered.map { latestSnapshots[$0.current.taskID] ?? $0.current }
-        footerText = EnforcementText.common(footerTasks) ?? Self.fallbackFooter
+        let known = Set(latestTasks.map(\.taskID))
+        let resolved = workflowTaskIDs?.allSatisfy { known.contains($0) } ?? true
+        arrivals = arrivalTracker.update(orderedConversations.map { (id: $0.id, startedAt: $0.first.startedAt) },
+                                         authoritative: activityReady && initialMembershipResolved && resolved)
+        descriptors = Dictionary(uniqueKeysWithValues: orderedConversations.map { ($0.id, basePresentation($0, includePrompt: false)) })
+        let inputs = updateResidency()
+        publishColumns()
+        let footerTasks = orderedConversations.map { latestSnapshots[$0.current.taskID] ?? $0.current }
+        let footer = EnforcementText.common(footerTasks) ?? Self.fallbackFooter
+        if footerText != footer { footerText = footer }
+        schedule(inputs)
     }
 
-    /// Monitor piece 13: a column reflects a whole conversation. `task`/status pill/take-over/open
-    /// all act on the CURRENT (newest) member; `title` names the conversation from its FIRST member
-    /// — the same current-vs-first split `TaskDetailVM.recompute()` uses.
-    private func makeColumnModel(for conversation: Conversation) -> ParallelColumnModel {
+    private func updateResidency() -> [String: ParallelColumnInput] {
+        let stride = ParallelLayout.columnWidth(memberCount: orderedConversations.count, availableWidth: viewportWidth)
+            + ParallelLayout.dividerWidth
+        let interval = ParallelResidency.indices(count: orderedConversations.count, offset: viewportOffset,
+                                                 width: viewportWidth, stride: stride)
+        residentIDs = Set(interval.map { orderedConversations[$0].id })
+        let leaseStart = MonitorMetrics.begin()
+        let needed = Set(orderedConversations.filter { residentIDs.contains($0.id) }.flatMap { $0.members.map(\.taskID) })
+        for id in Set(leases.keys).subtracting(needed) { releaseLease(id) }
+        for id in needed.subtracting(Set(leases.keys)) { acquireLease(id) }
+        MonitorMetrics.end(leaseStart, stage: .parallelLeases, residentColumns: residentIDs.count, leasedMembers: leases.count)
+        for id in Set(presentations.keys).subtracting(residentIDs) {
+            presentations[id] = nil
+            completedInputs[id] = nil
+        }
+        var inputs: [String: ParallelColumnInput] = [:]
+        for conversation in orderedConversations where residentIDs.contains(conversation.id) {
+            inputs[conversation.id] = captureInput(conversation)
+        }
+        return inputs
+    }
+
+    private func refreshActivity(memberID: String) {
+        guard let id = ownerByMember[memberID], residentIDs.contains(id), let conversation = conversationByID[id] else { return }
+        let start = MonitorMetrics.begin()
+        var inputs = desiredInputs
+        inputs[id] = captureInput(conversation)
+        MonitorMetrics.end(start, stage: .parallelPreparation,
+            residentColumns: residentIDs.count, leasedMembers: leases.count)
+        schedule(inputs)
+    }
+
+    private func captureInput(_ conversation: Conversation) -> ParallelColumnInput {
+        let members = conversation.members.map { member in
+            let snapshot = WorkflowNodePresentation.merged(latestSnapshots[member.taskID], with: member)
+            return ParallelMemberInput(task: snapshot, items: itemsByTask[member.taskID] ?? [],
+                prompt: snapshot.raw["display_prompt"]?.stringValue ?? useCase.prompt(for: member.taskID),
+                availability: availabilityByTask[member.taskID] ?? .loading)
+        }
+        return ParallelColumnInput(base: basePresentation(conversation), members: members,
+            events: useCase.events(for: conversation.current.taskID), snapshot: latestSnapshots[conversation.current.taskID])
+    }
+
+    private func basePresentation(_ conversation: Conversation, includePrompt: Bool = true) -> ParallelColumnPresentation {
         let current = WorkflowNodePresentation.merged(latestSnapshots[conversation.current.taskID], with: conversation.current)
         let currentID = current.taskID
-        let firstID = conversation.first.taskID
-        let subtitle = ParallelColumnModel.subtitle(
-            repoPath: current.repoPath, backend: current.backend, turns: conversation.members.count
-        )
-
-        let itemMembers = conversation.members.map { member in
-            let snapshot = WorkflowNodePresentation.merged(latestSnapshots[member.taskID], with: member)
-            let prompt = snapshot.raw["display_prompt"]?.stringValue ?? useCase.prompt(for: member.taskID)
-            return ConversationItemMember(task: snapshot, items: itemsByTask[member.taskID] ?? [], prompt: prompt)
-        }
-        let rawRows = ConversationTimeline.rows(itemMembers: itemMembers)
-        let isWorker = WorkflowNodePresentation.isWorker(current)
-        let rowTasks = Dictionary(uniqueKeysWithValues: itemMembers.map { ($0.task.taskID, $0.task) })
-        let rows = WorkflowNodePresentation.visibleRows(rawRows, tasks: rowTasks, compact: true)
-        // Monitor piece 12, Design point 4's rule, extended across every member (piece 13): a
-        // shimmer only while NO member has any real content yet AND at least one member's own event
-        // stream is still `.loading`; never once any member has items, and never for `.unavailable`
-        // (that keeps the column's honest empty state instead).
-        let isLoading = conversation.members.allSatisfy { (itemsByTask[$0.taskID] ?? []).isEmpty }
-            && conversation.members.contains { (availabilityByTask[$0.taskID] ?? .loading) == .loading }
-
-        return ParallelColumnModel(
-            id: conversation.id,
-            task: current,
-            title: workflowTitles[currentID] ?? useCase.title(firstID),
-            subtitle: subtitle,
-            isBusy: latestBusy.contains(currentID),
-            outcomeMessage: latestOutcomes[currentID],
-            showPrompt: showPrompt,
-            prompt: isWorker ? current.raw["display_prompt"]?.stringValue ?? useCase.prompt(for: currentID) : itemMembers.first?.prompt,
-            rows: rows,
-            activityRows: ActivityRowsBuilder.build(from: rows),
-            liveStep: LiveStep(rows: rows, isRunning: current.status.isRunning),
-            pendingMessages: PendingMessage.visible(snapshot: latestSnapshots[currentID], events: useCase.events(for: currentID)),
-            isLoading: isLoading,
-            // F4-40: the snapshot only — no fallback to `task.summary`, unlike `ChangesPane`.
-            summary: (WorkflowNodePresentation.isManaged(current) || WorkflowNodePresentation.resultError(current) != nil)
-                ? WorkflowNodePresentation.summary(latestSnapshots[currentID]?.summary, task: current) : latestSnapshots[currentID]?.summary,
-            onTapTakeover: { [weak self] in self?.didTapTakeover(taskID: currentID) },
-            onTapOpenTask: { [weak self] in self?.routing.selectTask(currentID) },
-            start: conversation.first.startedAt
-        )
+        let resident = includePrompt && residentIDs.contains(conversation.id)
+        let promptTask = WorkflowNodePresentation.isWorker(current) ? current :
+            WorkflowNodePresentation.merged(latestSnapshots[conversation.first.taskID], with: conversation.first)
+        let prompt = resident ? (promptTask.raw["display_prompt"]?.stringValue ?? useCase.prompt(for: promptTask.taskID)) : nil
+        let summary = includePrompt ? latestSnapshots[currentID]?.summary : nil
+        return ParallelColumnPresentation(id: conversation.id, task: current,
+            title: workflowTitles[currentID] ?? useCase.title(conversation.first.taskID),
+            subtitle: ParallelColumnModel.subtitle(repoPath: current.repoPath, backend: current.backend, turns: conversation.members.count),
+            isBusy: latestBusy.contains(currentID), outcomeMessage: latestOutcomes[currentID], showPrompt: showPrompt,
+            prompt: prompt, summary: summary, start: conversation.first.startedAt,
+            memberTaskIDs: Set(conversation.members.map(\.taskID)))
     }
-    
+
+    private func publishColumns() {
+        let start = MonitorMetrics.begin()
+        let oldWrites = presentationWriteCount
+        defer {
+            MonitorMetrics.end(start, stage: .parallelApply, renderingWrites: presentationWriteCount - oldWrites,
+                               residentColumns: residentIDs.count, leasedMembers: leases.count)
+        }
+        let next = orderedConversations.map { conversation in
+            let presentation = presentations[conversation.id] ?? descriptors[conversation.id] ?? basePresentation(conversation, includePrompt: false)
+            var column = ParallelColumnModel(id: presentation.id, task: presentation.task, title: presentation.title,
+                subtitle: presentation.subtitle, isBusy: presentation.isBusy, outcomeMessage: presentation.outcomeMessage,
+                showPrompt: presentation.showPrompt, prompt: presentation.prompt, rows: presentation.rows,
+                activityRows: presentation.activityRows, liveStep: presentation.liveStep,
+                pendingMessages: presentation.pendingMessages, isLoading: presentation.isLoading, summary: presentation.summary,
+                onTapTakeover: { [weak self] in self?.didTapTakeover(taskID: presentation.task.taskID) },
+                onTapOpenTask: { [weak self] in self?.routing.selectTask(presentation.task.taskID) }, start: presentation.start)
+            column.animatesArrival = arrivals.contains(column.id)
+            column.onDidPresent = { [weak self] in self?.arrivalTracker.didPresent(conversation.id) }
+            column.memberTaskIDs = presentation.memberTaskIDs
+            column.isResident = residentIDs.contains(column.id)
+            return column
+        }
+        guard columns.map(\.renderValue) != next.map(\.renderValue) else { return }
+        columns = next
+        presentationWriteCount += 1
+    }
+
+    private func schedule(_ inputs: [String: ParallelColumnInput]) {
+        guard desiredInputs != inputs else { return }
+        desiredInputs = inputs
+        revision &+= 1
+        pendingInputs = inputs
+        scheduledStart = MonitorMetrics.begin()
+        latencyStart = scheduledStart
+        worker?.cancel()
+        if worker == nil { startPending() }
+    }
+
+    private nonisolated static func isBackgroundThread() -> Bool { !Thread.isMainThread }
+
+    private func startPending() {
+        guard didSubscribe, let inputs = pendingInputs else { return }
+        pendingInputs = nil
+        let buildRevision = revision
+        let buildEpoch = epoch
+        let queueStart = scheduledStart
+        let updateStart = latencyStart
+        let dirty = inputs.filter { completedInputs[$0.key] != $0.value }
+        let build = buildColumns
+        let detached = Task.detached(priority: .utility) { () -> [String: ParallelColumnPresentation]? in
+            MonitorMetrics.end(queueStart, stage: .parallelScheduling, backgroundThread: Self.isBackgroundThread())
+            return await build(dirty)
+        }
+        worker = Task { [weak self] in
+            let result = await withTaskCancellationHandler { await detached.value } onCancel: { detached.cancel() }
+            guard let self else { return }
+            if didSubscribe, epoch == buildEpoch, revision == buildRevision, let result {
+                builtColumnCount += result.count
+                for (id, presentation) in result where residentIDs.contains(id) && desiredInputs[id] == inputs[id] {
+                    presentations[id] = presentation
+                    completedInputs[id] = inputs[id]
+                }
+                publishColumns()
+                MonitorMetrics.end(updateStart, stage: .parallelUpdateLatency)
+            }
+            worker = nil
+            startPending()
+        }
+    }
+
     private func didTapTakeover(taskID: String) {
         guard WorkflowNodePresentation.allowsTerminal(latestSnapshots[taskID] ?? useCase.task(taskID)) else { return }
         guard let task = useCase.task(taskID) else { return }
@@ -448,10 +589,7 @@ final class ParallelVM: ParallelViewModel {
         }
     }
 
-    /// TaskDetail's `refuseIfConversationMovedOn`, per column (PR #1 review): if the conversation
-    /// `dialogTaskID` belongs to gained a newer member while the dialog was open, confirming must not
-    /// take over the stale member (it would be refused `session_busy`) nor silently retarget. The
-    /// refusal is recorded on the column's current member, where the column shows it.
+    /// Refuse takeover when a conversation gained a newer member while its dialog was open.
     private func refuseIfConversationMovedOn(from dialogTaskID: String) -> Bool {
         let conversation = conversations.first { $0.members.contains { $0.taskID == dialogTaskID } }
         let currentID = conversation?.current.taskID

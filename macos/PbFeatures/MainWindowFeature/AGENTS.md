@@ -97,9 +97,13 @@ no embedded terminal anywhere in this package (piece 1 of the Monitor architectu
   selection every pass (so the highlighted row follows a conversation whose id just shifted with no
   new selection event), and `migrateCollapsedIDsForRetention()` carries a collapsed entry from an
   old id to its conversation's new one.
-- Parallel acquires one `EventStreamRepository` lease per group member in `didAppear`/on membership
-  change, and releases every lease in `didDisappear` — the one screen in this package with more than
-  one concurrent lease per VM instance.
+- Parallel keeps complete group membership for summaries and actions, but acquires activity leases
+  only for members of viewport-resident conversations (visible columns plus one neighbor each side).
+  The standalone group and workflow activity pane share the measured viewport surface. Lazy view
+  appearance is not visibility evidence. Eviction releases only this VM's leases and heavy models;
+  teardown releases all remaining work. Preserve lightweight per-conversation scroll, disclosure and
+  live-follow state while the group remains open. Build immutable presentation values off the main
+  actor and publish only complete values that changed.
 - `.id(name)` for `buildParallelView(name:)`'s per-group VM reset is applied at that call site,
   wrapping the whole `ParallelView(vm)` value — never inside `ParallelView.body`. `ParallelView` owns
   `@State var viewModel: VM`, and that state is tied to the view's own identity as seen by its

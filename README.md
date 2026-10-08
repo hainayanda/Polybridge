@@ -205,6 +205,8 @@ For isolated, no-model loading measurements and opt-in timing instrumentation, s
 [Monitor performance baselines](docs/monitor-performance.md).
 Workflow listing, status, and detail CLI reads share the MCP read implementation and avoid
 initializing the MCP server; their permissions and versioned responses are unchanged.
+Parallel and workflow activity columns render lazily and limit detailed feed work to the viewport
+and neighboring columns, preserving each column's reading state while the group remains open.
 
 Read [the workflow guide](docs/workflows.md) for definitions and execution contracts, and
 [contributor notes](CLAUDE.md) for architecture and harness behavior.
