@@ -221,4 +221,47 @@ struct SidebarInfiniteHistoryTests {
         sut.didDisappear()
     }
 
+    @Test(arguments: [false, true])
+    func givenPendingWorkflowPage_whenPollingRestarts_thenSameCursorRetriesAndStaleCompletionCannotClearNewRequest(fails: Bool) async throws {
+        // given — the reader deliberately ignores cancellation until its response arrives.
+        let history = History()
+        history.hold = true
+        let sut = vm(history)
+        defer { sut.didDisappear() }
+        sut.updateWorkflowHistory(try page(next: "page2"), advancing: true)
+        sut.didChangeHistoryBottomVisibility(true, revision: sut.historyPresentationRevision)
+        await waitUntil { history.held != nil }
+        let oldResponse = try #require(history.held)
+        let oldLoad = try #require(sut.workflowHistoryLoadTask)
+        history.held = nil
+        // when — use the same stop/start sequence as the Refresh workflows recovery action.
+        sut.stopWorkflowPolling()
+        sut.startWorkflowPolling()
+        #expect(oldLoad.isCancelled)
+        #expect(sut.workflowHistoryLoadTask == nil)
+        #expect(!sut.workflowHistoryState.isLoading)
+        sut.didChangeHistoryBottomVisibility(true, revision: sut.historyPresentationRevision)
+        await waitUntil { history.held != nil }
+        let freshResponse = history.held
+        let freshLoad = sut.workflowHistoryLoadTask
+        if fails {
+            oldResponse.resume(throwing: ToolError.unreadable(tool: "polybridge-ctl", exitCode: 1, stderr: "stale failure"))
+        } else {
+            oldResponse.resume(returning: try page(next: nil, id: "stale"))
+        }
+        await oldLoad.value
+        // then — the new request owns loading and cursor state even after the old request finishes.
+        #expect(history.cursors == ["page2", "page2"])
+        #expect(sut.workflowHistoryLoadTask != nil)
+        #expect(sut.workflowHistoryState.isLoading)
+        #expect(sut.workflowHistoryState.nextCursor == "page2")
+        #expect(sut.workflowHistoryState.error == nil)
+        #expect(sut.workflowRuns.isEmpty)
+        freshResponse?.resume(returning: try page(next: nil, id: "fresh"))
+        await freshLoad?.value
+        #expect(sut.workflowHistoryLoadTask == nil)
+        #expect(!sut.workflowHistoryState.isLoading)
+        #expect(sut.workflowRuns.map(\.id) == ["fresh"])
+    }
+
 }

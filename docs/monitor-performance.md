@@ -725,12 +725,12 @@ The final repository experiment was rerun after the duplicate-record correction 
 heavy verification. Its earlier optimized run is retained as exploratory evidence; differences between
 those runs do not establish a speedup attributable to deduplication.
 
-Final source checks so far: 874 MainWindowFeature tests, 259 PbRepository tests, 212 MonitorCore tests,
+Final source checks so far: 875 MainWindowFeature tests, 259 PbRepository tests, 212 MonitorCore tests,
 6,047 Python unit tests (327 skipped), and 16 benchmark tooling tests passed. Exact CI versions
 SwiftFormat 0.62.1 and SwiftLint 0.65.0 pass; the private-reference guard and whitespace check pass.
 Native hosted tests cover automatic pagination, prepend plus concurrent arrivals, live-follow
 suppression, eviction/restoration, and completed anchor restoration after widening and narrowing.
-The final isolated release build (45.38 seconds after the prompt fix) and 95 app-consumer tests pass. Independent read-only Codex review
+The final isolated release build (36.50 seconds after the history fix) and 95 app-consumer tests pass. Independent read-only Codex review
 round three found no actionable findings. The isolated release-app check
 found a paging admission race: the feed could retain its loading indicator when the controller
 declined a stale request. The final acceptance handoff and regression tests correct this; rejected
@@ -767,6 +767,11 @@ expanded its group and automatically advanced from 151 to 201 steps at the oldes
 feed now preserves Task detail's prompt bubble and hides it in both Parallel surfaces, whose explicit
 header toggle owns prompt visibility. Hosted regression tests reproduced the duplicate prompt before
 the fix and passed afterward, followed by all 874 affected suite tests.
+The next GitHub pass found a workflow-history admission leak during Refresh workflows. Restarting
+polling now cancels and clears the older request and reserved cursor. A cancellation-ignoring
+reader regression covers late success and failure while a fresh same-cursor request remains active.
+The final 875-test suite and release build pass; the rebuilt workflow activity pane settles with
+automatic history, no loading indicator and no manual history controls.
 Matched ten-observation sets for all three sizes, native lazy horizontal scrolling and exact
 app-level anchor restoration remain unverified.
 The displayed 100 ms target is unverified. These limitations remain explicit;

@@ -93,6 +93,10 @@ extension SidebarVM {
         workflowGeneration = UUID()
         workflowPoll?.cancel()
         workflowPoll = nil
+        // Paging belongs to this polling generation; a stale response must not retain admission.
+        workflowHistoryLoadTask?.cancel()
+        workflowHistoryLoadTask = nil
+        workflowHistoryRequestedCursor = nil
         workflowHistoryState.isLoading = false
     }
 
