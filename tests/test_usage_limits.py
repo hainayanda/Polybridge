@@ -60,5 +60,20 @@ def test_recovered_live_limit_with_lost_owner_requires_attention(tmp_path, monke
     snapshot = store.snapshot(tmp_path, record)
     assert snapshot['status'] == 'running'
     assert snapshot['failure_diagnostic']['settlement'] == 'needs_attention'
+    assert store.brief(tmp_path, record)['failure_diagnostic']['settlement'] == 'needs_attention'
     assert any('needs attention' in notice for notice in snapshot['notices'])
     assert 'settlement' not in record.failure_diagnostic
+
+
+def test_live_and_recovered_briefs_retain_durable_usage_evidence(tmp_path):
+    from datetime import datetime, timezone
+    from polybridge import store
+    from polybridge.tasks import Task
+    from test_store import make_record
+    diagnostic = {'category': 'usage_limit', 'reason': 'Quota reached', 'source': 'stderr', 'reset_at': 1234}
+    record = make_record(status='failed', exit_code=1, failure_diagnostic=diagnostic)
+    live = Task(task_id='t', backend='claude', session_id='s', repo_path=tmp_path,
+                prompt='work', max_turns=5, log_path=tmp_path / 't.jsonl',
+                started_at=datetime.now(timezone.utc))
+    live.acc.failure_diagnostic = diagnostic
+    assert live.brief()['failure_diagnostic'] == store.brief(tmp_path, record)['failure_diagnostic'] == diagnostic

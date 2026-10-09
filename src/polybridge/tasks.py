@@ -704,6 +704,7 @@ class Task:
             "lineage_detected": self.lineage_detected,
             "live_input": self.live_input,
             "notices": list(self.bridge_notices),
+            "failure_diagnostic": self.acc.failure_diagnostic,
             "owner": self.owner,
             # Meaningful only while the task is still running — a settled task has no live server
             # to speak of, so this is null rather than a claim about the process that finished it.

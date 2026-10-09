@@ -1195,8 +1195,10 @@ attempts. Resume or recovery remains a separate explicit action.
 
 ### Monitor polling and complete detail retrieval
 
-The ctl JSON contract is version 7; this version adds Monitor cancellation eligibility and refusal
-metadata. The matching Monitor accepts versions 1–7. Reinstall the CLI and rebuild the app together.
+The ctl JSON contract is version 9; this version adds durable task usage-limit diagnostics and
+workflow recovery choices. Version 8 added owner permission plans and guarded launch previews;
+version 7 added Monitor cancellation eligibility and refusal metadata. The matching Monitor accepts
+versions 1–9. Reinstall the CLI and rebuild the app together.
 
 Monitor polls `workflow-status RUN_ID --monitor-view --json` for bounded metadata and content
 digests. On initial loading, it captures one coherent transport snapshot using

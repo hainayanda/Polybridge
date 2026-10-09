@@ -906,7 +906,7 @@ def brief(log_dir: Path, record: TaskRecord) -> dict[str, Any]:
     stream replayed, which a listing should not pay for — and they are stream detail, which is what
     `snapshot` is for. Uses `detail=False`, so a settled, observed task costs no replay here either.
     """
-    status, _, _, _, owned = _resolve(log_dir, record, detail=False)
+    status, _, state, _, owned = _resolve(log_dir, record, detail=False)
     return {
         "task_id": record.task_id,
         "workflow_builder": record.workflow_builder,
@@ -927,6 +927,7 @@ def brief(log_dir: Path, record: TaskRecord) -> dict[str, Any]:
         "lineage_detected": record.lineage_detected,
         "live_input": record.live_input,
         "notices": list(record.bridge_notices),
+        "failure_diagnostic": state.failure_diagnostic or record.failure_diagnostic,
         "owner": record.owner,
         "owned_by_live_server": owned if status == "running" else None,
         "recovered": True,
