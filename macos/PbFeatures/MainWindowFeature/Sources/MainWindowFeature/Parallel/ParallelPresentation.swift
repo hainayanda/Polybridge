@@ -3,7 +3,7 @@ import MonitorCore
 
 /// Values cross the worker boundary; navigation and observation stay on the main actor.
 struct ParallelColumnPresentation: Equatable, Sendable {
-    let id: String
+    var id: String
     let task: TaskInfo
     let title: String
     let subtitle: String

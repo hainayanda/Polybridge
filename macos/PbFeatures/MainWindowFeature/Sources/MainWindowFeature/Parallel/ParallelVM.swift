@@ -335,8 +335,19 @@ final class ParallelVM: ParallelViewModel {
 .map { ParallelMembership.extending($0, states: uiStates) }
         let newIDs = groupConversations.flatMap { $0.members.map(\.taskID) }
         memberIDs = newIDs
-        let migration = ParallelStateMigration.mapping(previous: conversations, current: groupConversations, retained: Set(uiStates.keys))
+        let migration = ParallelStateMigration.mapping(previous: conversations, current: groupConversations,
+            retained: Set(uiStates.keys).union(presentations.keys).union(completedInputs.keys))
         uiStates = migration.compactMapValues { uiStates[$0] }
+        presentations = migration.reduce(into: [:]) { result, entry in
+            guard var presentation = presentations[entry.value] else { return }
+            presentation.id = entry.key
+            result[entry.key] = presentation
+        }
+        completedInputs = migration.reduce(into: [:]) { result, entry in
+            guard var input = completedInputs[entry.value] else { return }
+            input.base.id = entry.key
+            result[entry.key] = input
+        }
         conversations = groupConversations
 
         let cancellable = group?.anyRunning == true

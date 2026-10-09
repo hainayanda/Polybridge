@@ -6,6 +6,33 @@ import PbTestUtilities
 import Testing
 
 extension ParallelVMTests {
+    @Test func givenVisitedPrunedConversation_whenOffscreenIdentityChanges_thenRetainedActivitySurvives() async throws {
+        let harness = makeSUT()
+        let first = task(id: "first", startedAt: Date(timeIntervalSince1970: 100))
+        let last = task(id: "last", startedAt: Date(timeIntervalSince1970: 200), parentTaskID: "first")
+        harness.tasksBox.value = ["first": first, "last": last]
+        harness.itemsBox.value["last"] = [PreviewFixtures.textItem("Retained activity")]
+        harness.availabilityBox.value["first"] = .available
+        harness.availabilityBox.value["last"] = .available
+        harness.sut.updateViewport(offset: 0, width: 842)
+        harness.sut.didAppear()
+        defer { harness.sut.didDisappear() }
+        harness.tasksSubject.send([first, last])
+        await waitUntil { harness.sut.isPresentationSettled && harness.sut.columns.first?.rows.isEmpty == false }
+        let rows = try #require(harness.sut.columns.first).rows
+        harness.sut.updateViewport(offset: 0, width: 0)
+        harness.tasksBox.value = ["last": last]
+        harness.tasksSubject.send([last])
+        await waitUntil { harness.sut.columns.first?.id == "last" && harness.sut.isPresentationSettled }
+        #expect(harness.sut.columns.first?.rows == rows)
+        #expect(harness.sut.leasedMemberCount == 0)
+        harness.itemsBox.value["last"] = []
+        harness.availabilityBox.value["last"] = .loading
+        harness.sut.updateViewport(offset: 0, width: 842)
+        await waitUntil { harness.sut.isPresentationSettled && harness.sut.leasedMemberCount == 1 }
+        #expect(harness.sut.columns.first?.rows == rows)
+    }
+
     @Test func givenVisitedActivity_whenOffscreenAndRevisited_thenSnapshotStaysUntilFreshActivityCommits() async throws {
         let harness = makeSUT()
         let tasks = (0 ..< 8).map { task(id: "retained-\($0)", startedAt: Date(timeIntervalSince1970: Double($0))) }

@@ -927,3 +927,10 @@ The next GitHub review found that the package AGENTS.md still described the supe
 prefetch/heavy-eviction policy. Its scoped contract now matches the later user-approved visible-only
 leases and retained visited snapshots. This follow-up changes documentation only; runtime source
 and the post-restoration-fix release binary remain unchanged.
+
+The final review also identified retention pruning changing a conversation identity while its
+visited snapshot remained keyed by the old identity. Presentations and completed inputs now
+follow the same deterministic membership migration as interaction state, before absent identities
+are removed. A regression covers off-screen pruning and immediate retained content on return
+while the replacement stream is loading. All 69 Parallel VM tests passed after this fix; the
+release app rebuilt successfully, with formatting and private-reference checks passing.
