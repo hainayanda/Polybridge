@@ -27,7 +27,7 @@ def native_events(nonce, assignment, session):
     def event(kind, **fields):
         return {"type": kind, "session_id": session, **fields}
     return [
-        event("system", subtype="init", claude_code_version="2.1.290", permissionMode="plan"),
+        event("system", subtype="init", claude_code_version="2.1.295", permissionMode="plan"),
         event("assistant", message={"content": [{"type": "tool_use", "id": "tool-child", "name": "Agent", "input": {"description": nonce, "prompt": assignment, "subagent_type": "pb-node", "run_in_background": False}}]}),
         event("system", subtype="task_started", task_id="native-child", tool_use_id="tool-child", description=nonce, prompt=assignment, subagent_type="pb-node", is_backgrounded=False, task_type="local_agent"),
         event("assistant", parent_tool_use_id="tool-child", message={"content": [{"type": "text", "text": "Child progress"}]}),
@@ -77,7 +77,7 @@ class NativeRegistry(Registry):
 @pytest.fixture
 def native_setup(tmp_path, monkeypatch):
     monkeypatch.setattr(w.backends, "is_installed", lambda b: True)
-    monkeypatch.setattr(w.backends, "version", lambda b: "2.1.290 (Claude Code)")
+    monkeypatch.setattr(w.backends, "version", lambda b: "2.1.295 (Claude Code)")
     storage = w.WorkflowStore(tmp_path)
     registry = NativeRegistry(tmp_path)
     return storage, registry

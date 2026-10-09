@@ -938,6 +938,7 @@ class TaskRegistry:
         display_prompt: str | None = None,
         workflow_builder: bool = False,
         native_subagent: bool = False,
+        native_settings: dict[str, Any] | None = None,
         require_unchanged_session: bool = False,
     ) -> Task:
         """Continue the session; strict inheritance may require no later writers."""
@@ -1015,7 +1016,11 @@ class TaskRegistry:
                     native = adapter(backend)
                     if native is None:
                         raise ValueError("No certified native adapter")
-                    invocation = native.configure(invocation)
+                    try:
+                        invocation = native.configure(invocation, native_settings) if native_settings is not None else native.configure(invocation)
+                    except Exception as exc:
+                        exc.polybridge_not_started = True
+                        raise
                 return await self._spawn(
                     invocation,
                     backend=backend,
@@ -2661,6 +2666,7 @@ class TaskRegistry:
         display_prompt: str | None = None,
         workflow_builder: bool = False,
         native_subagent: bool = False,
+        native_settings: dict[str, Any] | None = None,
         require_unchanged_session: bool = False,
     ) -> Task:
         """Continue the session of a task recovered from disk."""
@@ -2738,7 +2744,11 @@ class TaskRegistry:
                     native = adapter(backend)
                     if native is None:
                         raise ValueError("No certified native adapter")
-                    invocation = native.configure(invocation)
+                    try:
+                        invocation = native.configure(invocation, native_settings) if native_settings is not None else native.configure(invocation)
+                    except Exception as exc:
+                        exc.polybridge_not_started = True
+                        raise
                 return await self._spawn(
                     invocation,
                     backend=backend,
