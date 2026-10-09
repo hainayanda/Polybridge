@@ -42,8 +42,24 @@ import Testing
             }
             anchor = try await recapture(scroll: scroll, state: state, expected: anchor)
         }
-        host.rootView = feed(rows(prepending: true), state: state)
-        await waitUntil(timeout: 5) { @MainActor in state.viewportPositioned && state.anchor?.id == "tool-older" }
+        // Overlap successive restoration requests while native measurement callbacks are queued.
+        // Metrics are disabled by default: generation changes must themselves invalidate the view.
+        for width: CGFloat in [350, 360, 340] {
+            window.setContentSize(CGSize(width: width, height: 450))
+            host.rootView = feed(rows(prepending: true), state: state)
+            window.layoutIfNeeded()
+            await Task.yield()
+        }
+        var previousGeometry: [CGFloat] = []
+        var stableReports = 0
+        await waitUntil(timeout: 5) { @MainActor in
+            let geometry = [scroll.contentView.bounds.width, scroll.documentView?.bounds.height ?? 0,
+                            scroll.documentVisibleRect.minY]
+            stableReports = geometry == previousGeometry ? stableReports + 1 : 0
+            previousGeometry = geometry
+            return stableReports >= 3 && state.viewportPositioned && state.anchor?.id == "tool-older"
+                && abs(scroll.contentView.bounds.width - 340) < 1
+        }
         let replacement = ParallelVerticalAnchor(id: "tool-older", index: anchor.index, relativeOffset: anchor.relativeOffset)
         _ = try await recapture(scroll: scroll, state: state, expected: replacement)
         // then — logical identity and expansion migrate with the actual visible position.

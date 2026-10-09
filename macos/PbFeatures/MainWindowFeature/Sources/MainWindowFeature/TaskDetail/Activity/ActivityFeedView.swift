@@ -57,7 +57,6 @@ private final class ActivityFeedPosition {
     /// Measurements support reading restoration without invalidating the lazy feed's view graph.
     var frames: [String: CGRect] = [:]
     let measurements = ActivityRowMeasurements()
-    var measurementGeneration = 0
     var pagingTask: Task<Void, Never>?
 }
 
@@ -105,6 +104,7 @@ struct ActivityFeedView<Tail: View>: View {
     let onLoadMore: (() -> Bool)?
     @ViewBuilder let tail: () -> Tail
 
+    @State private var measurementGeneration = 0
     @State private var viewportSize: CGSize = .zero
     @State private var nativeViewportReady = false
     @State private var realizedLastRowID: String?
@@ -141,10 +141,10 @@ struct ActivityFeedView<Tail: View>: View {
                             .id(row.id)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(ActivityRowGeometry(
-                                generation: position.measurementGeneration,
+                                generation: measurementGeneration,
                                 measurements: position.measurements
-                            ) { [generation = position.measurementGeneration] frame in
-                                guard generation == position.measurementGeneration else { return }
+                            ) { [generation = measurementGeneration] frame in
+                                guard generation == measurementGeneration else { return }
                                 guard position.frames[row.id] != frame else { return }
                                 position.frames[row.id] = frame
                                 if row.id == shown.last?.id, realizedLastRowID != row.id { realizedLastRowID = row.id }
@@ -383,7 +383,7 @@ struct ActivityFeedView<Tail: View>: View {
         state.followLive.suspend()
         pendingReadingCapture = false
         position.pagingTask?.cancel()
-        position.measurementGeneration &+= 1
+        measurementGeneration &+= 1
         position.frames.removeAll(keepingCapacity: true)
         position.measurements.invalidateMeasurements()
         restoring = true

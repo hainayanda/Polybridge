@@ -910,3 +910,15 @@ without changes, SwiftLint completed with file/line-length warnings, and the pri
 guard and diff whitespace checks passed. The installable release bundle built and signed
 successfully. Independent read-only review found no actionable issue. GitHub review, CI and
 installation are subsequent delivery gates; none is claimed complete by these local results.
+
+### GitHub review follow-up: restoration generation
+
+Codex identified a repeated-restoration race at d79ed9a: measurement generation advanced on a
+nonobserved reference while the view could otherwise remain unchanged, leaving callbacks bound
+to an obsolete generation. The generation now lives in SwiftUI State, while measured frames
+remain unobserved. The native anchor fixture overlaps resizing and prepending and waits for
+stable final clip/document geometry before simulating a reading nudge; all anchor and relative
+offset assertions remain intact. The final affected feed run passed 15 tests (57.928 seconds),
+the release bundle rebuilt successfully, and read-only follow-up review found no actionable
+issue. Actual-app verification after this fix awaits an unlocked Mac; previous six successful
+openings describe the pre-review-fix candidate.
