@@ -129,3 +129,69 @@ def test_claude_api_error_with_quota_code_is_not_transport_fallback():
     event = {'type': 'error', 'error': {'type': 'api_error', 'code': 'rate_limit_error'}}
     assert backend.workflow_availability_failure(event) is None
     assert backend.usage_limit_diagnostic(event)
+
+
+@pytest.mark.parametrize('name', ['claude', 'codex', 'opencode', 'vibe', 'antigravity'])
+@pytest.mark.parametrize('quota', ['API Error: rate_limit_exceeded', 'rate_limit_exceeded', "You've hit your limit", 'Credit balance is too low', 'Warning: rate_limit_exceeded'])
+@pytest.mark.parametrize('quota_first', [True, False])
+@pytest.mark.parametrize('outage', ['API Error: 503 Service unavailable', 'API Error: provider timed out'])
+def test_multiline_quota_diagnostic_never_authorizes_availability(name, quota, quota_first, outage):
+    backend = get_backend(name)
+    lines = [quota, outage] if quota_first else [outage, quota]
+    assert bool(backend.workflow_stderr_availability_failure('\n'.join(lines))) is quota.startswith('Warning:')
+    assert backend.workflow_stderr_availability_failure(outage)
+    if quota.startswith('Warning:'):
+        assert backend.stderr_usage_limit_diagnostic(quota) is None
+
+
+@pytest.mark.parametrize('name', ['claude', 'codex', 'opencode', 'vibe', 'antigravity'])
+@pytest.mark.parametrize('quoted', ['Warning: rate_limit_exceeded', 'Tool quoted rate_limit_exceeded', '"You\'ve hit your limit"'])
+def test_quota_warning_or_quoted_prose_does_not_hide_real_outage(name, quoted):
+    backend = get_backend(name)
+    for lines in ([quoted, 'API Error: 503 Service unavailable'], ['API Error: 503 Service unavailable', quoted]):
+        assert backend.workflow_stderr_availability_failure('\n'.join(lines))
+        assert backend.stderr_usage_limit_diagnostic(quoted) is None
+
+
+@pytest.mark.parametrize('name,envelope', [('claude', 'error'), ('codex', 'turn.failed'), ('opencode', 'error'), ('vibe', 'error'), ('antigravity', 'result')])
+@pytest.mark.parametrize('quota_first', [True, False])
+def test_legacy_stream_quota_cannot_be_hidden_by_another_availability_event(tmp_path, name, envelope, quota_first):
+    import json
+    from polybridge import workflows as w
+    if name == 'antigravity':
+        quota = {'event': 'result', 'result': {'status': 'ERROR', 'error': {'code': 'rate_limit_exceeded'}}}
+        outage = {'event': 'result', 'result': {'status': 'ERROR', 'error': {'status': 503}}}
+    else:
+        quota = {'type': envelope, 'error': {'code': 'rate_limit_exceeded'}}
+        outage = {'type': envelope, 'error': {'status': 503}}
+    path = tmp_path / 'mixed.jsonl'
+    events = [quota, outage] if quota_first else [outage, quota]
+    path.write_text(''.join(json.dumps(event) + '\n' for event in events))
+    assert w.availability_failure({'status': 'failed', 'backend': name, 'raw_stream_log': str(path)}) is None
+    # A stderr outage must not bypass the authoritative quota in the stream either.
+    assert w.availability_failure({'status': 'failed', 'backend': name, 'raw_stream_log': str(path), 'stderr_tail': ['API Error: 503 Service unavailable']}) is None
+
+
+@pytest.mark.parametrize('name,envelope', [('claude', 'error'), ('codex', 'turn.failed'), ('opencode', 'error'), ('vibe', 'error'), ('antigravity', 'result')])
+@pytest.mark.parametrize('quota', ['rate_limit_exceeded', "You've hit your limit", 'API Error: insufficient_quota'])
+@pytest.mark.parametrize('code', ['outage', 'model'])
+def test_quota_stderr_veto_applies_to_availability_in_stream(tmp_path, name, envelope, quota, code):
+    import json
+    from polybridge import workflows as w
+    error = {'status': 503} if code == 'outage' else {'code': 'model_not_found'}
+    event = {'event': 'result', 'result': {'status': 'ERROR', 'error': error}} if name == 'antigravity' else {'type': envelope, 'error': error}
+    path = tmp_path / 'availability.jsonl'
+    path.write_text(json.dumps(event) + '\n')
+    assert w.availability_failure({'status': 'failed', 'backend': name, 'stderr_tail': [quota], 'raw_stream_log': str(path)}) is None
+
+
+@pytest.mark.parametrize('name,envelope', [('claude', 'error'), ('codex', 'turn.failed'), ('opencode', 'error'), ('vibe', 'error'), ('antigravity', 'result')])
+@pytest.mark.parametrize('quoted', ['Warning: rate_limit_exceeded', 'Tool quoted rate_limit_exceeded', '"You\'ve hit your limit"'])
+def test_warning_prose_stderr_does_not_veto_authoritative_stream_outage(tmp_path, name, envelope, quoted):
+    import json
+    from polybridge import workflows as w
+    error = {'status': 503}
+    event = {'event': 'result', 'result': {'status': 'ERROR', 'error': error}} if name == 'antigravity' else {'type': envelope, 'error': error}
+    path = tmp_path / 'outage.jsonl'
+    path.write_text(json.dumps(event) + '\n')
+    assert w.availability_failure({'status': 'failed', 'backend': name, 'stderr_tail': [quoted], 'raw_stream_log': str(path)})

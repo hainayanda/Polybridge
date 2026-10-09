@@ -668,8 +668,10 @@ Unsupported signal shapes remain unverified; Polybridge does not guess a reset t
 Usage limits never authorize automatic availability fallback, including older stderr and stream
 quota forms. Verified provider envelopes and error-prefixed stderr produce structured recovery
 diagnostics. Unsupported plain quota text remains a task failure requiring attention; it does
-not grant a replacement launch. Model unavailability and provider outages retain availability
-fallback behavior.
+not grant a replacement launch. A quota signal vetoes automatic availability fallback across
+the failed-process artifact: another stderr line or stream envelope carrying a transport,
+outage, or missing-model signal cannot bypass it, regardless of order. Warnings and quoted prose do not become quota evidence. Model unavailability and provider
+outages retain availability fallback behavior when no quota signal accompanies them.
 
 Task snapshots expose `failure_diagnostic` with category `usage_limit`, a reason, evidence source,
 and optional provider-supplied `reset_at`. The diagnostic is retained with partial output and

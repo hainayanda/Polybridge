@@ -2170,3 +2170,17 @@ async def test_unsupported_quota_stderr_does_not_dispatch_workflow_fallback(stor
     run, registry = await execute(storage, tmp_path, graph, [{'summary': '', 'status': 'failed', 'backend': backend, 'stderr': [stderr]}, 'unauthorized fallback'])
     assert run['status'] == 'needs_attention'
     assert len(registry.calls) == 1
+
+
+@pytest.mark.parametrize('backend', ['claude', 'codex', 'opencode', 'vibe', 'antigravity'])
+@pytest.mark.parametrize('quota_first', [True, False])
+@pytest.mark.parametrize('availability_line', ['API Error: 503 Service unavailable', 'API Error: provider timed out', 'model_not_found'])
+async def test_multiline_plain_quota_with_outage_cannot_dispatch_fallback(storage, tmp_path, backend, quota_first, availability_line):
+    graph = definition()
+    graph['nodes'][1]['agent']['fallbacks'] = [{'backend': 'claude'}]
+    lines = ['rate_limit_exceeded', availability_line]
+    if not quota_first:
+        lines.reverse()
+    run, registry = await execute(storage, tmp_path, graph, [{'summary': '', 'status': 'failed', 'backend': backend, 'stderr': lines}, 'unauthorized fallback'])
+    assert run['status'] == 'needs_attention'
+    assert len(registry.calls) == 1

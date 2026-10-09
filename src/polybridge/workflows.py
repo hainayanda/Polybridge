@@ -1806,6 +1806,17 @@ def availability_failure(snapshot: dict[str, Any]) -> str | None:
         return None  # Usage limits require an explicit recovery decision.
     diagnostic = "\n".join(snapshot.get("stderr_tail", []))
     adapter = backends.BACKENDS.get(snapshot.get("backend"))
+    stderr_veto = getattr(adapter, "workflow_stderr_blocks_availability_failure", None)
+    if stderr_veto and stderr_veto(diagnostic):
+        return None
+    stream = snapshot.get("raw_stream_log")
+    events = ()
+    if stream:
+        from .backends.workflow_diagnostics import stream_events
+        events = stream_events(stream)
+        quota_hook = getattr(adapter, "usage_limit_diagnostic", None)
+        if quota_hook and any(quota_hook(event) is not None for event in events):
+            return None  # A legacy artifact cannot hide quota behind a different outage event.
     stderr_hook = getattr(adapter, "workflow_stderr_availability_failure", None)
     if stderr_hook:
         reason = stderr_hook(diagnostic)
@@ -1813,11 +1824,9 @@ def availability_failure(snapshot: dict[str, Any]) -> str | None:
             return reason
     # Inspect only authoritative top-level protocol envelopes. Assistant messages,
     # tool payloads and summaries can contain arbitrary text and are never evidence.
-    stream = snapshot.get("raw_stream_log")
     classify = getattr(adapter, "workflow_availability_failure", None)
-    if stream and classify:
-        from .backends.workflow_diagnostics import stream_events
-        for event in stream_events(stream):
+    if events and classify:
+        for event in events:
             reason = classify(event)
             if reason:
                 return reason

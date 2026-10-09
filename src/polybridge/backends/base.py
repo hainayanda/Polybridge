@@ -449,6 +449,14 @@ class Backend(Protocol):
         """Recognize a harness-owned stderr quota diagnostic, or None when unverified."""
         ...
 
+    def workflow_stderr_blocks_availability_failure(self, diagnostic: str) -> bool:
+        """Veto automatic availability fallback for an entire failed-process artifact.
+
+        This does not assert a structured terminal failure. A backend may recognize
+        unsupported plain quota forms conservatively while rejecting warnings/prose.
+        """
+        return False
+
     def normalize(self, event: dict[str, Any], acc: Accumulator) -> list[dict[str, Any]]:
         """Translate one stream event into zero or more monitor events for `<task_id>.events.jsonl`.
 

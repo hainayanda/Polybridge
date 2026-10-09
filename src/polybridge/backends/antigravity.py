@@ -291,6 +291,11 @@ def _tool_command(parameters: dict[str, Any]) -> str | None:
 
 class AntigravityBackend:
     @staticmethod
+    def workflow_stderr_blocks_availability_failure(diagnostic: str) -> bool:
+        from .workflow_diagnostics import stderr_blocks_availability
+        return stderr_blocks_availability(diagnostic)
+
+    @staticmethod
     def workflow_stderr_availability_failure(diagnostic: str) -> str | None:
         from .workflow_diagnostics import stderr_availability
         return stderr_availability(diagnostic)

@@ -261,6 +261,11 @@ class UnsafeInvocationError(RuntimeError):
 
 class CodexBackend:
     @staticmethod
+    def workflow_stderr_blocks_availability_failure(diagnostic: str) -> bool:
+        from .workflow_diagnostics import stderr_blocks_availability
+        return stderr_blocks_availability(diagnostic)
+
+    @staticmethod
     def workflow_stderr_availability_failure(diagnostic: str) -> str | None:
         from .workflow_diagnostics import stderr_availability
         return stderr_availability(diagnostic, model_patterns=(r"(?im)^.*\bmodel_not_found\b.*$",))

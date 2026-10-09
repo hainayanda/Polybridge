@@ -13,7 +13,20 @@ MODEL_CODES = {"model_not_found"}
 TRANSPORT_CODES = {"overloaded_error", "api_connection_error", "APITimeoutError", "APIConnectionError", "service_unavailable"}
 
 
+def stderr_blocks_availability(diagnostic: str) -> bool:
+    """Quota stderr vetoes automatic replacement without asserting terminal usage authority.
+
+    Recognized plain native forms and error-prefixed codes block the whole artifact;
+    warnings and quoted prose do not become evidence.
+    """
+    quota = r"(?:usage_limit_reached|insufficient_quota|rate_limit_exceeded|rate_limit_error)"
+    error_prefix = r"(?:API[ _]Error|Provider[ _]Error|HTTP[ _]Error|Error|RateLimitError|APIConnectionError|APITimeoutError|ConnectError|ConnectionError)"
+    return re.search(r"(?im)^(?:" + error_prefix + r"\b[^\n]*\b" + quota + r"\b|" + quota + r"\s*$|You've hit your limit\b[^\n]*|Credit balance is too low\b[^\n]*)", diagnostic) is not None
+
+
 def stderr_availability(diagnostic: str, *, model_patterns: tuple[str, ...] = ()) -> str | None:
+    if stderr_blocks_availability(diagnostic):
+        return None
     if any(re.search(pattern, diagnostic) for pattern in model_patterns):
         return "backend availability rejected"
     for line in diagnostic.splitlines():
@@ -25,8 +38,6 @@ def stderr_availability(diagnostic: str, *, model_patterns: tuple[str, ...] = ()
         if status:
             if int(status.group(1)) in OUTAGES:
                 return "provider server unavailable"
-            continue
-        if re.search(r"\b(?:usage_limit_reached|insufficient_quota|rate_limit_exceeded|rate_limit_error)\b", body):
             continue
         if re.search(r"(?i)\b(?:overloaded_error|api_connection_error|service unavailable|connection (?:reset|refused)|provider timeout|timed out)\b", body):
             return "provider transport unavailable"
