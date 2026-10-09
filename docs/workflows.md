@@ -115,7 +115,8 @@ read-only node under a repository-write owner therefore uses Headless. Neither a
 drops the node's settings or treats a parent acknowledgement as worker success.
 
 Parallel launches use one control turn for a bounded batch of compatible siblings. Different
-child configurations serialize as separate batches. The root tree's worker budget and adapter
+child configurations or timeout policies serialize as separate batches. Aggregate parent
+permission denials remain control-turn evidence; child results contain only correlated denials. The root tree's worker budget and adapter
 batch limits apply even when a nested workflow requests a larger local limit. Control turns
 sharing a session serialize; native workers cannot delegate further. A batch with unresolved
 child ownership cannot advance siblings or retry as Headless.

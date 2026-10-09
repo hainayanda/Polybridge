@@ -15,7 +15,7 @@ async def dispatch_batch(supervisor: Any, node: dict[str, Any], assignment: str,
     pending = getattr(tree, "native_batches", None)
     if pending is None:
         pending = tree.native_batches = {}
-    key = (supervisor.run_id, prepared["owner_run"]["workflow_run_id"], json.dumps(prepared["settings"], sort_keys=True))
+    key = (supervisor.run_id, prepared["owner_run"]["workflow_run_id"], json.dumps(prepared["settings"], sort_keys=True), node.get("timeout_seconds") or None)
     queue = pending.get(key)
     future = asyncio.get_running_loop().create_future()
     request = {"supervisor": supervisor, "node": node, "assignment": assignment, "activation": activation, "prepared": prepared, "future": future}
@@ -186,9 +186,6 @@ async def _execute(requests: list[dict[str, Any]]) -> list[tuple[bool, dict[str,
             results = dict(fallbacks)
             for item in children:
                 state = item["state"]
-                if snapshot.get("permission_denials") and "result" in state:
-                    state["result"]["permission_denials"] = merge_denials(state["result"].get("permission_denials", []), snapshot["permission_denials"])
-                    supervisor._task_update(item["request"]["activation"]["id"], item["child"]["task_id"], {"result": state["result"]})
                 if snapshot["status"] != "completed" or "result" not in state or state.get("invalid") or getattr(supervisor.registry, "_workflow_native_failures", {}).get(transport_id):
                     uncertain = True
                     supervisor._task_update(item["request"]["activation"]["id"], item["child"]["task_id"], {"status": "uncertain", "error": "Native batch child or owning turn did not conclusively settle"})

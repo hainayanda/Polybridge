@@ -13,11 +13,12 @@ from test_workflow_traversal import policy
 
 
 class BatchRegistry(NativeRegistry):
-    def __init__(self, root, *, missing_child=False):
+    def __init__(self, root, *, missing_child=False, parent_denials=None):
         super().__init__(root)
         self.policy = policy
         self.batches = []
         self.missing_child = missing_child
+        self.parent_denials = parent_denials or []
 
     async def resume(self, previous, prompt, **kwargs):
         if not kwargs.get("native_subagent") or not isinstance(json.loads(prompt.split("Agent arguments:\n", 1)[1]), list):
@@ -33,8 +34,8 @@ class BatchRegistry(NativeRegistry):
                 events = events[:-1]
             for event in events:
                 observer(event)
-        observer({"type": "result", "session_id": record.session_id, "result": json.dumps({"native_dispatch_nonces": [a["description"] for a in arguments], "settled": True})})
-        task = Task(kwargs["task_id"], {"summary": "Batch settled", "backend": "claude", "session_id": record.session_id})
+        observer({"type": "result", "session_id": record.session_id, "result": json.dumps({"native_dispatch_nonces": [a["description"] for a in arguments], "settled": True}), "permission_denials": self.parent_denials})
+        task = Task(kwargs["task_id"], {"summary": "Batch settled", "backend": "claude", "session_id": record.session_id, "permission_denials": self.parent_denials})
         task.kwargs, task.repo = previous.kwargs, previous.repo
         self.tasks[task.task_id] = task
         store.write(self._log_dir, replace(record, task_id=task.task_id))
@@ -104,3 +105,52 @@ async def test_batch_queue_splits_at_adapter_limit_before_reserving(monkeypatch)
     await batch._drain(tree, "owner")
     assert seen == [16, 1]
     assert all(r["future"].result()[0] for r in requests)
+
+
+async def test_batch_queue_separates_timeout_policies(monkeypatch):
+    from types import SimpleNamespace
+    from polybridge import workflow_native_batch as batch
+    seen = []
+    async def execute(requests):
+        seen.append([r["node"].get("timeout_seconds") for r in requests])
+        return [(True, {"status": "completed"}) for _ in requests]
+    monkeypatch.setattr(batch, "_execute", execute)
+    tree = SimpleNamespace(worker_capacity=4)
+    supervisor = SimpleNamespace(tree=tree, run_id="run")
+    prepared = {"owner_run": {"workflow_run_id": "owner"}, "settings": {}, "run": {"definition": {"max_parallel": 4}}, "native": SimpleNamespace(max_batch_size=16)}
+    await asyncio.gather(*(batch.dispatch_batch(supervisor, {"timeout_seconds": timeout}, "assignment", {}, prepared) for timeout in [1, 10, None, 10]))
+    assert sorted(map(len, seen)) == [1, 1, 2]
+    assert all(len(set(values)) == 1 for values in seen)
+
+
+def test_batch_parent_denials_are_attributed_only_to_child_tools():
+    from polybridge.backends.claude_native import ClaudeNativeAdapter
+    adapter = ClaudeNativeAdapter()
+    entries = [{"nonce": "one"}, {"nonce": "two"}]
+    child_denial = {"tool_use_id": "child-edit", "tool_name": "Edit"}
+    other_denial = {"tool_use_id": "other-edit", "tool_name": "Edit"}
+    parent_denial = {"tool_use_id": "parent-shell", "tool_name": "Bash"}
+    event = {"type": "result", "result": json.dumps({"native_dispatch_nonces": ["one", "two"], "settled": True}), "permission_denials": [child_denial, other_denial, parent_denial]}
+    def state(tools):
+        return {"batch_entries": entries, "terminal": True, "child_tools": tools}
+    denied = adapter.observe(event, "one", state({"child-edit": {}}))
+    unaffected = adapter.observe(event, "two", state({}))
+    assert [u["permission_denials"] for u in denied if u["native_update"] == "permissions"] == [[child_denial]]
+    assert not any(u["native_update"] == "permissions" for u in unaffected)
+
+
+async def test_batch_keeps_unattributed_denials_on_control_task(tmp_path, monkeypatch):
+    monkeypatch.setattr(w.backends, "is_installed", lambda _: True)
+    monkeypatch.setattr(w.backends, "version", lambda _: "2.1.295 (Claude Code)")
+    denial = {"tool_use_id": "parent-shell", "tool_name": "Bash"}
+    storage = w.WorkflowStore(tmp_path)
+    registry = BatchRegistry(tmp_path, parent_denials=[denial])
+    run = storage.create_run(w.validate_definition(graph()), "Review", tmp_path)
+    await asyncio.wait_for(w.WorkflowSupervisor(registry, storage).execute(run["workflow_run_id"]), 10)
+    observed = storage.get_run(run["workflow_run_id"])
+    assert observed["status"] == "completed", observed.get("attention_reason")
+    workers = [t for a in observed["activations"] if a["role"] == "node" for t in a["tasks"]]
+    controls = [t for a in observed["activations"] if a["role"] == "native_control" for t in a["tasks"]]
+    assert workers and controls
+    assert all(not t["result"].get("permission_denials") for t in workers)
+    assert all(t["result"]["permission_denials"] == [denial] for t in controls)

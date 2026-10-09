@@ -150,7 +150,13 @@ class ClaudeNativeAdapter:
             if not isinstance(event["permission_denials"], list) or any(not isinstance(d, dict) for d in event["permission_denials"]):
                 state["invalid"] = "Invalid parent permission evidence"
                 raise ValueError(state["invalid"])
-            updates.append({"native_update": "permissions", "permission_denials": event["permission_denials"]})
+            denials = event["permission_denials"]
+            if state.get("batch_entries"):
+                # A parent result aggregates sibling and control-turn refusals.
+                # Only observed child tool IDs establish child attribution.
+                denials = [d for d in denials if d.get("tool_use_id") in state.get("child_tools", {})]
+            if denials:
+                updates.append({"native_update": "permissions", "permission_denials": denials})
         native_result = event.get("tool_use_result")
         if event.get("type") == "user" and isinstance(native_result, dict) and native_result.get("agentId"):
             tool_ids = {block.get("tool_use_id") for block in event.get("message", {}).get("content", []) if block.get("type") == "tool_result"}
