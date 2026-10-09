@@ -97,10 +97,10 @@ def plan_owner_contracts(definition: dict[str, Any], tree: dict[str, Any] | None
                     reason = "Native child Resume is not certified"
                 elif item["candidate"]["backend"] != candidate["backend"]:
                     reason = "The node harness differs from its owning orchestrator"
-                elif item["parallel"] and not getattr(native, "supports_parallel", False):
-                    reason = "Parallel native execution is not certified"
                 elif native is None:
                     reason = "This harness has no certified native execution adapter"
+                elif item["parallel"] and not getattr(native, "supports_parallel", False):
+                    reason = "Parallel native execution is not certified"
                 else:
                     owner_freedom, owner_network = _requirements([item], network)
                     parent = SimpleNamespace(**{key: candidate.get(key) for key in ("backend", "model", "reasoning_effort", "max_turns")}, freedom=owner_freedom, network=owner_network)
