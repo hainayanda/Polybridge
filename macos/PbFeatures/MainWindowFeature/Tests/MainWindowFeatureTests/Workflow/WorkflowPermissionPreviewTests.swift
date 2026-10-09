@@ -102,6 +102,72 @@ extension WorkflowTests {
         #expect(vm.launchPreview == nil)
     }
 
+    @Test func givenValidatedLaunchPreview_whenEditingTaskPrompt_thenPermissionPreviewRemainsReadyWithoutAnotherRequest() async throws {
+        // given
+        let harness = makeVM()
+        let vm = harness.sut
+        given(harness.useCase).command(.value("preview"), options: .any, positionals: .any).willReturn(permissionPreview())
+        vm.definition = WorkflowVM.starterDefinition()
+        vm.loadedName = "Workflow"
+        vm.name = "Workflow"
+        vm.savedDefinition = vm.definition
+        vm.repo = "/tmp"
+        vm.prompt = "Initial task"
+        vm.prepareLaunch()
+        try await waitUntil { vm.canStartWithPreview }
+        let requestID = vm.launchPreviewID
+        let hash = vm.launchPreview?.hash
+        // when
+        vm.prompt = "Updated task"
+        vm.prompt = "Updated task with more detail"
+        // then
+        #expect(vm.launchPreviewID == requestID)
+        #expect(vm.launchPreview?.hash == hash)
+        #expect(vm.canStartWithPreview)
+        #expect(vm.launchPreviewMessage == nil)
+        verify(harness.useCase).command(.value("preview"), options: .any, positionals: .any).called(1)
+        vm.showsRunSheet = false
+    }
+
+    @Test func givenValidatedLaunchPreview_whenRecommittingUnchangedSettings_thenPreviewStaysReadyUntilRepositoryChanges() async throws {
+        // given
+        let harness = makeVM()
+        let vm = harness.sut
+        given(harness.useCase).command(.value("preview"), options: .any, positionals: .any).willReturn(permissionPreview())
+        vm.definition = WorkflowVM.starterDefinition()
+        vm.loadedName = "Workflow"
+        vm.name = "Workflow"
+        vm.savedDefinition = vm.definition
+        vm.repo = "/tmp"
+        vm.prepareLaunch()
+        try await waitUntil { vm.canStartWithPreview }
+        let requestID = vm.launchPreviewID
+        let hash = vm.launchPreview?.hash
+        let repository = vm.repo
+        let name = vm.loadedName
+        let definition = vm.savedDefinition
+        let agent = vm.launchAgent
+        let override = vm.overrideOrchestrator
+        let showsSheet = vm.showsRunSheet
+        // when
+        vm.repo = repository
+        vm.loadedName = name
+        vm.savedDefinition = definition
+        vm.launchAgent = agent
+        vm.overrideOrchestrator = override
+        vm.showsRunSheet = showsSheet
+        // then
+        #expect(vm.launchPreviewID == requestID)
+        #expect(vm.launchPreview?.hash == hash)
+        #expect(vm.canStartWithPreview)
+        verify(harness.useCase).command(.value("preview"), options: .any, positionals: .any).called(1)
+        vm.repo = "/tmp/another-repository"
+        #expect(vm.launchPreviewID != requestID)
+        #expect(vm.launchPreview == nil)
+        #expect(!vm.canStartWithPreview)
+        vm.showsRunSheet = false
+    }
+
     @Test func givenUnpreviewedLaunch_whenStarting_thenNoRunIsDispatched() {
         // given
         let vm = makeVM().sut

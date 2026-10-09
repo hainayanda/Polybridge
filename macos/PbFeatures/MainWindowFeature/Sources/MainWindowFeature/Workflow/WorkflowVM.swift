@@ -41,12 +41,12 @@ final class WorkflowVM: WorkflowViewModel {
     var runs: [WorkflowRunModel] = []
     var definition: [String: JSONValue] = [:] { didSet { recordEdit(name: name, definition: oldValue); scheduleValidation(); scheduleDraftPersistence() } }
     var name = "" { didSet { recordEdit(name: oldValue, definition: definition); scheduleValidation(); scheduleDraftPersistence() } }
-    var loadedName = "" { didSet { scheduleLaunchPreview() } }
+    var loadedName = "" { didSet { if loadedName != oldValue { scheduleLaunchPreview() } } }
     var initialLoadingID = UUID()
     var initialLoadingKind: String? { didSet { initialLoadingID = UUID() } }
     var initialLoadFailed = false
     var revision = 0
-    var savedDefinition: [String: JSONValue] = [:] { didSet { scheduleLaunchPreview() } }
+    var savedDefinition: [String: JSONValue] = [:] { didSet { if savedDefinition != oldValue { scheduleLaunchPreview() } } }
     private var primaryNodeID: String?
     private(set) var selectedNodeIDs: Set<String> = []
     var selectedNodeID: String? {
@@ -77,17 +77,17 @@ final class WorkflowVM: WorkflowViewModel {
     @ObservationIgnored var nativeActivityTask: Task<Void, Never>?
 
     var validationMessage: String?
-    var repo = "" { didSet { scheduleLaunchPreview() } }
-    var prompt = "" { didSet { scheduleLaunchPreview() } }
+    var repo = "" { didSet { if repo != oldValue { scheduleLaunchPreview() } } }
+    var prompt = ""
     var freedom = "write_in_repo"
     var instructions = ""
     var additionalAttempts = 0
-    var launchAgent: [String: JSONValue] = [:] { didSet { scheduleLaunchPreview() } }
-    var overrideOrchestrator = false { didSet { scheduleLaunchPreview() } }
+    var launchAgent: [String: JSONValue] = [:] { didSet { if launchAgent != oldValue { scheduleLaunchPreview() } } }
+    var overrideOrchestrator = false { didSet { if overrideOrchestrator != oldValue { scheduleLaunchPreview() } } }
     var generationAgent: [String: JSONValue] = ["backend": .string("codex")]
     var generationFallbacks: [[String: JSONValue]] = []
     var modelChoices: [String: [ModelChoiceModel]] = [:]
-    var showsRunSheet = false { didSet { scheduleLaunchPreview() } }
+    var showsRunSheet = false { didSet { if showsRunSheet != oldValue { scheduleLaunchPreview() } } }
     var launchPreview: WorkflowPermissionPreview?
     var launchPreviewMessage: String?
     @ObservationIgnored var launchPreviewTask: Task<Void, Never>?
