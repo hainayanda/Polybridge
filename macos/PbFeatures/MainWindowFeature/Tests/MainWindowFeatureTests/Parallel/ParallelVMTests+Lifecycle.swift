@@ -54,14 +54,14 @@ extension ParallelVMTests {
         harness.tasksSubject.send(tasks)
         await waitUntil { harness.sut.columns.count == 8 && second.columns.count == 8 && second.isPresentationSettled }
         let retained = Set(second.columns.filter(\.isResident).map(\.id))
-        #expect(pool.count == 6)
+        #expect(pool.count == 4)
         #expect(retained.allSatisfy { pool.count(for: $0) == 2 })
         harness.sut.updateViewport(offset: 421 * 4, width: 842)
         await waitUntil { harness.sut.isPresentationSettled }
         #expect(retained.allSatisfy { pool.count(for: $0) == 1 })
         harness.sut.didDisappear()
-        #expect(pool.count == 3)
-        #expect(second.leasedMemberCount == 3)
+        #expect(pool.count == 2)
+        #expect(second.leasedMemberCount == 2)
         second.didDisappear()
         #expect(pool.isEmpty)
     }

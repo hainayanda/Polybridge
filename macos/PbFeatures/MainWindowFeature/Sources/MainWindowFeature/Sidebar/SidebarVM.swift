@@ -369,6 +369,17 @@ final class SidebarVM: SidebarViewModel {
     func didSelect(_ destination: MonitorDestination?) {
         selectionRevision += 1
         desiredSelection = destination
+        // A List binding must acknowledge its interaction synchronously. Reuse the settled
+        // indexes; the worker still owns full retention and visibility reconciliation.
+        if case .task(let id) = destination {
+            let representative = indexedExecutionParents[id] != nil
+                ? (indexedRepresentatives[id]
+                    ?? (indexedWorkflowOwners[id] == nil ? conversationIndex.conversationID(of: id) : id))
+                : conversationIndex.conversationID(of: id)
+            selection = .task(representative)
+        } else {
+            selection = destination
+        }
         recompute()
         routing.select(destination)
     }

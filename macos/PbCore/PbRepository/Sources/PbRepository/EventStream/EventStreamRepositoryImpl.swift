@@ -13,12 +13,19 @@ public final class EventStreamRepositoryImpl: EventStreamRepository, @unchecked 
 
     private let lock = NSRecursiveLock()
     private var streams: [String: TaskStream] = [:]
+    private let initialLoads: EventInitialLoadQueue
 
     /// `EventStreamRepository → TaskSnapshotRepository`, never the reverse (F6/decision 6).
-    public init(toolEnvironment: any ToolEnvironmentRepository, snapshotRepository: any TaskSnapshotRepository, scheduler: any Scheduling) {
+    public convenience init(toolEnvironment: any ToolEnvironmentRepository, snapshotRepository: any TaskSnapshotRepository, scheduler: any Scheduling) {
+        self.init(toolEnvironment: toolEnvironment, snapshotRepository: snapshotRepository, scheduler: scheduler, initialLoads: EventInitialLoadQueue())
+    }
+
+    init(toolEnvironment: any ToolEnvironmentRepository, snapshotRepository: any TaskSnapshotRepository,
+         scheduler: any Scheduling, initialLoads: EventInitialLoadQueue) {
         self.toolEnvironment = toolEnvironment
         self.snapshotRepository = snapshotRepository
         self.scheduler = scheduler
+        self.initialLoads = initialLoads
     }
 
     public func acquire(_ taskID: String) -> any EventStreamLease { acquire(taskID, activity: true) }
@@ -33,7 +40,7 @@ public final class EventStreamRepositoryImpl: EventStreamRepository, @unchecked 
             isFirst = false
         } else {
             let path = TaskTitle.eventsPath(tasksDirectory: toolEnvironment.tasksDirectory, taskID: taskID) ?? "/dev/null"
-            stream = TaskStream(taskID: taskID, path: path, scheduler: scheduler)
+            stream = TaskStream(taskID: taskID, path: path, scheduler: scheduler, initialLoads: initialLoads)
             stream.refCount = 1
             streams[taskID] = stream
             isFirst = true
@@ -122,6 +129,9 @@ private final class TaskStream: @unchecked Sendable {
     let taskID: String
     let path: String
     let scheduler: any Scheduling
+    private let initialLoads: EventInitialLoadQueue
+    private var initialActivityID: UUID?
+    private var initialSummaryID: UUID?
     @Subjected var history = EventHistoryState(isLoading: true)
     @Subjected var summary = EventSummary()
     private let summaryQueue = DispatchQueue(label: "dev.polybridge.monitor.summary")
@@ -159,10 +169,11 @@ private final class TaskStream: @unchecked Sendable {
     private var pendingAvailability: EventAvailability?
     private var flushToken: AnyCancellable?
 
-    init(taskID: String, path: String, scheduler: any Scheduling) {
+    init(taskID: String, path: String, scheduler: any Scheduling, initialLoads: EventInitialLoadQueue) {
         self.taskID = taskID
         self.path = path
         self.scheduler = scheduler
+        self.initialLoads = initialLoads
     }
 
     func start() {
@@ -172,9 +183,22 @@ private final class TaskStream: @unchecked Sendable {
         activityStopped = false
         pageRequested = false
         history = EventHistoryState(isLoading: true)
+        let id = UUID()
+        initialActivityID = id
+        initialLoads.submit(id: id) { [weak self] completion in
+            guard let self else { completion(); return }
+            startActivityRead(epoch: epoch, completion: completion)
+        }
         bufferLock.unlock()
+    }
+
+    private func startActivityRead(epoch: Int, completion: @escaping @Sendable () -> Void) {
+        bufferLock.lock()
+        defer { bufferLock.unlock() }
+        guard !activityStopped, activityEpoch == epoch else { completion(); return }
         let tailer = EventFileTailer(path: path, historyHandler: { [weak self] value in
-            self?.enqueueHistory(value, epoch: epoch)
+            guard let self else { if !value.isLoading { completion() }; return }
+            enqueueHistory(value, epoch: epoch, completion: !value.isLoading ? completion : nil)
         }) { [weak self] newEvents, reset, availability in
             self?.enqueue(newEvents, reset: reset, availability: availability, epoch: epoch)
         }
@@ -198,8 +222,9 @@ private final class TaskStream: @unchecked Sendable {
         return true
     }
 
-    private func enqueueHistory(_ value: EventHistoryState, epoch: Int) {
+    private func enqueueHistory(_ value: EventHistoryState, epoch: Int, completion: (@Sendable () -> Void)? = nil) {
         activityQueue.async { [weak self] in
+            defer { completion?() }
             guard let self else { return }
             bufferLock.lock()
             defer { bufferLock.unlock() }
@@ -218,16 +243,27 @@ private final class TaskStream: @unchecked Sendable {
     }
 
     func startSummary() {
-        summaryQueue.async { [weak self] in self?.readSummary(tail: LineTail(maxChunk: 64 << 10)) }
+        bufferLock.lock()
+        let id = UUID()
+        initialSummaryID = id
+        initialLoads.submit(id: id) { [weak self] completion in
+            guard let self else { completion(); return }
+            summaryQueue.async { [weak self] in
+                guard let self else { completion(); return }
+                readSummary(tail: LineTail(maxChunk: 64 << 10), completion: completion)
+            }
+        }
+        bufferLock.unlock()
     }
 
-    private func readSummary(tail initial: LineTail) {
-        guard !summaryStopped else { return }
+    private func readSummary(tail initial: LineTail, completion: (@Sendable () -> Void)? = nil) {
+        guard !summaryStopped else { completion?(); return }
         var tail = initial
         tail.maxLines = EventPages.pageSize
         guard let step = tail.read(path: path) else {
             summaryBuilder.setAvailability(.unavailable)
             summary = summaryBuilder.snapshot(fileLimit: summaryFileLimit)
+            completion?()
             // read(path:) can mutate its cursor before a seek/read fails. Commit only successful reads.
             scheduleSummaryRetry(tail: initial)
             return
@@ -241,8 +277,12 @@ private final class TaskStream: @unchecked Sendable {
         }
         if step.more {
             let nextTail = tail
-            summaryQueue.async { [weak self] in self?.readSummary(tail: nextTail) }
+            summaryQueue.async { [weak self] in
+                guard let self else { completion?(); return }
+                readSummary(tail: nextTail, completion: completion)
+            }
         } else {
+            completion?()
             scheduleSummaryRetry(tail: tail)
         }
     }
@@ -256,6 +296,8 @@ private final class TaskStream: @unchecked Sendable {
 
     func stopActivity() {
         bufferLock.lock()
+        if let initialActivityID { initialLoads.cancel(initialActivityID) }
+        initialActivityID = nil
         activityStopped = true
         activityEpoch += 1
         pageRequested = false
@@ -279,6 +321,10 @@ private final class TaskStream: @unchecked Sendable {
     }
 
     func stop() {
+        bufferLock.lock()
+        if let initialSummaryID { initialLoads.cancel(initialSummaryID) }
+        initialSummaryID = nil
+        bufferLock.unlock()
         summaryQueue.async { [weak self] in
             self?.summaryStopped = true
             self?.summaryRetry?.cancel()

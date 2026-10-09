@@ -20,7 +20,7 @@ extension ParallelVMTests {
         harness.sut.didDisappear()
     }
 
-    @Test func givenManyConversations_whenViewportMoves_thenOnlyVisibleAndNeighborMembersAreLeased() async {
+    @Test func givenManyConversations_whenViewportMoves_thenOnlyVisibleMembersAreLeased() async {
         let harness = makeSUT()
         harness.sut.updateViewport(offset: 0, width: 842)
         let tasks = (0 ..< 64).map { task(id: "task-\($0)", startedAt: Date(timeIntervalSince1970: Double($0))) }
@@ -28,13 +28,13 @@ extension ParallelVMTests {
         harness.sut.didAppear()
         harness.tasksSubject.send(tasks)
         await waitUntil { harness.sut.columns.count == 64 && harness.sut.isPresentationSettled }
-        #expect(harness.sut.residentColumnCount == 3)
-        #expect(harness.sut.leasedMemberCount == 3)
+        #expect(harness.sut.residentColumnCount == 2)
+        #expect(harness.sut.leasedMemberCount == 2)
         let original = Set(harness.sut.columns.filter(\.isResident).map(\.id))
         harness.sut.updateViewport(offset: 421 * 20, width: 842)
         await waitUntil { harness.sut.isPresentationSettled }
-        #expect(harness.sut.residentColumnCount == 4)
-        #expect(harness.sut.leasedMemberCount == 4)
+        #expect(harness.sut.residentColumnCount == 2)
+        #expect(harness.sut.leasedMemberCount == 2)
         #expect(original.isSubset(of: harness.releasedBox.value))
         #expect(harness.sut.columns.filter { !$0.isResident }.allSatisfy { $0.rows.isEmpty && $0.activityRows.isEmpty })
         harness.sut.didDisappear()
@@ -70,11 +70,12 @@ extension ParallelVMTests {
         for index in 0 ..< 30 { harness.sut.updateViewport(offset: CGFloat(index) * 421, width: 842) }
         harness.sut.updateViewport(offset: 0, width: 842)
         await waitUntil { harness.sut.isPresentationSettled }
-        #expect(harness.sut.residentColumnCount == 3)
-        #expect(harness.sut.leasedMemberCount == 3)
-        let firstThreeAreResident = harness.sut.columns.prefix(3).allSatisfy(\.isResident)
-        #expect(firstThreeAreResident)
-        #expect(harness.sut.columns.dropFirst(3).allSatisfy { !$0.isResident && $0.rows.isEmpty })
+        #expect(harness.sut.residentColumnCount == 2)
+        #expect(harness.sut.leasedMemberCount == 2)
+        let firstTwoAreResident = harness.sut.columns.prefix(2).allSatisfy(\.isResident)
+        #expect(firstTwoAreResident)
+        let unvisitedAreEmpty = harness.sut.columns.filter { !$0.isResident }.allSatisfy(\.rows.isEmpty)
+        #expect(unvisitedAreEmpty)
         harness.sut.didDisappear()
         #expect(harness.sut.leasedMemberCount == 0)
         #expect(harness.sut.columns.isEmpty)
@@ -98,7 +99,7 @@ extension ParallelVMTests {
         harness.sut.didDisappear()
     }
 
-    @Test func givenLongResumeChains_whenOnlyThreeColumnsAreResident_thenAllTheirTurnsAreLeased() async throws {
+    @Test func givenLongResumeChains_whenOnlyTwoColumnsAreVisible_thenAllTheirTurnsAreLeased() async throws {
         let harness = makeSUT()
         harness.sut.updateViewport(offset: 0, width: 842)
         var tasks: [TaskInfo] = []
@@ -118,8 +119,8 @@ extension ParallelVMTests {
         harness.sut.didAppear()
         harness.tasksSubject.send(tasks)
         await waitUntil { harness.sut.columns.count == 8 && harness.sut.isPresentationSettled }
-        #expect(harness.sut.residentColumnCount == 3)
-        #expect(harness.sut.leasedMemberCount == 48)
+        #expect(harness.sut.residentColumnCount == 2)
+        #expect(harness.sut.leasedMemberCount == 32)
         for column in harness.sut.columns where column.isResident {
             #expect(column.rows.count == 1)
             #expect(column.rows.first?.taskID == column.task.taskID, "seeded historical turns stay hidden behind the chronological frontier")

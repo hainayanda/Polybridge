@@ -549,7 +549,8 @@ struct WorkflowActivityColumns: View {
         self.columns = columns
         self.selectedTaskID = selectedTaskID
         self.onViewport = { _, _ in }
-        self.stateForColumn = { _ in ParallelColumnUIState() }
+        let states = Dictionary(uniqueKeysWithValues: columns.map { ($0.id, ParallelColumnUIState()) })
+        self.stateForColumn = { states[$0] ?? ParallelColumnUIState() }
     }
 
     var body: some View {

@@ -6,13 +6,13 @@ import PbTestUtilities
 import Testing
 
 extension ParallelVMTests {
-    @Test func givenBufferedColumns_whenOlderActivityIsRequested_thenOnlyVisibleColumnsRequestAndDuplicatesCoalesce() async throws {
+    @Test func givenUnvisitedColumns_whenOlderActivityIsRequested_thenOnlyVisibleColumnsRequestAndDuplicatesCoalesce() async throws {
         // given
         let harness = historyHarness()
         await waitUntil { harness.sut.columns.count == 8 && harness.sut.isPresentationSettled }
         let visible = try #require(harness.sut.columns.first)
         #expect(visible.isVisible && visible.history.hasMore)
-        #expect(harness.sut.columns[1].isResident && !harness.sut.columns[1].isVisible)
+        #expect(!harness.sut.columns[1].isResident && !harness.sut.columns[1].isVisible)
         #expect(harness.sut.columns[1].onLoadMore == nil)
         // when
         visible.onLoadMore?()
@@ -146,7 +146,8 @@ extension ParallelVMTests {
         oldPublisher.send(EventHistoryState(hasMore: true, isLoading: true, error: "obsolete"))
         await waitUntil { harness.sut.isPresentationSettled }
         #expect(harness.sut.columns.first?.history.error == nil)
-        #expect(harness.sut.columns.first?.isResident == false)
+        #expect(harness.sut.columns.first?.isVisible == false)
+        #expect(harness.sut.columns.first?.isResident == true)
         harness.sut.didDisappear()
     }
 

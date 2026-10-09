@@ -156,11 +156,21 @@ final class ParallelScrollObservationView: NSView {
     private var applyingRestoration = false
     private var requestedOffset: CGFloat?
     private var restorationActive = false
+    private var configuredAxis: ParallelScrollObserver.Axis?
+    private var pendingPositionAcknowledgement = false
     private var lastOffset: CGFloat = 0
     private var lastReported: CGRect?
     private var lastViewportSize: CGSize?
 
     func configure(ids: [String], stride: CGFloat, restorationOffset: CGFloat?, restorationActive: Bool) {
+        let geometryChanged = configuredAxis != axis || ids != self.ids || stride != self.stride
+        guard geometryChanged || restorationOffset != requestedOffset || restorationActive != self.restorationActive else { return }
+        if !restorationActive { pendingPositionAcknowledgement = false }
+        if restorationActive, restorationOffset != nil,
+           restorationOffset != requestedOffset || restorationActive != self.restorationActive {
+            pendingPositionAcknowledgement = true
+        }
+        configuredAxis = axis
         self.restorationActive = restorationActive
         if axis == .horizontal, ids != self.ids || stride != self.stride,
            let anchor = ParallelHorizontalAnchor.capture(ids: self.ids, stride: self.stride, offset: lastOffset) {
@@ -244,7 +254,7 @@ final class ParallelScrollObservationView: NSView {
     private func observeExternalUpwardScroll(visible: CGRect, document: NSView, length: CGFloat, viewport: CGFloat) {
         let offset = document.isFlipped ? visible.minY : document.bounds.maxY - visible.maxY
         guard axis == .vertical, let lastReported, offset < lastOffset - 0.5,
-              length >= lastReported.width - 0.5, viewport == lastReported.height else { return }
+              abs(length - lastReported.width) < 0.5, viewport == lastReported.height else { return }
         pendingOffset = nil
         requestedOffset = nil
         lastOffset = offset
@@ -282,7 +292,9 @@ final class ParallelScrollObservationView: NSView {
         let updated = scroll.documentVisibleRect
         lastOffset = axis == .horizontal ? updated.minX : (document.isFlipped ? updated.minY : document.bounds.maxY - updated.maxY)
         let report = CGRect(x: lastOffset, y: 0, width: length, height: viewport)
-        if report != lastReported || restorationActive {
+        let acknowledgesRestoration = pendingPositionAcknowledgement && viewport > 0 && horizontalLayoutReady && pendingOffset == nil
+        if acknowledgesRestoration { pendingPositionAcknowledgement = false }
+        if report != lastReported || acknowledgesRestoration {
             lastReported = report
             onPosition?(lastOffset, length, viewport)
         }

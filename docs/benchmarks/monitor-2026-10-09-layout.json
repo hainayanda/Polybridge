@@ -1,0 +1,164 @@
+{
+  "verification_status": "in_progress",
+  "environment": "macOS actual release apps; private bundle identities; ordinary read-only navigation",
+  "layout_comparison": {
+    "scenario": "same_completed_task_selection",
+    "lazy_baseline": {
+      "source_commit": "99c517b",
+      "automation_timeout_seconds": 120.214,
+      "main_samples": 267,
+      "main_graph_layout_samples": 267
+    },
+    "lazy_nonobservable_measurements": {
+      "automation_timeout_seconds": 120.6892,
+      "main_samples": 244,
+      "ps_cpu_percent_raw_at_24s": 99.3
+    },
+    "lazy_native_publication_guards_and_unanimated_selection": {
+      "automation_timeout_seconds": 120.8742,
+      "main_samples": 248,
+      "ps_cpu_percent_raw_at_24s": 99.0
+    },
+    "eager_diagnostic_only": {
+      "automation_call_seconds": 2.1655,
+      "main_samples": 274,
+      "main_mach_port_wait_samples": 273,
+      "ps_cpu_percent_raw_after_open": 0.0,
+      "steps": 10,
+      "production_source_restored_lazy": true
+    },
+    "displayed_latency_ms": null,
+    "normalization_of_ps_cpu": null,
+    "production_content_persisted": false,
+    "causal_limit": "Eager versus lazy isolates container participation; does not identify the specific SwiftUI layout mechanism.",
+    "lazy_native_row_measurements": {
+      "automation_call_seconds": 2.335,
+      "steps_after_paging": 10,
+      "main_samples": 239,
+      "candidate_installed": false
+    }
+  },
+  "sidebar_candidate": {
+    "candidate": "working_tree_natural_visible_height_with_initial_loading_limit_and_nonobservable_frames",
+    "surface": "sidebar",
+    "selection": "middle_of_three_completed_nested_workflow_shortcuts",
+    "visible_title": true,
+    "visible_detail_line": true,
+    "visible_metadata_line": true,
+    "original_screenshot_clipped": true,
+    "original_screenshot_trigger_reproduced_in_hosted_tests": false,
+    "production_content_persisted": false,
+    "candidate_installed": false
+  },
+  "units": {
+    "automation_seconds": "wall time of CUA call, includes observation overhead, not displayed latency",
+    "ps_cpu_percent_raw": "owned process macOS ps %cpu decaying average over up to a minute; normalization unverified",
+    "main_samples": "3-second sample, requested interval 10ms"
+  },
+  "limitations": [
+    "One observation per layout variant; no p50 or p95 claim.",
+    "Synthetic hosted baselines also pass; they do not reproduce the actual hang.",
+    "Eager stack is diagnostic only and violates the planned lazy-feed requirement if delivered.",
+    "No candidate installed; original saved Monitor remains installed."
+  ],
+  "final_candidate": {
+    "automation_task_open_seconds": 2.2127,
+    "steps": 10,
+    "repeated_selections": 4,
+    "repeated_selection_steps": [
+      16,
+      56,
+      2,
+      56
+    ],
+    "loading_after_observation": false,
+    "candidate_installed": false,
+    "displayed_latency_ms": null,
+    "transient_outer_frame_movement_verified": false
+  },
+  "native_validation": {
+    "main_window_tests": 893,
+    "main_window_suites": 91,
+    "main_window_seconds": 154.703,
+    "repository_tests": 261,
+    "repository_suites": 27,
+    "repository_seconds": 14.346,
+    "app_shell_tests": 95,
+    "app_shell_suites": 10,
+    "app_shell_seconds": 0.294,
+    "window_server_access": true,
+    "sandbox_screen_count": 0,
+    "sandbox_geometry_failures_excluded": true,
+    "loading_minimum_height_before_points": 752,
+    "loading_minimum_height_after_points": 620
+  },
+  "sidebar_selection_acknowledgement": {
+    "affected_tests": 171,
+    "suites": 16,
+    "seconds": 59.367,
+    "release_build_succeeded": true,
+    "actual_app_selections": 6,
+    "requested_selection_matches": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ],
+    "loading_after_observation": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ],
+    "candidate_installed": false,
+    "transient_pixels_verified": false
+  },
+  "blank_activity_initial_layout": {
+    "loaded_step_count": 2,
+    "blank_column_reproduced": true,
+    "readiness_only_candidate_fixed": false,
+    "body_accessibility_nodes_present": false,
+    "scroll_up_accessibility_action_realized_body": false,
+    "production_content_persisted": false,
+    "next_experiment": "realize last concrete row before numeric bottom restoration",
+    "concrete_row_candidate": {
+      "shared_feed_tests": 15,
+      "test_seconds": 53.393,
+      "actual_group_openings": 6,
+      "body_present_without_scroll": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "finished_present_without_scroll": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "initial_screenshot_visible_columns_populated": 3,
+      "candidate_installed": false,
+      "displayed_latency_ms": null
+    }
+  },
+  "final_local_verification": {
+    "mainwindow_tests": 895,
+    "suites": 91,
+    "seconds": 148.384,
+    "python_passed": 6047,
+    "python_skipped": 327,
+    "release_bundle_built": true,
+    "private_reference_guard": true,
+    "independent_readonly_review": "no actionable findings",
+    "installed": false
+  }
+}

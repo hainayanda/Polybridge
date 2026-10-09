@@ -656,6 +656,11 @@ presentations use immutable snapshots and background workers, with complete equa
 Parallel acquires resident resume-member leases in cancellable batches of at most four attempted
 members or four milliseconds, yielding between batches. A single synchronous acquisition can exceed
 four milliseconds; the budget bounds additional attempts, not an uninterruptible call's duration.
+The repository separately limits initial activity reads through their first committed history
+snapshot and complete initial summary scans to four shared FIFO jobs. Activity and summary work
+for one stream may use two slots. Queued work is canceled when its owning interest is released;
+running work retains its slot until completion. A long summary scan can therefore delay queued
+feeds. This bound does not change post-initial polling, snapshot refreshes, or group membership.
 
 The repository experiment ran 150 observations (ten per scenario and logical 8/64/256 group size)
 with synthetic logs and no model calls. Each logical size uses the same sixteen resident streams;
@@ -811,3 +816,97 @@ production sources remain at `99c517b`. Their evidence is retained outside the r
 The saved Monitor bundle was restored and its signature and executable hash verified; the failed
 candidate remains available for diagnosis. The verified server installation and refreshed client
 registrations remain in place. PR #31 returned to draft, and installation delivery remains incomplete.
+
+
+### October 9 follow-up: actual activity layout and sidebar clipping
+
+Verification is still in progress. The same completed activity selection reproduced the
+layout hang in private release applications. Moving row measurements out of observed state
+was insufficient. Suppressing unchanged native scroll publications and removing the disclosure
+animation from ordinary sidebar selection was also insufficient for this case.
+
+A controlled build changed only the vertical `LazyVStack` to `VStack`. That activity opened;
+273 of 274 main-thread samples then waited on the event loop, compared with all main samples
+in graph/layout work for the lazy variants. This isolates participation of the lazy container;
+it does not identify the specific SwiftUI mechanism. The eager stack was diagnostic only,
+and the production source was immediately restored to lazy rendering. Replacing observed SwiftUI row geometry with generation-bound native row measurements
+allowed the previously hanging activity to open and paginate in a private release app. This
+retains lazy rendering; the final candidate still needs actual-app verification. CUA call duration includes observation overhead and is not
+used as displayed interaction latency.
+
+The natural-height sidebar candidate displayed the selected middle child-workflow shortcut
+with its title, detail and metadata fully visible in the actual application, matching the
+reported three-line row pattern. Two hosted sidebar fixtures pass both old and candidate
+code, so they provide coverage rather than reproduce the original clipping trigger.
+The four-job initial-read limit has delayed-reader and shared-lease cancellation coverage;
+its effect on the reported 71-task group has not yet been measured.
+
+[Raw follow-up observations](benchmarks/monitor-2026-10-09-layout.json) retain the individual
+layout comparisons and their limits. None of these private candidates has replaced the
+saved installed Monitor; delivery and the required matched interaction measurements remain
+incomplete.
+
+### Revised Parallel retention policy
+
+The user-approved follow-up replaces the earlier neighbor-prefetch/eviction policy. Activity leases
+and updates now cover only viewport-intersecting columns. Never-visited conversations retain only
+lightweight descriptors. A visited conversation keeps its complete immutable presentation and
+completed input while off screen, without subscriptions or presentation rebuilding. Returning
+conversations display that snapshot during stream reacquisition and retained-history restoration;
+new committed activity replaces it once ready. Current metadata still supplies headers and action
+targets. Conversation removal and full teardown clear snapshots. Memory therefore grows with visited
+conversations and explicitly loaded history; the previous bound on heavy off-screen models no longer
+applies. Lease counts remain bounded by visible conversations and their resume members.
+
+The affected Parallel VM suite passed 68 tests, including retained content during delayed reentry,
+late off-screen updates, current shared leases, historical pagination and lifecycle cleanup. The full
+MainWindow suite then passed 893 tests in 91 suites with WindowServer access (154.703 seconds),
+including native row-anchor and loading-to-content window-frame fixtures. Earlier sandboxed AppKit
+runs had no screens and collapsed test windows; their geometry failures are excluded from product
+regression evidence. The loading skeleton was also bounded to the available viewport after its
+intrinsic minimum height measured 752 points against a 620-point window. Actual-app confirmation of
+the outer-frame jump and final memory measurements remain in progress. These results do not establish the displayed-interaction latency target.
+
+### Sidebar interaction acknowledgement
+
+A sidebar click previously changed routing immediately but left the List binding's observed highlight
+at its previous value until background presentation completed. The selection setter now acknowledges
+the click synchronously using settled conversation/ownership indexes; full visibility and retention
+reconciliation remains in the background worker. This addresses a concrete source of transient old-row
+highlight restoration, separately from the loading-placeholder window minimum-height correction.
+The affected sidebar run passed 171 tests in 16 suites (59.367 seconds); the isolated release
+build succeeded and read-only review found no actionable issue. The full Python suite passed
+6,047 tests with 327 skipped (436.83 seconds). After explicit action-time approval, the new private release candidate launched. Six alternating
+completed-task selections matched the requested native selected row after each observation and
+finished without a loading placeholder or hang. Accessibility observations do not resolve a
+split-second transient, so the synchronous-binding regression test supplies that boundary.
+Installed-app verification remains pending.
+
+### Blank activity on initial Parallel layout
+
+A private release app reproduced a loaded two-step column with a blank feed beside populated
+columns before user scrolling. The shared feed's initial positioning task could return before
+its native vertical viewport became positive; later native reports updated nonobserved geometry
+without explicitly retrying ScrollViewReader positioning. An observed readiness transition now
+retries that positioning. A nested horizontal lazy-stack fixture with a partially visible third
+feed and delayed native attachment passes without scrolling, as does the existing resize/prepend
+anchor fixture (two tests, 4.742 seconds). This is targeted race coverage, not proof that the
+fixture reproduces the screenshot's exact timing. The readiness-only release candidate still reproduced the blank middle column; its loaded body
+was also absent from the accessibility tree. Readiness alone is therefore insufficient. The final implementation
+targets the last concrete row before enabling numeric bottom restoration, rather than trusting the
+transparent bottom sentinel and estimated lazy document height. The release candidate displayed
+the previously blank middle body and Finished marker
+before scrolling on its first opening and five subsequent fresh group openings. A screenshot also
+confirmed visible activity in all three displayed columns. All 15 shared-feed tests passed in
+53.393 seconds. These six actual-app observations cover this reported group and are functional
+checks, not a displayed-latency series or proof for every activity shape. Installation remains pending.
+
+### Final follow-up verification before publication
+
+The final full MainWindow run passed 895 tests in 91 suites (148.384 seconds) with native
+WindowServer access. Repository tests passed 261 cases and app-shell tests passed 95 cases;
+the full Python suite passed 6,047 tests with 327 skipped. SwiftFormat checked all 524 files
+without changes, SwiftLint completed with file/line-length warnings, and the private-reference
+guard and diff whitespace checks passed. The installable release bundle built and signed
+successfully. Independent read-only review found no actionable issue. GitHub review, CI and
+installation are subsequent delivery gates; none is claimed complete by these local results.

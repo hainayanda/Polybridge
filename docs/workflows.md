@@ -191,9 +191,12 @@ shows the canvas above the same agent activity columns used by Parallel. Paralle
 those columns. Highlighting comes from recorded task state. Agent names and colored dots identify
 backends; vendor logos are unnecessary.
 
-Both Parallel and the workflow's activity pane load detailed feeds for visible columns and one
-neighbor on either side. Off-screen tasks still contribute to group status and actions. Returning
-to a column restores its expanded activity and reading position while refreshing its feed.
+Both Parallel and the workflow's activity pane load and update detailed feeds only for visible
+columns. Never-visited columns stay lightweight; visited columns retain their last activity snapshot,
+pagination and reading state while off screen, without activity subscriptions. Returning columns
+show that snapshot immediately and refresh in the background. Off-screen tasks still contribute to
+group status and current action targets. Retained snapshots are cleared when the window closes;
+memory grows with visited columns and loaded history.
 
 Task detail headers wrap the task title across the pane and show the repository beneath it.
 Status and actions share a toolbar in the main window, standalone task window, and embedded workflow task view.
@@ -1205,7 +1208,7 @@ disclosure changes use the sidebar animation and preserve the chosen state durin
 Task detail, Parallel, and the workflow activity pane start at recent activity. Scrolling toward
 the top automatically reveals older loaded rows and requests bounded older event pages. There
 is no Show all or Load more button. Reading position and tool disclosures survive loading and
-Parallel viewport eviction; only visible columns initiate older-page requests. Errors pause
+Parallel viewport departures; only visible columns initiate older-page requests. Errors pause
 automatic loading and expose **Retry older activity**. Scrolling back to the latest activity
 resumes live following. Short feeds pause automatic filling after one additional history load;
 scroll upward or change a tool disclosure to request more.
@@ -1253,6 +1256,12 @@ can yield an empty page with a continuation, so callers must use `has_more`, not
 Cumulative summary accounting is independent of the loaded activity window. Background scans
 process bounded chunks and retain compact counts and edit identities instead of raw history.
 Unloaded conversation members and unfinished summary bootstrap are labelled incomplete.
+Initial summary scans and initial activity reads share a budget of four background jobs across
+Monitor windows. Activity and summary work for one stream can occupy two slots. Additional
+work waits while its view remains subscribed; leaving a view
+cancels its queued work without disrupting another view's shared stream. A long initial summary
+scan holds one slot until it finishes. This bounds concurrent startup work rather than limiting
+the group's task count or changing which columns are resident.
 These bounds address large-history loading; they do not establish the cause of the reported
 intermittent Monitor stall. The remaining observations and investigation are recorded in
 [stall investigation](drafts/monitor-performance-feedback.md).

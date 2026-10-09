@@ -54,11 +54,18 @@ private final class ActivityFeedPosition {
     var offset: CGFloat = 0
     var content: CGFloat = 0
     var viewport: CGFloat = 0
+    /// Measurements support reading restoration without invalidating the lazy feed's view graph.
+    var frames: [String: CGRect] = [:]
+    let measurements = ActivityRowMeasurements()
+    var measurementGeneration = 0
+    var pagingTask: Task<Void, Never>?
 }
 
 // MARK: - ActivityFeedKey
 
 private struct ActivityFeedKey: Equatable {
+    let nativeViewportReady: Bool
+    let realizedLastRowID: String?
     let rows: [ActivityRow]
     let tail: ActivityFeedTail
     let showsPromptBubble: Bool
@@ -69,7 +76,6 @@ private struct ActivityFeedKey: Equatable {
     let visible: Bool
     let paginationRevision: Int
     let restoring: Bool
-    let restorationFrame: CGRect?
 }
 
 // MARK: - ActivityFeedTail
@@ -99,8 +105,9 @@ struct ActivityFeedView<Tail: View>: View {
     let onLoadMore: (() -> Bool)?
     @ViewBuilder let tail: () -> Tail
 
-    @State private var frames: [String: CGRect] = [:]
     @State private var viewportSize: CGSize = .zero
+    @State private var nativeViewportReady = false
+    @State private var realizedLastRowID: String?
     @State private var position = ActivityFeedPosition()
     @State private var pendingReadingCapture = true
     @State private var positioned = false
@@ -112,9 +119,9 @@ struct ActivityFeedView<Tail: View>: View {
     @State private var shortFillBudget = ActivityShortFillBudget()
     @State private var waitingForPage = false
     @State private var requestedIDs: [String] = []
+    @State private var rejectedPageIDs: [String]?
     @State private var sawLoading = false
     @State private var seenIDs: Set<String> = []
-    @State private var pagingTask: Task<Void, Never>?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static var bottomID: String { "activity-feed-bottom" }
@@ -133,10 +140,16 @@ struct ActivityFeedView<Tail: View>: View {
                         rowView(row)
                             .id(row.id)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("activity-feed-document")) } action: { frame in
-                                if frames[row.id] != frame { frames[row.id] = frame }
+                            .background(ActivityRowGeometry(
+                                generation: position.measurementGeneration,
+                                measurements: position.measurements
+                            ) { [generation = position.measurementGeneration] frame in
+                                guard generation == position.measurementGeneration else { return }
+                                guard position.frames[row.id] != frame else { return }
+                                position.frames[row.id] = frame
+                                if row.id == shown.last?.id, realizedLastRowID != row.id { realizedLastRowID = row.id }
                                 scheduleReadingUpdate()
-                            }
+                            })
                             .pbFadeIn(animate: positioned && !restoring && state.followLive.isFollowing && !seenIDs.contains(row.id))
                             .onAppear { seenIDs.insert(row.id) }
                     }
@@ -153,24 +166,28 @@ struct ActivityFeedView<Tail: View>: View {
                         pendingReadingCapture = true
                         if offset < position.offset { shortFillBudget.replenish() }
                     }
-                    if positioned, !restoring, content >= position.content - 0.5, position.viewport == viewport, offset < position.offset - 0.5 {
+                    if positioned, !restoring, abs(content - position.content) < 0.5, position.viewport == viewport, offset < position.offset - 0.5 {
                         state.followLive.observe(offset: offset, contentHeight: content, viewportHeight: viewport)
                         if !state.followLive.isFollowing { targetOffset = nil }
                     }
                     if state.followLive.isFollowing, position.content != content || position.viewport != viewport { followingLayout = true }
+                    position.measurements.scheduleMeasurements()
                     position.offset = offset
                     position.content = content
                     position.viewport = viewport
-                    observePosition()
+                    // Native attachment can follow the first keyed task. Retry proxy positioning
+                    // once the inner scroll view has a usable viewport.
+                    let ready = viewport > 0
+                    if nativeViewportReady != ready { nativeViewportReady = ready }
+                    scheduleReadingUpdate()
                 })
             }
-            .task(id: ActivityFeedKey(rows: shown, tail: tailValue, showsPromptBubble: showsPromptBubble,
+            .task(id: ActivityFeedKey(nativeViewportReady: nativeViewportReady, realizedLastRowID: realizedLastRowID, rows: shown, tail: tailValue, showsPromptBubble: showsPromptBubble,
                                      expandedGroups: state.expandedGroups, viewport: viewportSize, history: history,
-                                     loading: isLoading, visible: isVisible, paginationRevision: paginationRevision, restoring: restoring,
-                                     restorationFrame: restoring ? state.anchor.flatMap { frames[$0.id] } : nil)) {
+                                     loading: isLoading, visible: isVisible, paginationRevision: paginationRevision, restoring: restoring)) {
                 await settle(proxy)
             }
-            .onDisappear { pagingTask?.cancel(); pagingTask = nil }
+            .onDisappear { position.pagingTask?.cancel(); position.pagingTask = nil }
             .onChange(of: rows) { old, next in
                 if state.followLive.isFollowing { followingLayout = true }
                 preserveRegroupedAnchor(old: old, next: next)
@@ -184,12 +201,14 @@ struct ActivityFeedView<Tail: View>: View {
                 if state.followLive.isFollowing { followingLayout = true } else { beginRestoration() }
             }
             .onChange(of: paginationRevision) { _, _ in
+                rejectedPageIDs = nil
                 waitingForPage = false
                 sawLoading = false
                 if !state.followLive.isFollowing { beginRestoration() }
                 if !rows.isEmpty { state.retainedFirstID = rows.first?.id }
             }
             .onChange(of: history) { _, next in
+                rejectedPageIDs = nil
                 if waitingForPage {
                     sawLoading = sawLoading || next.isLoading
                     if !next.isLoading, sawLoading || next.error != nil || !next.hasMore {
@@ -233,8 +252,8 @@ struct ActivityFeedView<Tail: View>: View {
     }
 
     private var currentWidthFrames: [String: CGRect] {
-        guard let anchor = state.anchor, let measuredWidth = frames[anchor.id]?.width else { return frames }
-        return frames.filter { abs($0.value.width - measuredWidth) < 1 }
+        guard let anchor = state.anchor, let measuredWidth = position.frames[anchor.id]?.width else { return position.frames }
+        return position.frames.filter { abs($0.value.width - measuredWidth) < 1 }
     }
 
     private func captureAnchor() {
@@ -252,7 +271,7 @@ struct ActivityFeedView<Tail: View>: View {
             if viewportSize.width > 0, abs(size.width - viewportSize.width) > 0.5 {
                 restorationRowWidth = max(0, size.width - 2 * horizontalPadding)
                 let width = restorationRowWidth ?? 0
-                frames = frames.filter { $0.key == state.anchor?.id || abs($0.value.width - width) < 1 }
+                position.frames = position.frames.filter { $0.key == state.anchor?.id || abs($0.value.width - width) < 1 }
             }
             beginRestoration()
         }
@@ -264,12 +283,23 @@ struct ActivityFeedView<Tail: View>: View {
         await Task.yield()
         guard !Task.isCancelled, !isLoading, position.viewport > 0 else { return }
         if state.followLive.isFollowing {
+            // Realize actual content before trusting the lazy document's estimated height.
+            if !positioned, let last = shown.last, position.frames[last.id] == nil {
+                targetOffset = nil
+                proxy.scrollTo(last.id, anchor: .bottom)
+                return // Its native measurement restarts this task through realizedLastRowID.
+            }
+            if !positioned || followingLayout {
+                proxy.scrollTo(Self.bottomID, anchor: .bottom)
+                await Task.yield()
+                guard !Task.isCancelled else { return }
+            }
             followingLayout = true
             targetOffset = max(0, position.content - position.viewport)
         } else if restoring {
             if let anchor = state.anchor, let id = anchor.resolvedID(in: shown.map(\.id)) {
-                let staleWidth = restorationRowWidth.map { abs((frames[id]?.width ?? -1) - $0) > 1 } ?? false
-                if frames[id] == nil || staleWidth {
+                let staleWidth = restorationRowWidth.map { abs((position.frames[id]?.width ?? -1) - $0) > 1 } ?? false
+                if position.frames[id] == nil || staleWidth {
                     proxy.scrollTo(id, anchor: .top)
                     await Task.yield()
                 }
@@ -277,6 +307,7 @@ struct ActivityFeedView<Tail: View>: View {
             restoreAnchor()
         }
         observePosition()
+        scheduleReadingUpdate()
     }
 
     private func observePosition() {
@@ -298,16 +329,16 @@ struct ActivityFeedView<Tail: View>: View {
         if wasFollowing, !state.followLive.isFollowing, state.retainedFirstID == nil {
             state.retainedFirstID = shown.first?.id
         }
-        scheduleReadingUpdate()
     }
 
     private func scheduleReadingUpdate() {
-        pagingTask?.cancel()
-        pagingTask = Task { @MainActor in
+        position.pagingTask?.cancel()
+        position.pagingTask = Task { @MainActor in
             await Task.yield()
             await Task.yield()
             guard !Task.isCancelled else { return }
-            if restoring { restoreAnchor(); observePosition() }
+            if restoring { restoreAnchor() }
+            observePosition()
             guard positioned, !restoring, !followingLayout else { return }
             if !shown.isEmpty {
                 guard let anchor = ParallelVerticalAnchor.capture(ids: shown.map(\.id), frames: currentWidthFrames,
@@ -327,6 +358,7 @@ struct ActivityFeedView<Tail: View>: View {
         }
         if !state.followLive.isFollowing { followingLayout = false }
         if state.followLive.isFollowing, followingLayout {
+            if !positioned, let last = shown.last, position.frames[last.id] == nil { return }
             targetOffset = max(0, position.content - position.viewport)
             if abs(position.offset - (targetOffset ?? 0)) < 1 {
                 followingLayout = false
@@ -350,7 +382,10 @@ struct ActivityFeedView<Tail: View>: View {
         restorationTiming = MonitorMetrics.begin()
         state.followLive.suspend()
         pendingReadingCapture = false
-        pagingTask?.cancel()
+        position.pagingTask?.cancel()
+        position.measurementGeneration &+= 1
+        position.frames.removeAll(keepingCapacity: true)
+        position.measurements.invalidateMeasurements()
         restoring = true
         state.viewportPositioned = false
         targetOffset = nil
@@ -361,10 +396,10 @@ struct ActivityFeedView<Tail: View>: View {
         if shown.isEmpty {
             state.anchor = nil
             state.retainedFirstID = nil
-            frames.removeAll()
+            position.frames.removeAll()
             restorationRowWidth = nil
             targetOffset = 0
-        } else if let anchor = state.anchor, let id = anchor.resolvedID(in: shown.map(\.id)), let frame = frames[id] {
+        } else if let anchor = state.anchor, let id = anchor.resolvedID(in: shown.map(\.id)), let frame = position.frames[id] {
             if let restorationRowWidth, abs(frame.width - restorationRowWidth) > 1 { return }
             targetOffset = anchor.offset(in: frame)
         } else if state.anchor == nil { targetOffset = state.scrollOffset }
@@ -378,11 +413,12 @@ struct ActivityFeedView<Tail: View>: View {
     private func replenishShortFill() {
         guard isVisible, positioned, !restoring, !waitingForPage, !history.isLoading else { return }
         shortFillBudget.replenish()
+        rejectedPageIDs = nil
         if position.content <= position.viewport + 1 { scheduleReadingUpdate() }
     }
 
     private func maybeLoadOlder() {
-        guard !waitingForPage, ActivityFeedWindow.shouldLoad(offset: position.offset, viewport: position.viewport,
+        guard rejectedPageIDs != ids, !waitingForPage, ActivityFeedWindow.shouldLoad(offset: position.offset, viewport: position.viewport,
             eligibility: ActivityFeedEligibility(positioned: positioned, restoring: restoring, visible: isVisible,
                 loading: history.isLoading, error: history.error)) else { return }
         let boundary = ActivityFeedWindow.olderBoundary(ids: ids, retainedID: state.retainedFirstID)
@@ -399,11 +435,12 @@ struct ActivityFeedView<Tail: View>: View {
         defer { MonitorMetrics.end(timing, stage: .activityPaginationRequest) }
         guard isVisible, !waitingForPage, !history.isLoading, let onLoadMore,
               retry || history.error == nil else { return }
+        if retry { rejectedPageIDs = nil }
         requestedIDs = ids
         waitingForPage = true
         sawLoading = false
         guard onLoadMore() else {
-            shortFillBudget.replenish()
+            rejectedPageIDs = ids
             waitingForPage = false
             requestedIDs = []
             return

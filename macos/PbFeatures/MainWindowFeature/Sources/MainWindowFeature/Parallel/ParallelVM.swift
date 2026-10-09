@@ -115,6 +115,7 @@ final class ParallelVM: ParallelViewModel {
     @ObservationIgnored private var viewportOffset: CGFloat = 0
     @ObservationIgnored private var viewportWidth: CGFloat = 0
     @ObservationIgnored private var residentIDs: Set<String> = []
+    @ObservationIgnored private var refreshingRetainedIDs: Set<String> = []
     @ObservationIgnored private var visibleIDs: Set<String> = []
     @ObservationIgnored private var neededMemberIDs: Set<String> = []
     @ObservationIgnored private lazy var history = ParallelActivityHistory(useCase: useCase,
@@ -166,11 +167,9 @@ final class ParallelVM: ParallelViewModel {
         guard didSubscribe else { return }
         let stride = ParallelLayout.columnWidth(memberCount: orderedConversations.count, availableWidth: width)
             + ParallelLayout.dividerWidth
-        let interval = ParallelResidency.indices(count: orderedConversations.count, offset: offset, width: width, stride: stride)
-        let next = Set(interval.map { orderedConversations[$0].id })
         let shown = ParallelResidency.visibleIndices(count: orderedConversations.count, offset: offset, width: width, stride: stride)
         let nextVisible = Set(shown.map { orderedConversations[$0].id })
-        guard next != residentIDs || nextVisible != visibleIDs else { return }
+        guard nextVisible != visibleIDs else { return }
         let inputs = updateResidency()
         publishColumns()
         schedule(inputs)
@@ -213,6 +212,7 @@ final class ParallelVM: ParallelViewModel {
         presentations.removeAll()
         descriptors.removeAll()
         residentIDs.removeAll()
+        refreshingRetainedIDs.removeAll()
         visibleIDs.removeAll()
         uiStates.removeAll()
         orderedConversations.removeAll()
@@ -422,28 +422,29 @@ final class ParallelVM: ParallelViewModel {
     private func updateResidency() -> [String: ParallelColumnInput] {
         let stride = ParallelLayout.columnWidth(memberCount: orderedConversations.count, availableWidth: viewportWidth)
             + ParallelLayout.dividerWidth
-        let interval = ParallelResidency.indices(count: orderedConversations.count, offset: viewportOffset,
-                                                 width: viewportWidth, stride: stride)
-        residentIDs = Set(interval.map { orderedConversations[$0].id })
         let shown = ParallelResidency.visibleIndices(count: orderedConversations.count, offset: viewportOffset,
                                                      width: viewportWidth, stride: stride)
         visibleIDs = Set(shown.map { orderedConversations[$0].id })
+        let returning = visibleIDs.subtracting(residentIDs).filter { presentations[$0] != nil }
+        refreshingRetainedIDs.formUnion(returning)
+        refreshingRetainedIDs.formIntersection(visibleIDs)
+        residentIDs = visibleIDs
         let needed = Set(orderedConversations.filter { residentIDs.contains($0.id) }.flatMap { $0.members.map(\.taskID) })
         let leaseStart = MonitorMetrics.begin()
         for id in Set(leases.keys).subtracting(needed) { releaseLease(id) }
         neededMemberIDs = needed
         history.update(conversations: orderedConversations, visible: visibleIDs, states: uiStates)
         let shownConversations = orderedConversations.filter { visibleIDs.contains($0.id) }
-        let neighbors = orderedConversations.filter { residentIDs.contains($0.id) && !visibleIDs.contains($0.id) }
-        acquisition.update(order: ParallelLeaseOrder.members(shownConversations) + ParallelLeaseOrder.members(neighbors), existing: Set(leases.keys))
+        acquisition.update(order: ParallelLeaseOrder.members(shownConversations), existing: Set(leases.keys))
         MonitorMetrics.end(leaseStart, stage: .parallelLeases, residentColumns: residentIDs.count, leasedMembers: leases.count)
-        for id in Set(presentations.keys).subtracting(residentIDs) {
+        // Keep visited snapshots until membership disappears or the window closes.
+        for id in Set(presentations.keys).subtracting(Set(conversationByID.keys)) {
             presentations[id] = nil
             completedInputs[id] = nil
         }
         var inputs: [String: ParallelColumnInput] = [:]
         for conversation in orderedConversations where residentIDs.contains(conversation.id) {
-            inputs[conversation.id] = captureInput(conversation)
+            if readyToRefresh(conversation) { inputs[conversation.id] = captureInput(conversation) }
         }
         return inputs
     }
@@ -454,7 +455,7 @@ final class ParallelVM: ParallelViewModel {
         MonitorMetrics.end(start, stage: .parallelLeases, residentColumns: residentIDs.count, leasedMembers: leases.count)
         var inputs = desiredInputs
         for id in Set(ids.compactMap { ownerByMember[$0] }) {
-            if let conversation = conversationByID[id] { inputs[id] = captureInput(conversation) }
+            if residentIDs.contains(id), let conversation = conversationByID[id], readyToRefresh(conversation) { inputs[id] = captureInput(conversation) }
         }
         schedule(inputs)
     }
@@ -473,13 +474,26 @@ final class ParallelVM: ParallelViewModel {
     }
 
     private func refreshActivity(memberID: String) {
-        guard let id = ownerByMember[memberID], residentIDs.contains(id), let conversation = conversationByID[id] else { return }
+        guard let id = ownerByMember[memberID], residentIDs.contains(id), let conversation = conversationByID[id], readyToRefresh(conversation) else { return }
         let start = MonitorMetrics.begin()
         var inputs = desiredInputs
         inputs[id] = captureInput(conversation)
         MonitorMetrics.end(start, stage: .parallelPreparation,
             residentColumns: residentIDs.count, leasedMembers: leases.count)
         schedule(inputs)
+    }
+
+    private func readyToRefresh(_ conversation: Conversation) -> Bool {
+        guard refreshingRetainedIDs.contains(conversation.id) else { return true }
+        // Reacquisition may initially expose an empty tail. Keep the retained snapshot until
+        // the requested history boundary has been reconstructed and the stream is ready.
+        let ready = conversation.members.allSatisfy { member in
+            leases[member.taskID] != nil
+                && (availabilityByTask[member.taskID] != .loading || !(itemsByTask[member.taskID] ?? []).isEmpty)
+        }
+            && !history.state(for: conversation.id, allAcquired: true).isLoading
+        if ready { refreshingRetainedIDs.remove(conversation.id) }
+        return ready
     }
 
     private func captureInput(_ conversation: Conversation) -> ParallelColumnInput {
@@ -521,17 +535,19 @@ final class ParallelVM: ParallelViewModel {
         }
         let next = orderedConversations.map { conversation in
             let presentation = presentations[conversation.id] ?? descriptors[conversation.id] ?? basePresentation(conversation, includePrompt: false)
-            var column = ParallelColumnModel(id: presentation.id, task: presentation.task, title: presentation.title,
-                subtitle: presentation.subtitle, isBusy: presentation.isBusy, outcomeMessage: presentation.outcomeMessage,
-                showPrompt: presentation.showPrompt, prompt: presentation.prompt, rows: presentation.rows,
+            let metadata = descriptors[conversation.id] ?? presentation
+            var column = ParallelColumnModel(id: presentation.id, task: metadata.task, title: metadata.title,
+                subtitle: metadata.subtitle, isBusy: metadata.isBusy, outcomeMessage: metadata.outcomeMessage,
+                showPrompt: metadata.showPrompt, prompt: presentation.prompt, rows: presentation.rows,
                 activityRows: presentation.activityRows, liveStep: presentation.liveStep,
                 pendingMessages: presentation.pendingMessages, isLoading: presentation.isLoading, summary: presentation.summary,
-                onTapTakeover: { [weak self] in self?.didTapTakeover(taskID: presentation.task.taskID) },
-                onTapOpenTask: { [weak self] in self?.routing.selectTask(presentation.task.taskID) }, start: presentation.start)
+                onTapTakeover: { [weak self] in self?.didTapTakeover(taskID: metadata.task.taskID) },
+                onTapOpenTask: { [weak self] in self?.routing.selectTask(metadata.task.taskID) }, start: presentation.start)
             column.animatesArrival = arrivals.contains(column.id)
+            column.emptyText = presentation.emptyText
             column.onDidPresent = { [weak self] in self?.arrivalTracker.didPresent(conversation.id) }
-            column.memberTaskIDs = presentation.memberTaskIDs
-            column.isResident = residentIDs.contains(column.id)
+            column.memberTaskIDs = metadata.memberTaskIDs
+            column.isResident = presentations[column.id] != nil || residentIDs.contains(column.id)
             column.isVisible = visibleIDs.contains(column.id)
             column.history = presentation.history
             column.paginationRevision = presentation.paginationRevision

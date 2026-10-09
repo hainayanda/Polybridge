@@ -262,6 +262,17 @@ extension SidebarVMTests {
         #expect(harness.sut.runningRows.map(\.id) == ["background"])
     }
 
+    @Test func givenASettledSelection_whenAnotherSidebarRowIsClicked_thenHighlightChangesBeforeWorkerSettles() async {
+        let harness = makeSUT()
+        harness.sut.latestTasks = [task(id: "previous"), task(id: "next")]
+        harness.sut.didSelect(.task("previous"))
+        await harness.sut.waitForPresentation()
+        harness.sut.didSelect(.task("next"))
+        #expect(harness.sut.selection == .task("next"))
+        await harness.sut.waitForPresentation()
+        #expect(harness.sut.selection == .task("next"))
+    }
+
     private nonisolated static func isBackgroundWorker() -> Bool { !Thread.isMainThread }
     @Test func givenASelectedConversation_whenItsFollowupIsRequested_thenHighlightNeverPublishesRawMemberID() async {
         // given

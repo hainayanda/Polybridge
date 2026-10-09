@@ -553,6 +553,7 @@ import Testing
         // then — an available-but-empty log is a real empty state, never a skeleton.
         await waitUntil { sut.columns.count == 1 && sut.isPresentationSettled }
         #expect(sut.columns.first?.isLoading == false)
+        #expect(sut.columns.first?.emptyText == "No activity to display.")
     }
 
     @Test func givenNoItemsAndUnavailableAvailability_whenColumnBuilds_thenIsLoadingIsFalse() async {
@@ -573,6 +574,7 @@ import Testing
         // then — an unreadable log keeps its own honest empty message, never a skeleton.
         await waitUntil { sut.columns.count == 1 && sut.isPresentationSettled }
         #expect(sut.columns.first?.isLoading == false)
+        #expect(sut.columns.first?.emptyText == "Activity log unavailable.")
     }
 
     @Test func givenItemsAlreadyPresentEvenWhileLoading_whenColumnBuilds_thenIsLoadingIsFalse() async {

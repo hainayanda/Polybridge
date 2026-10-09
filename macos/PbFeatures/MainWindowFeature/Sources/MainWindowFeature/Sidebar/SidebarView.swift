@@ -235,7 +235,7 @@ struct SidebarView<VM: SidebarViewModel>: View {
 
     private var list: some View {
         List(selection: Binding(get: { viewModel.selection }, set: { destination in
-            withAnimation(PbMotion.disclosure(reduceMotion: reduceMotion)) { viewModel.didSelect(destination) }
+            viewModel.didSelect(destination)
         })) {
             workflowDefinitions
             if let bannerModel = viewModel.installBannerModel {

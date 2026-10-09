@@ -16,6 +16,7 @@ struct ParallelColumnPresentation: Equatable, Sendable {
     var liveStep: LiveStep?
     var pendingMessages: [PendingMessage] = []
     var isLoading = true
+    var emptyText: String?
     var history = EventHistoryState()
     var paginationRevision = 0
     var summary: String?
@@ -78,8 +79,14 @@ enum ParallelPresentationBuilder {
         try Task.checkCancellation()
         result.liveStep = LiveStep(rows: rows, isRunning: result.task.status.isRunning)
         result.pendingMessages = PendingMessage.visible(snapshot: input.snapshot, events: input.events)
-        result.isLoading = input.members.allSatisfy(\.items.isEmpty)
-            && input.members.contains { $0.availability == .loading }
+        let hasItems = input.members.contains { !$0.items.isEmpty }
+        result.isLoading = !hasItems && (input.members.contains { $0.availability == .loading }
+            || (input.members.isEmpty && input.base.history.isLoading))
+        result.emptyText = nil
+        if !result.isLoading, !hasItems, result.history.error == nil {
+            result.emptyText = input.members.contains { $0.availability == .unavailable }
+                ? "Activity log unavailable." : "No activity to display."
+        }
         return result
     }
 
@@ -141,6 +148,7 @@ extension ParallelColumnModel {
         value.liveStep = liveStep
         value.pendingMessages = pendingMessages
         value.isLoading = isLoading
+        value.emptyText = emptyText
         value.history = history
         value.paginationRevision = paginationRevision
         return ParallelColumnRenderValue(presentation: value, animatesArrival: animatesArrival, isResident: isResident, isVisible: isVisible)

@@ -45,6 +45,7 @@ struct ParallelColumnModel: Identifiable {
     /// across every member for piece 13) — the column shows `SkeletonRows` instead of the empty
     /// timeline while this holds.
     let isLoading: Bool
+    var emptyText: String?
     /// From the current member's snapshot only — no fallback to `task.summary` (F4-40, a deliberate
     /// difference from `ChangesPane`).
     let summary: String?
@@ -145,7 +146,7 @@ struct ParallelColumnView: View {
             ActivityFeedView(rows: model.activityRows, start: model.start, history: model.history,
                              isLoading: model.isLoading, tailValue: ActivityFeedTail(liveStep: model.liveStep, pendingMessages: model.pendingMessages),
                              paginationRevision: model.paginationRevision, isVisible: model.isVisible,
-                             showsPromptBubble: false, state: state, onLoadMore: model.onLoadMore) {
+                             emptyText: model.emptyText, showsPromptBubble: false, state: state, onLoadMore: model.onLoadMore) {
                 ForEach(model.pendingMessages) { message in
                     PromptBubbleView(text: message.text, caption: "Pending", isPending: true)
                 }
