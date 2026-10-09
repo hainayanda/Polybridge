@@ -658,6 +658,7 @@ class Task:
     # referenced and may be garbage-collected mid-run.
     watchers: list[asyncio.Task[Any]] = field(default_factory=list)
     monitor: asyncio.Task[Any] | None = None
+    usage_settlement: asyncio.Task[Any] | None = None
     termination: asyncio.Task[Any] | None = None
 
     @property
@@ -715,6 +716,7 @@ class Task:
             # Overrides brief's bridge-only list with the full merge; see `brief`.
             "notices": self._notices(),
             "summary": self.acc.summary,
+            "failure_diagnostic": self.acc.failure_diagnostic,
             "is_error": self.acc.is_error,
             "total_cost_usd": self.acc.total_cost_usd,
             "num_turns": self.acc.num_turns,
@@ -1261,7 +1263,7 @@ class TaskRegistry:
 
         task.watchers = [
             asyncio.create_task(_drain_stdout(task, self), name=f"pb-stdout-{task_id}"),
-            asyncio.create_task(_drain_stderr(task), name=f"pb-stderr-{task_id}"),
+            asyncio.create_task(_drain_stderr(task, self), name=f"pb-stderr-{task_id}"),
         ]
         task.monitor = asyncio.create_task(_monitor(task, self), name=f"pb-monitor-{task_id}")
 
@@ -1885,6 +1887,7 @@ class TaskRegistry:
                 network=task.network,
                 parent_task_id=task.parent_task_id,
                 stderr_tail=list(task.stderr_tail),
+                failure_diagnostic=task.acc.failure_diagnostic,
                 workflow_builder=task.workflow_builder,
                 prompt=(task.display_prompt if task.display_prompt is not None else task.prompt),
                 status=task.status,
@@ -1988,6 +1991,42 @@ class TaskRegistry:
                     attempt.n,
                     exc_info=True,
                 )
+
+    def _record_usage_limit(self, task: Task) -> None:
+        """Latch evidence before asynchronous settlement; never cancel away the cause."""
+        diagnostic = task.acc.failure_diagnostic
+        notice = diagnostic["reason"]
+        if "reset_at" in diagnostic:
+            notice += " Provider-supplied reset: " + str(diagnostic["reset_at"])
+        task.bridge_notices.append(notice)
+        self.persist(task)
+        task.pump_wake.set()
+        if task.usage_settlement is None or task.usage_settlement.done():
+            task.usage_settlement = asyncio.create_task(self._settle_usage_limit(task))
+
+    async def _settle_usage_limit(self, task: Task) -> None:
+        deadline = time.monotonic() + 5.0
+        if task.live_input:
+            try:
+                await asyncio.wait_for(self._close_input(task, drop_reason="the provider rejected the turn because of a usage limit"), timeout=5.0)
+            except asyncio.TimeoutError:
+                self._force_close(task, "usage-limit close exceeded its grace period", DEFAULT_LIVE_IDLE_SECONDS)
+        if task.proc is None:
+            return
+        try:
+            await asyncio.wait_for(asyncio.shield(task.proc.wait()), timeout=max(0.001, deadline - time.monotonic()))
+            return
+        except asyncio.TimeoutError:
+            pass
+        leader = identity.task_identity(task.proc.pid, task.start_time, task.markers)
+        verdict, reason = await asyncio.to_thread(identity.check_detail, leader)
+        if not identity.signalable(verdict, reason):
+            task.bridge_notices.append("Usage-limit recovery needs attention: process ownership could not be verified; replacement dispatch is blocked.")
+            task.acc.failure_diagnostic["settlement"] = "needs_attention"
+            self.persist(task)
+            return
+        _signal_group(task, signal.SIGTERM)
+        await _escalate(task)
 
     def _stop_native_transport(self, task: Task) -> None:
         """Stop an invalid native control turn without waiting on its stdout drainer."""
@@ -3060,7 +3099,10 @@ async def _drain_stdout(task: Task, registry: TaskRegistry) -> None:
                     registry._stop_native_transport(task)
                     log.warning("Native lifecycle observation failed for %s; transport stop requested and draining continues", task.task_id, exc_info=True)
             backend = get_backend(task.backend)
+            previous_diagnostic = task.acc.failure_diagnostic
             backend.ingest(event, task.acc)
+            if task.acc.failure_diagnostic is not None and previous_diagnostic is None:
+                registry._record_usage_limit(task)
             _record_events(task, backend, event, raw_offset)
             if task.pump is not None:
                 task.pump_wake.set()
@@ -3145,7 +3187,7 @@ def _record_events(task: Task, backend: Backend, event: dict[str, Any], raw_offs
             log.debug("task %s: could not write a normalized event", task.task_id, exc_info=True)
 
 
-async def _drain_stderr(task: Task) -> None:
+async def _drain_stderr(task: Task, registry: TaskRegistry | None = None) -> None:
     assert task.proc is not None and task.proc.stderr is not None
     reader = task.proc.stderr
     try:
@@ -3159,6 +3201,13 @@ async def _drain_stderr(task: Task) -> None:
             line = raw.decode("utf-8", errors="replace").rstrip("\n")
             if line.strip():
                 task.stderr_tail.append(line[:TAIL_LINE_CHARS])
+                parser = getattr(get_backend(task.backend), "stderr_usage_limit_diagnostic", None)
+                diagnostic = parser(line) if parser is not None else None
+                if diagnostic is not None and task.acc.failure_diagnostic is None:
+                    task.acc.failure_diagnostic = diagnostic
+                    task.acc.error_result_seen = True
+                    if registry is not None:
+                        registry._record_usage_limit(task)
     except asyncio.CancelledError:
         raise
     except Exception:

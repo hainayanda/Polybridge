@@ -647,7 +647,8 @@ to perform the review uses worker `status: blocked` and does not require a revie
 
 Fallback candidates are ordered and may include different backends or different models on the
 same backend. Polybridge advances only after a confirmed availability failure: missing binary,
-unavailable model, or a recognized quota/rate-limit rejection. Unsupported configuration is a
+unavailable model, or a recognized provider outage. Usage limits use the explicit recovery path
+below. Unsupported configuration is a
 validation error. Failed tests, generic crashes, or an agent saying it is unavailable do
 not automatically authorize a switch. An explicitly configured timeout permits a fallback only
 after cancellation has confirmed settlement.
@@ -656,6 +657,41 @@ Each candidate is tried at most once within an activation. Switching candidate d
 an extra graph activation. The last working candidate remains selected for later activations;
 unavailable candidates remain suppressed until explicitly retried. Every attempted candidate and
 the switch reason are recorded.
+
+### Usage-limit recovery
+
+Claude, Codex, opencode, Vibe, and Antigravity interpret their own authoritative usage-limit
+signals. A confirmed rejection remains a failure even after useful progress or an earlier
+successful turn. Warnings, assistant/tool prose, and silence do not establish a usage limit.
+Unsupported signal shapes remain unverified; Polybridge does not guess a reset time.
+
+Task snapshots expose `failure_diagnostic` with category `usage_limit`, a reason, evidence source,
+and optional provider-supplied `reset_at`. The diagnostic is retained with partial output and
+session identity. Monitor keeps it in task notices and workflow recovery state after a notification
+is dismissed.
+
+Polybridge stops forwarding input and reports queued messages as undelivered. It allows five
+seconds for the affected process to exit before attempting identity-checked termination. A
+replacement cannot start until process ownership and settlement are established. Uncertain
+ownership requires attention rather than a duplicate dispatch.
+
+For a settled worker limit, the orchestrator receives the failure and eligible configured
+candidates. Polybridge does not automatically launch the next candidate. The orchestrator must
+explicitly choose an issued `retry_execution` continuation and its `candidate_id` from
+`available_candidates`, using a Fresh session within the existing attempt budget. It may instead
+ask the caller to pause, cancel, or continue with a fallback for the affected node. The caller's
+answer returns to the orchestrator, which still must select the issued candidate explicitly.
+
+If the orchestrator itself reaches its limit, the workflow asks its caller whether to pause,
+cancel, or continue with an eligible configured fallback. Recovery preserves the pending decision, checkpoints,
+and completed workers. An approved fallback orchestrator starts a fresh conversation with restored
+workflow context; it does not repeat completed work or broaden permissions.
+Resume with the current `input_decision_id` and the exact answer offered in the question:
+`fallback` selects its first eligible candidate, and `fallback:2` selects its second when offered.
+Other answers do not authorize a launch. Use the existing cancel control to stop.
+The existing pause control retains the question and decision ID. Resuming a paused usage-limit
+checkpoint still requires that decision ID and an explicit recovery answer; pause never approves
+a fallback implicitly.
 
 Existing edits remain in place. Fallback waits for the previous process to settle and receives
 known prior results. Ambiguous execution or side effects require attention. Exhausting the
@@ -1186,6 +1222,9 @@ full response contract. Snapshot transport is a local Monitor-only CLI operation
 cannot use it to bypass settled-node inspection or access another run.
 
 ### Monitor history and notifications
+
+Sidebar search and the harness filter remain below the native window titlebar in windowed and
+full-screen layouts. These controls remain fixed while workflow and task history scrolls.
 
 Transient catalog preparation retries through Monitor's normal two-second read polling. It does
 not restart workflows, retry executions, or change permissions. Loaded definitions, history,

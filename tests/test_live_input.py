@@ -1786,3 +1786,81 @@ def test_a_run_that_exits_with_owed_turns_unanswered_is_not_completed(tmp_path: 
     task.acc.result_count = 3
     task.acc.turn_open = False
     assert tasks_module._classify(task, 0) == "completed"
+
+@pytest.mark.parametrize('channel', ['stdout', 'stderr'])
+async def test_confirmed_usage_limit_closes_live_input_and_is_durable(tmp_path, monkeypatch, channel):
+    import asyncio
+    rejection = json.dumps({'type':'rate_limit_event','rate_limit_info':{'status':'rejected','resetsAt':1234}})
+    class Limited(_CatDouble):
+        name = 'usage-limit-double'
+        stderr_usage_limit_diagnostic = staticmethod(backends.ClaudeBackend.stderr_usage_limit_diagnostic)
+        def build_start_argv(self, prompt, **kwargs):
+            limit = f"echo '{rejection}'" if channel == 'stdout' else "echo 'API Error: usage_limit_reached' >&2"
+            return Invocation([self.binary, '-c', f"head -n 1 > {self.sink}; {limit}; cat > /dev/null"], stdin_mode=STDIN_PIPE, initial_input=self.encode_live_message(prompt))
+    backend = Limited(tmp_path / 'sink')
+    monkeypatch.setitem(backends.BACKENDS, backend.name, backend)
+    registry = TaskRegistry(log_dir=tmp_path / 'streams', owner=OWNER)
+    task = await registry.start('work', tmp_path, backend=backend)
+    await asyncio.wait_for(task.done.wait(), 3)
+    assert task.status == 'failed'
+    assert task.input_closed
+    assert task.snapshot()['failure_diagnostic']['category'] == 'usage_limit'
+    record = store.read(registry.log_dir, task.task_id)
+    assert record.failure_diagnostic['category'] == 'usage_limit'
+    assert store.snapshot(registry.log_dir, record)['failure_diagnostic']['category'] == 'usage_limit'
+
+async def test_usage_limit_process_ignoring_eof_is_identity_checked_then_settled(tmp_path, monkeypatch):
+    import asyncio
+    from polybridge import identity
+    rejection = json.dumps({'type':'rate_limit_event','rate_limit_info':{'status':'rejected'}})
+    class Limited(_CatDouble):
+        name = 'stubborn-usage-limit-double'
+        def build_start_argv(self, prompt, **kwargs):
+            return Invocation([self.binary, '-c', f"head -n 1 > {self.sink}; echo '{rejection}'; exec sleep 60"], stdin_mode=STDIN_PIPE, initial_input=self.encode_live_message(prompt))
+    backend = Limited(tmp_path / 'sink')
+    monkeypatch.setitem(backends.BACKENDS, backend.name, backend)
+    checks = []
+    def verified(value):
+        checks.append(value)
+        return 'alive', 'matched'
+    monkeypatch.setattr(identity, 'check_detail', verified)
+    monkeypatch.setattr(identity, 'signalable', lambda verdict, reason: verdict == 'alive')
+    registry = TaskRegistry(log_dir=tmp_path / 'streams', owner=OWNER)
+    task = await registry.start('work', tmp_path, backend=backend)
+    await asyncio.wait_for(task.done.wait(), 8)
+    assert checks
+    assert task.status == 'failed'
+    assert not task.cancel_requested
+
+async def test_usage_limit_unverified_process_preserves_attention_and_queued_input(tmp_path, monkeypatch):
+    import asyncio
+    from polybridge import identity
+    rejection = json.dumps({'type':'rate_limit_event','rate_limit_info':{'status':'rejected'}})
+    class Limited(_CatDouble):
+        name = 'uncertain-usage-limit-double'
+        def build_start_argv(self, prompt, **kwargs):
+            return Invocation([self.binary, '-c', f"head -n 1 > {self.sink}; sleep 0.1; echo '{rejection}'; exec sleep 60"], stdin_mode=STDIN_PIPE, initial_input=self.encode_live_message(prompt))
+    backend = Limited(tmp_path / 'sink')
+    monkeypatch.setitem(backends.BACKENDS, backend.name, backend)
+    monkeypatch.setattr(identity, 'check_detail', lambda value: ('unknown', 'unverified'))
+    monkeypatch.setattr(identity, 'signalable', lambda verdict, reason: False)
+    registry = TaskRegistry(log_dir=tmp_path / 'streams', owner=OWNER)
+    task = await registry.start('work', tmp_path, backend=backend)
+    # Inject a queued message at the exact error transition; no input delivery is permitted.
+    original = registry._record_usage_limit
+    def record_limit(current):
+        current.inbox_queue.append({'id':'queued-limit-message','text':'continue'})
+        original(current)
+    monkeypatch.setattr(registry, '_record_usage_limit', record_limit)
+    for _ in range(70):
+        diagnostic = task.acc.failure_diagnostic or {}
+        if diagnostic.get('settlement') == 'needs_attention':
+            break
+        await asyncio.sleep(0.1)
+    assert task.status == 'running'
+    assert not task.done.is_set()
+    assert task.proc.returncode is None
+    assert store.read(registry.log_dir, task.task_id).failure_diagnostic['settlement'] == 'needs_attention'
+    assert any(event['kind'] == 'undelivered' and event.get('message_id') == 'queued-limit-message' for event in _events(registry.log_dir, task.task_id))
+    # Explicit owner cancellation is test cleanup, separate from usage-limit classification.
+    await registry.cancel(task)

@@ -326,6 +326,16 @@ class AntigravityBackend:
                 return "provider server unavailable"
         return None
 
+    @staticmethod
+    def usage_limit_diagnostic(event: dict[str, Any]) -> dict[str, Any] | None:
+        from .workflow_diagnostics import usage_limit
+        return usage_limit(event, envelope='error', claude=False, agy=True)
+
+    @staticmethod
+    def stderr_usage_limit_diagnostic(line: str) -> dict[str, Any] | None:
+        from .workflow_diagnostics import stderr_usage_limit
+        return stderr_usage_limit(line, claude=False)
+
     name = "antigravity"
     mcp_approval = AntigravityApproval()
     binary = BINARY
@@ -708,6 +718,10 @@ class AntigravityBackend:
         )
 
     def ingest(self, event: dict[str, Any], acc: Accumulator) -> None:
+        diagnostic = self.usage_limit_diagnostic(event)
+        if diagnostic is not None and acc.failure_diagnostic is None:
+            acc.failure_diagnostic = diagnostic
+            acc.error_result_seen = True
         if not isinstance(event, dict):
             return
         kind = event.get("event")
@@ -902,6 +916,8 @@ class AntigravityBackend:
         return events
 
     def classify(self, acc: Accumulator, exit_code: int | None) -> Status:
+        if acc.failure_diagnostic is not None:
+            return "failed"
         # A result reporting an error is a real failure (the CLI exits 1 on an ERROR result).
         if acc.is_error or acc.error_result_seen:
             return "failed"

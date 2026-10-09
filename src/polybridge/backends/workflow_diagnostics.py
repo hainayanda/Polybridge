@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 import json
+import math
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -92,3 +93,57 @@ def stream_events(path: str | Path) -> tuple[dict[str, Any], ...]:
         return _stream_events(str(source), stat.st_ino, stat.st_size, stat.st_mtime_ns)
     except OSError:
         return ()
+
+
+USAGE_CODES = {"usage_limit_reached", "insufficient_quota", "rate_limit_exceeded", "rate_limit_error"}
+
+def usage_limit(event: dict[str, Any], *, envelope: str, claude: bool = False, agy: bool = False) -> dict[str, Any] | None:
+    """Only authoritative provider error envelopes establish a terminal quota failure."""
+    info = event.get("rate_limit_info")
+    if claude and event.get("type") == "rate_limit_event" and isinstance(info, dict) and info.get("status") == "rejected":
+        result = {"category": "usage_limit", "reason": "Provider rejected this turn because its usage limit was reached.", "source": "stream:rate_limit_event"}
+        if _reset_value(info.get("resetsAt")):
+            result["reset_at"] = info["resetsAt"]
+        return result
+    if agy:
+        result = event.get("result")
+        if event.get("event") != "result" or not isinstance(result, dict) or result.get("status") != "ERROR" or result.get("denied_actions"):
+            return None
+        error = result.get("error")
+    else:
+        if event.get("type") != envelope:
+            return None
+        error = event.get("error")
+    if agy and isinstance(error, str):
+        if not re.search(r"\b(?:401|403|model_not_found)\b", error) and re.search(r"\b(?:usage_limit_reached|insufficient_quota|rate_limit_exceeded|rate_limit_error)\b", error):
+            return {"category": "usage_limit", "reason": error[:2000], "source": "stream:result"}
+        return None
+    if not isinstance(error, dict):
+        return None
+    data = error.get("data") if isinstance(error.get("data"), dict) else {}
+    if any(type(value) is int and 400 <= value < 500 and value != 429 for value in (error.get("status"), error.get("status_code"), error.get("statusCode"), data.get("statusCode"))):
+        return None
+    if any(type(value) is int and value in OUTAGES for value in (error.get("status"), error.get("status_code"), error.get("statusCode"), data.get("statusCode"))):
+        return None
+    if not any(error.get(key) in USAGE_CODES for key in ("type", "code", "name") if isinstance(error.get(key), str)):
+        return None
+    diagnostic = {"category": "usage_limit", "reason": "Provider rejected this turn because its usage limit was reached.", "source": "stream:" + ("result" if agy else envelope)}
+    reset = error.get("reset_at", data.get("reset_at"))
+    if _reset_value(reset):
+        diagnostic["reset_at"] = reset
+    return diagnostic
+
+def stderr_usage_limit(line: str, *, claude: bool = False) -> dict[str, Any] | None:
+    # Error-prefixed harness stderr only; arbitrary prose mentioning a quota is not evidence.
+    prefix = r"(?i)^(?:API[ _]Error|Provider[ _]Error|HTTP[ _]Error|Error|RateLimitError)\s*:?\s*"
+    if not re.match(prefix, line):
+        return None
+    if re.search(r"\b(?:401|403|500|502|503|504|529|model_not_found)\b", line):
+        return None
+    if not re.search(r"\b(?:usage_limit_reached|insufficient_quota|rate_limit_exceeded|rate_limit_error)\b", line) and not (claude and re.search(r"You've hit your limit|Credit balance is too low", line)):
+        return None
+    return {"category": "usage_limit", "reason": line[:2000], "source": "stderr"}
+
+
+def _reset_value(value: Any) -> bool:
+    return isinstance(value, str) or (type(value) in (int, float) and math.isfinite(value))

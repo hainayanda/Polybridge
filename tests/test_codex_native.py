@@ -238,3 +238,18 @@ def test_incomplete_child_failure_evidence_stays_uncertain(tmp_path, monkeypatch
     with pytest.raises(ValueError):
         adapter.finalize("nonce", state)
     assert not state.get("terminal")
+
+
+def test_native_usage_limit_requires_typed_correlated_error(tmp_path, monkeypatch):
+    failed_rollouts(tmp_path, monkeypatch)
+    child_file = next((tmp_path / 'sessions').glob(f'*/*/*/*-{CHILD}.jsonl'))
+    records = [json.loads(line) for line in child_file.read_text().splitlines()]
+    records[-1]['payload']['error']['codex_error_info'] = 'usage_limit_reached'
+    child_file.write_text('\n'.join(json.dumps(record) for record in records) + '\n')
+    state = {'owner_session_id':PARENT, 'assignment':'assignment', 'expected_repo':str(tmp_path)}
+    adapter = CodexNativeAdapter()
+    for event in lifecycle():
+        adapter.observe(event, 'nonce', state)
+    diagnostic = adapter.finalize('nonce', state)[-1]['failure_diagnostic']
+    assert diagnostic['category'] == 'usage_limit'
+    assert diagnostic['source'] == 'native:codex_error_info'

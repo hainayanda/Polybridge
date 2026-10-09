@@ -284,6 +284,7 @@ class Enforcement:
 class Accumulator:
     """The normalised picture of a run, filled in by whichever backend produced the stream."""
 
+    failure_diagnostic: dict[str, Any] | None = None
     session_id: str | None = None
     summary: str | None = None
     is_error: bool | None = None
@@ -370,6 +371,10 @@ class Backend(Protocol):
     capabilities: Capabilities
     mcp_approval: MCPApprovalPolicy
 
+    def usage_limit_diagnostic(self, event: dict[str, Any]) -> dict[str, Any] | None: ...
+
+    def stderr_usage_limit_diagnostic(self, line: str) -> dict[str, Any] | None: ...
+
     def build_start_argv(
         self,
         prompt: str,
@@ -430,6 +435,18 @@ class Backend(Protocol):
 
     def ingest(self, event: dict[str, Any], acc: Accumulator) -> None:
         """Fold one stream event into the normalised view."""
+        ...
+
+    def usage_limit_diagnostic(self, event: dict[str, Any]) -> dict[str, Any] | None:
+        """Recognize an authoritative terminal quota rejection, never assistant/tool prose.
+
+        Returns category, reason, source, and optional provider-supplied reset_at. Ingest latches
+        the first diagnostic so later success cannot erase it. Unknown signal shapes return None.
+        """
+        ...
+
+    def stderr_usage_limit_diagnostic(self, line: str) -> dict[str, Any] | None:
+        """Recognize a harness-owned stderr quota diagnostic, or None when unverified."""
         ...
 
     def normalize(self, event: dict[str, Any], acc: Accumulator) -> list[dict[str, Any]]:

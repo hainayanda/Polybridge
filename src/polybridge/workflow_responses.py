@@ -14,7 +14,7 @@ PUBLIC_VIEWS = frozenset(VIEWS)
 
 # These lossless views are fetched only when their digest changes. Executions have
 # individual identities so a new checkpoint does not resend old worker results.
-MONITOR_FIELDS = ("definition", "owner_contracts", "tasks", "checklist_disposition", "technical_plan", "decisions", "pending", "joins", "released_parallel_groups", "exhausted_retry_edges", "input_question", "reason", "wait_reason", "checkout_wait", "summary", "failure_reason", "attention_reason", "builder_draft", "generated_definition", "editing_definition", "source_saved_definition", "prompt")
+MONITOR_FIELDS = ("definition", "owner_contracts", "tasks", "checklist_disposition", "technical_plan", "decisions", "pending", "joins", "released_parallel_groups", "exhausted_retry_edges", "input_question", "orchestrator_usage_recovery", "worker_usage_recovery", "usage_recovery_history", "reason", "wait_reason", "checkout_wait", "summary", "failure_reason", "attention_reason", "builder_draft", "generated_definition", "editing_definition", "source_saved_definition", "prompt")
 VIEWS.update({field: field for field in MONITOR_FIELDS})
 VIEWS["execution_index"] = "execution_index"
 
@@ -116,6 +116,9 @@ def compact(run: dict[str, Any]) -> dict[str, Any]:
         result["checklist_disposition"] = {key: str(disposition[key])[:100] for key in ("status", "execution_id", "decision_id") if key in disposition}
         reason = str(disposition.get("reason", ""))
         result["checklist_disposition"].update(reason=reason[:256], reason_truncated=len(reason) > 256)
+    recovery = run.get("orchestrator_usage_recovery")
+    if isinstance(recovery, dict):
+        result["usage_limit_recovery"] = {"decision_id": str(recovery.get("decision_id", ""))[:100], "choices": [{"answer": str(c.get("answer", ""))[:100], "candidate": {k: str(v)[:100] if v is not None else None for k, v in c.get("candidate", {}).items() if k in {"backend", "model", "reasoning_effort", "max_turns"}}} for c in recovery.get("choices", [])[:20]], "failure_diagnostic": {k: str(v)[:500] for k, v in recovery.get("failure_diagnostic", {}).items() if k in {"category", "reason", "source", "reset_at"}}}
     result["response_version"] = 1
     result["details"] = {"tool": "get_workflow_run_detail", "views": list(VIEWS)}
     activations = run.get("activations", [])

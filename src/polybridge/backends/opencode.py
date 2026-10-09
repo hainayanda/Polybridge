@@ -212,6 +212,16 @@ class OpencodeBackend:
             return f"OpenCode authentication failed (HTTP {data['statusCode']}); check the configured provider credentials."
         return data.get("message") if isinstance(data.get("message"), str) else None
 
+    @staticmethod
+    def usage_limit_diagnostic(event: dict[str, Any]) -> dict[str, Any] | None:
+        from .workflow_diagnostics import usage_limit
+        return usage_limit(event, envelope='error', claude=False, agy=False)
+
+    @staticmethod
+    def stderr_usage_limit_diagnostic(line: str) -> dict[str, Any] | None:
+        from .workflow_diagnostics import stderr_usage_limit
+        return stderr_usage_limit(line, claude=False)
+
     name = "opencode"
     mcp_approval = OpencodeApproval()
     binary = BINARY
@@ -507,6 +517,10 @@ class OpencodeBackend:
         )
 
     def ingest(self, event: dict[str, Any], acc: Accumulator) -> None:
+        diagnostic = self.usage_limit_diagnostic(event)
+        if diagnostic is not None and acc.failure_diagnostic is None:
+            acc.failure_diagnostic = diagnostic
+            acc.error_result_seen = True
         session_id = event.get("sessionID")
         if acc.session_id is None and isinstance(session_id, str) and session_id:
             acc.session_id = session_id
@@ -618,6 +632,8 @@ class OpencodeBackend:
         return [self.binary, str(repo_path), "-s", session_id]
 
     def classify(self, acc: Accumulator, exit_code: int | None) -> Status:
+        if acc.failure_diagnostic is not None:
+            return "failed"
         # `reason: "stop"` is a real end-of-run signal, not merely "some text arrived", so unlike
         # codex and vibe this backend does not need an observed exit code to establish success: a
         # recovered run whose stream reached `stop` did finish. Only an *observed* non-zero exit
