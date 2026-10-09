@@ -182,7 +182,8 @@ struct ActivityFeedView<Tail: View>: View {
                     scheduleReadingUpdate()
                 })
             }
-            .task(id: ActivityFeedKey(nativeViewportReady: nativeViewportReady, realizedLastRowID: realizedLastRowID, rows: shown, tail: tailValue, showsPromptBubble: showsPromptBubble,
+            .task(id: ActivityFeedKey(nativeViewportReady: nativeViewportReady, realizedLastRowID: realizedLastRowID,
+                                     rows: shown, tail: tailValue, showsPromptBubble: showsPromptBubble,
                                      expandedGroups: state.expandedGroups, viewport: viewportSize, history: history,
                                      loading: isLoading, visible: isVisible, paginationRevision: paginationRevision, restoring: restoring)) {
                 await settle(proxy)

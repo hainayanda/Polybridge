@@ -13,17 +13,14 @@ import PbUtilities
 @Mockable
 @MainActor
 protocol ParallelUseCase: Sendable {
-
     func tasksPublisher() -> AnyPublisher<[TaskInfo], Never>
     func snapshotsPublisher() -> AnyPublisher<[String: TaskInfo], Never>
     func busyPublisher() -> AnyPublisher<Set<String>, Never>
     func outcomesPublisher() -> AnyPublisher<[String: String], Never>
     func titlesPublisher() -> AnyPublisher<[String: String], Never>
-
     /// Returns the fresh listing entry.
     func task(_ id: String) -> TaskInfo?
     func title(_ taskID: String) -> String
-
     func acquireEventLease(_ taskID: String) -> any EventStreamLease
     func events(for taskID: String) -> [TaskEvent]
     func items(for taskID: String) -> [TimelineItem]
@@ -36,25 +33,11 @@ protocol ParallelUseCase: Sendable {
     /// Distinguishes pending activity from a missing or unreadable log.
     func eventsAvailability(for taskID: String) -> EventAvailability
     func eventsAvailabilityPublisher(for taskID: String) -> AnyPublisher<EventAvailability, Never>
-
     func runningInSubtrees(of ids: [String]) -> [String]
     func cancelAll(_ ids: [String]) async
     func setOutcome(_ id: String, _ text: String?)
-
     /// Starts Terminal takeover synchronously before routing.
     func beginTakeover(taskID: String)
-}
-
-extension ParallelUseCase {
-    func eventHistory(for _: String) -> EventHistoryState { EventHistoryState() }
-    func eventHistoryPublisher(for id: String) -> AnyPublisher<EventHistoryState, Never> { Just(eventHistory(for: id)).eraseToAnyPublisher() }
-    @discardableResult func loadMoreEvents(_: String) -> Bool { false }
-    func conversationHistory(sessionID _: String, cursor _: String?) async throws -> TaskHistoryPage? { nil }
-}
-
-@MainActor
-protocol ParallelActivityReadiness {
-    func activityReadyPublisher() -> AnyPublisher<Bool, Never>
 }
 
 // MARK: - ParallelRouting
@@ -86,7 +69,6 @@ final class ParallelVM: ParallelViewModel {
     // MARK: - Private Properties
     
     static let fallbackFooter = "Enforcement differs between these agents; see each task's details."
-    
     @ObservationIgnored private let useCase: any ParallelUseCase
     @ObservationIgnored private let routing: any ParallelRouting
     @ObservationIgnored private let buildColumns: ParallelColumnsBuild
@@ -121,7 +103,6 @@ final class ParallelVM: ParallelViewModel {
     @ObservationIgnored private lazy var history = ParallelActivityHistory(useCase: useCase,
         onInventory: { [weak self] in self?.recomputeMembersAndLeases() },
         onChange: { [weak self] memberID in self?.historyDidChange(memberID) })
-
     @ObservationIgnored private lazy var acquisition = ParallelLeaseAcquisition(acquire: { [weak self] id in
         guard let self, didSubscribe, neededMemberIDs.contains(id), leases[id] == nil else { return false }
         acquireLease(id)
@@ -150,7 +131,6 @@ final class ParallelVM: ParallelViewModel {
     @ObservationIgnored private(set) var presentationWriteCount = 0
     @ObservationIgnored private(set) var builtColumnCount = 0
     @ObservationIgnored private(set) var sourceUpdateCount = 0
-
     func columnState(for id: String) -> ParallelColumnUIState {
         if let state = uiStates[id] { return state }
         let state = ParallelColumnUIState()
@@ -275,7 +255,6 @@ final class ParallelVM: ParallelViewModel {
             }
 .store(in: &cancellables)
         } else { activityReady = true }
-        
         useCase.tasksPublisher()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] tasks in
@@ -287,7 +266,6 @@ final class ParallelVM: ParallelViewModel {
                 recomputeMembersAndLeases()
             }
             .store(in: &cancellables)
-        
         useCase.snapshotsPublisher()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] snapshots in
@@ -296,7 +274,6 @@ final class ParallelVM: ParallelViewModel {
                 recompute()
             }
             .store(in: &cancellables)
-        
         useCase.busyPublisher()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] busy in
@@ -305,7 +282,6 @@ final class ParallelVM: ParallelViewModel {
                 recompute()
             }
             .store(in: &cancellables)
-        
         useCase.outcomesPublisher()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] outcomes in
@@ -314,7 +290,6 @@ final class ParallelVM: ParallelViewModel {
                 recompute()
             }
             .store(in: &cancellables)
-        
         // Titles load independently of the listing (Codex review finding): a column must refresh
         // when it changes on its own, not only when an unrelated publisher happens to fire afterward.
         useCase.titlesPublisher()
@@ -354,10 +329,8 @@ final class ParallelVM: ParallelViewModel {
         if canCancelAll != cancellable { canCancelAll = cancellable }
         let empty = groupConversations.isEmpty
         if isEmpty != empty { isEmpty = empty }
-
         let subtitle = ParallelHeader.subtitle(groupConversations, startedAt: group?.startedAt)
         if headerSubtitle != subtitle { headerSubtitle = subtitle }
-
         MonitorMetrics.end(preparation, stage: .parallelPreparation, residentColumns: residentIDs.count, leasedMembers: leases.count)
         recompute()
     }
@@ -583,7 +556,6 @@ final class ParallelVM: ParallelViewModel {
     }
 
     private nonisolated static func isBackgroundThread() -> Bool { !Thread.isMainThread }
-
     private func startPending() {
         guard didSubscribe, let inputs = pendingInputs else { return }
         pendingInputs = nil

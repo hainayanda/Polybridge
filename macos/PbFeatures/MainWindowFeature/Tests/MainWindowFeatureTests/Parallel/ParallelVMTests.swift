@@ -68,7 +68,6 @@ import Testing
         let loadAdmissionBox = Box(true)
         let acquireEffectBox = Box<((String) -> Void)?>(nil)
         let conversationPagesBox = Box<[TaskHistoryPage?]>([])
-
         given(useCase).tasksPublisher().willReturn(tasksSubject.eraseToAnyPublisher())
         given(useCase).snapshotsPublisher().willReturn(snapshotsSubject.eraseToAnyPublisher())
         given(useCase).busyPublisher().willReturn(busySubject.eraseToAnyPublisher())
