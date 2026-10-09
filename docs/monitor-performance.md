@@ -934,3 +934,11 @@ follow the same deterministic membership migration as interaction state, before 
 are removed. A regression covers off-screen pruning and immediate retained content on return
 while the replacement stream is loading. All 69 Parallel VM tests passed after this fix; the
 release app rebuilt successfully, with formatting and private-reference checks passing.
+
+Hosted CI initially missed the heartbeat count in one scenario (136/160), then in all four
+scenarios on an unchanged rerun (145, 131, 139, 144). All functional assertions passed, and the
+four unchanged tests passed locally. Timer/process throttling is a plausible explanation, not
+proven by these counts. The heartbeat fixtures now hold a scoped user-initiated latency-critical
+process activity and use explicit user-initiated scheduling while their native windows are
+occluded. Every timeout, heartbeat threshold, and functional assertion remains unchanged.
+All four tests passed locally after this scheduling correction; CI remains the delivery gate.

@@ -22,10 +22,11 @@ import Testing
         // given — full code-shaped history, or deliberately shorter text to exercise automatic filling.
         _ = NSApplication.shared
         let pulse = StarvationPulse(path: ProcessInfo.processInfo.environment["PB_ACTIVITY_HEARTBEAT"])
+        defer { pulse.finish() }
         try pulse.record(phase: "mounting")
-        let timer = DispatchSource.makeTimerSource(queue: .global())
+        let timer = DispatchSource.makeTimerSource(queue: .global(qos: .userInitiated))
         timer.schedule(deadline: .now(), repeating: .milliseconds(50))
-        timer.setEventHandler { @Sendable in Task { @MainActor in try pulse.record(phase: "running") } }
+        timer.setEventHandler { @Sendable in Task(priority: .userInitiated) { @MainActor in try pulse.record(phase: "running") } }
         timer.resume()
         defer { timer.cancel() }
         let fixture = try ShortHistoryFixture(shortFill: shortFill)
@@ -66,10 +67,11 @@ import Testing
         // given — the actual task VM, deferred detail, navigation, toolbar and timeline hierarchy.
         _ = NSApplication.shared
         let pulse = StarvationPulse(path: ProcessInfo.processInfo.environment["PB_ACTIVITY_HEARTBEAT"])
+        defer { pulse.finish() }
         try pulse.record(phase: "mounting")
-        let timer = DispatchSource.makeTimerSource(queue: .global())
+        let timer = DispatchSource.makeTimerSource(queue: .global(qos: .userInitiated))
         timer.schedule(deadline: .now(), repeating: .milliseconds(50))
-        timer.setEventHandler { @Sendable in Task { @MainActor in try pulse.record(phase: "running") } }
+        timer.setEventHandler { @Sendable in Task(priority: .userInitiated) { @MainActor in try pulse.record(phase: "running") } }
         timer.resume()
         defer { timer.cancel() }
         let harness = TaskDetailVMTests().makeSUT()
@@ -109,11 +111,12 @@ import Testing
         // given — a watchdog outside this process observes pulses even if the main actor stalls.
         _ = NSApplication.shared
         let pulse = StarvationPulse(path: ProcessInfo.processInfo.environment["PB_ACTIVITY_HEARTBEAT"])
+        defer { pulse.finish() }
         try pulse.record(phase: "mounting")
-        let timer = DispatchSource.makeTimerSource(queue: .global())
+        let timer = DispatchSource.makeTimerSource(queue: .global(qos: .userInitiated))
         timer.schedule(deadline: .now(), repeating: .milliseconds(50))
         timer.setEventHandler { @Sendable in
-            Task { @MainActor in try pulse.record(phase: "running") }
+            Task(priority: .userInitiated) { @MainActor in try pulse.record(phase: "running") }
         }
         timer.resume()
         defer { timer.cancel() }
@@ -264,9 +267,17 @@ import Testing
 
 @MainActor private final class StarvationPulse {
     private let url: URL?
+    private let activity: NSObjectProtocol
     private(set) var count = 0
 
-    init(path: String?) { self.url = path.map { URL(fileURLWithPath: $0) } }
+    init(path: String?) {
+        self.url = path.map { URL(fileURLWithPath: $0) }
+        // Hosted test windows may be occluded. Measure foreground interaction without App Nap.
+        self.activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .latencyCritical],
+            reason: "Measure activity feed main-actor responsiveness")
+    }
+
+    func finish() { ProcessInfo.processInfo.endActivity(activity) }
 
     func record(phase: String) throws {
         count += 1
