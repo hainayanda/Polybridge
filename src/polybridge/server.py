@@ -1178,9 +1178,9 @@ async def get_workflow(name: str) -> dict[str, Any]:
 async def save_workflow(name: str, definition: dict[str, Any], expected_revision: int | None = None) -> dict[str, Any]:
     """Validate and save an explicit workflow; expected_revision protects concurrent edits.
 
-    context_delivery is legacy or optimized_v1. New definitions default to optimized_v1;
-    existing definitions retain their saved policy (or legacy) unless explicitly changed.
-    Optimized delivery uses session-bound acknowledgements and assigned evidence retrieval,
+    Every save normalizes context_delivery to optimized_v1, including omitted or legacy
+    values. Historical runs retain their pinned delivery policy. Bounded delivery uses
+    session-bound acknowledgements and assigned evidence retrieval,
     with a 64 KiB target that never silently cuts required constraints.
     Set routing_mode="explicit". Ordinary nodes choose exactly one outgoing path.
     Parallel execution uses paired parallel_start/parallel_end nodes with shared
