@@ -303,3 +303,29 @@ def test_native_quota_does_not_bypass_correlated_failure_requirements(tmp_path, 
     with pytest.raises(ValueError):
         adapter.finalize('nonce', state)
     assert not state.get('terminal')
+
+
+def test_native_usage_diagnostic_reason_does_not_copy_provider_credentials(tmp_path, monkeypatch):
+    from polybridge.backends.workflow_diagnostics import USAGE_LIMIT_REASON
+    failed_rollouts(tmp_path, monkeypatch)
+    secret_message = 'fixture native child API failure Authorization: Bearer synthetic-private-token Cookie: synthetic-session'
+    child_file = next((tmp_path / 'sessions').glob(f'*/*/*/*-{CHILD}.jsonl'))
+    records = [json.loads(line) for line in child_file.read_text().splitlines()]
+    records[-1]['payload']['error'].update(codex_error_info='rate_limit_error', message=secret_message)
+    child_file.write_text('\n'.join(json.dumps(record) for record in records) + '\n')
+    parent_file = next((tmp_path / 'sessions').glob(f'*/*/*/*-{PARENT}.jsonl'))
+    records = [json.loads(line) for line in parent_file.read_text().splitlines()]
+    for record in records:
+        payload = record.get('payload', {})
+        for item in payload.get('content', []) if isinstance(payload.get('content'), list) else []:
+            if isinstance(item.get('text'), str):
+                item['text'] = item['text'].replace('fixture native child API failure', secret_message)
+    parent_file.write_text('\n'.join(json.dumps(record) for record in records) + '\n')
+    state = {'owner_session_id': PARENT, 'assignment': 'assignment', 'expected_repo': str(tmp_path)}
+    adapter = CodexNativeAdapter()
+    for event in lifecycle():
+        adapter.observe(event, 'nonce', state)
+    update = adapter.finalize('nonce', state)[-1]
+    assert update['failure_diagnostic'] == {'category': 'usage_limit', 'reason': USAGE_LIMIT_REASON, 'source': 'native:codex_error_info'}
+    assert 'synthetic-private-token' not in json.dumps(update['failure_diagnostic'])
+    assert 'synthetic-session' not in json.dumps(update['observed_metadata'])

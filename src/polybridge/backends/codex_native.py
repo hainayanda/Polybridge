@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from .base import Invocation
-from .workflow_diagnostics import USAGE_CODES
+from .workflow_diagnostics import USAGE_CODES, USAGE_LIMIT_REASON
 
 CERTIFIED_VERSION = "0.162.0"
 CERTIFIED_MODEL = "gpt-6.1-sol"
@@ -297,7 +297,7 @@ class CodexNativeAdapter:
             info = error.get("codex_error_info")
             code = info if isinstance(info, str) else info.get("code") if isinstance(info, dict) else None
             if code in USAGE_CODES:
-                diagnostic = {"category": "usage_limit", "reason": error["message"], "source": "native:codex_error_info"}
+                diagnostic = {"category": "usage_limit", "reason": USAGE_LIMIT_REASON, "source": "native:codex_error_info"}
         return [{"native_update": "started", "native_child_id": child}, {"native_update": "settled", "status": status, "summary": summary, "observed_model": metadata["model"], "observed_metadata": metadata, **({"failure_diagnostic": diagnostic} if diagnostic else {})}]
 
 

@@ -195,3 +195,49 @@ def test_warning_prose_stderr_does_not_veto_authoritative_stream_outage(tmp_path
     path = tmp_path / 'outage.jsonl'
     path.write_text(json.dumps(event) + '\n')
     assert w.availability_failure({'status': 'failed', 'backend': name, 'stderr_tail': [quoted], 'raw_stream_log': str(path)})
+
+
+@pytest.mark.parametrize('name', ['claude', 'codex', 'opencode', 'vibe', 'antigravity'])
+def test_stderr_usage_reason_never_copies_sensitive_provider_line(name):
+    from polybridge.backends.workflow_diagnostics import USAGE_LIMIT_REASON
+    line = 'API Error: rate_limit_exceeded Authorization: Bearer synthetic-private-token Cookie: synthetic-session api_key=synthetic-key'
+    diagnostic = get_backend(name).stderr_usage_limit_diagnostic(line)
+    assert diagnostic == {'category': 'usage_limit', 'reason': USAGE_LIMIT_REASON, 'source': 'stderr'}
+
+
+def test_antigravity_string_usage_reason_is_generic():
+    from polybridge.backends.workflow_diagnostics import USAGE_LIMIT_REASON
+    error = 'insufficient_quota Authorization: Bearer synthetic-private-token Cookie: synthetic-session'
+    diagnostic = get_backend('antigravity').usage_limit_diagnostic({'event': 'result', 'result': {'status': 'ERROR', 'error': error}})
+    assert diagnostic == {'category': 'usage_limit', 'reason': USAGE_LIMIT_REASON, 'source': 'stream:result'}
+
+
+@pytest.mark.parametrize('name', ['claude', 'codex', 'opencode', 'vibe', 'antigravity'])
+async def test_sensitive_stderr_does_not_enter_durable_public_usage_metadata(tmp_path, name):
+    import json
+    from datetime import datetime, timezone
+    from polybridge import store, workflows as w
+    from polybridge.tasks import Task, TaskRegistry
+    from polybridge.workflow_responses import compact
+    from test_workflow_delegation import graph
+    line = 'API Error: rate_limit_exceeded Authorization: Bearer synthetic-private-token Cookie: synthetic-session api_key=synthetic-key'
+    diagnostic = get_backend(name).stderr_usage_limit_diagnostic(line)
+    registry = TaskRegistry(log_dir=tmp_path / 'tasks')
+    task = Task(task_id='limited', backend=name, session_id='session', repo_path=tmp_path,
+                prompt='work', max_turns=None, log_path=tmp_path / 'tasks' / 'limited.jsonl',
+                started_at=datetime.now(timezone.utc))
+    task.acc.failure_diagnostic = diagnostic
+    registry._record_usage_limit(task)
+    await task.usage_settlement
+    persisted = store.read(registry.log_dir, task.task_id)
+    assert persisted.failure_diagnostic == diagnostic
+    storage = w.WorkflowStore(tmp_path)
+    definition = w.validate_definition(graph())
+    run = storage.create_run(definition, 'Work', tmp_path)
+    supervisor = w.WorkflowSupervisor(registry, storage)
+    supervisor.run_id = run['workflow_run_id']
+    activation = supervisor._activation('orchestrator', 'orchestrator')
+    supervisor._usage_limit_outcome({'status': 'failed', 'failure_diagnostic': diagnostic}, {'id': 'orchestrator'}, 'orchestrator', activation, definition['orchestrator'], [])
+    public = json.dumps({'diagnostic': diagnostic, 'live_brief': task.brief(), 'recovered_brief': store.brief(registry.log_dir, persisted), 'recovery': compact(supervisor.run())})
+    for secret in ('synthetic-private-token', 'synthetic-session', 'synthetic-key', 'Authorization', 'Cookie'):
+        assert secret not in public

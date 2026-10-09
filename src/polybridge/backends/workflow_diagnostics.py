@@ -111,12 +111,13 @@ def stream_events(path: str | Path) -> tuple[dict[str, Any], ...]:
 
 
 USAGE_CODES = {"usage_limit_reached", "insufficient_quota", "rate_limit_exceeded", "rate_limit_error"}
+USAGE_LIMIT_REASON = "Provider rejected this turn because its usage limit was reached."
 
 def usage_limit(event: dict[str, Any], *, envelope: str, claude: bool = False, agy: bool = False) -> dict[str, Any] | None:
     """Only authoritative provider error envelopes establish a terminal quota failure."""
     info = event.get("rate_limit_info")
     if claude and event.get("type") == "rate_limit_event" and isinstance(info, dict) and info.get("status") == "rejected":
-        result = {"category": "usage_limit", "reason": "Provider rejected this turn because its usage limit was reached.", "source": "stream:rate_limit_event"}
+        result = {"category": "usage_limit", "reason": USAGE_LIMIT_REASON, "source": "stream:rate_limit_event"}
         if _reset_value(info.get("resetsAt")):
             result["reset_at"] = info["resetsAt"]
         return result
@@ -131,7 +132,7 @@ def usage_limit(event: dict[str, Any], *, envelope: str, claude: bool = False, a
         error = event.get("error")
     if agy and isinstance(error, str):
         if not re.search(r"\b(?:401|403|model_not_found)\b", error) and re.search(r"\b(?:usage_limit_reached|insufficient_quota|rate_limit_exceeded|rate_limit_error)\b", error):
-            return {"category": "usage_limit", "reason": error[:2000], "source": "stream:result"}
+            return {"category": "usage_limit", "reason": USAGE_LIMIT_REASON, "source": "stream:result"}
         return None
     if not isinstance(error, dict):
         return None
@@ -142,7 +143,7 @@ def usage_limit(event: dict[str, Any], *, envelope: str, claude: bool = False, a
         return None
     if not any(error.get(key) in USAGE_CODES for key in ("type", "code", "name") if isinstance(error.get(key), str)):
         return None
-    diagnostic = {"category": "usage_limit", "reason": "Provider rejected this turn because its usage limit was reached.", "source": "stream:" + ("result" if agy else envelope)}
+    diagnostic = {"category": "usage_limit", "reason": USAGE_LIMIT_REASON, "source": "stream:" + ("result" if agy else envelope)}
     reset = error.get("reset_at", data.get("reset_at"))
     if _reset_value(reset):
         diagnostic["reset_at"] = reset
@@ -157,7 +158,7 @@ def stderr_usage_limit(line: str, *, claude: bool = False) -> dict[str, Any] | N
         return None
     if not re.search(r"\b(?:usage_limit_reached|insufficient_quota|rate_limit_exceeded|rate_limit_error)\b", line) and not (claude and re.search(r"You've hit your limit|Credit balance is too low", line)):
         return None
-    return {"category": "usage_limit", "reason": line[:2000], "source": "stderr"}
+    return {"category": "usage_limit", "reason": USAGE_LIMIT_REASON, "source": "stderr"}
 
 
 def _reset_value(value: Any) -> bool:
