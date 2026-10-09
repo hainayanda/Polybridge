@@ -2018,13 +2018,10 @@ class TaskRegistry:
             return
         except asyncio.TimeoutError:
             pass
-        leader = identity.task_identity(task.proc.pid, task.start_time, task.markers)
-        verdict, reason = await asyncio.to_thread(identity.check_detail, leader)
-        if not identity.signalable(verdict, reason):
-            task.bridge_notices.append("Usage-limit recovery needs attention: process ownership could not be verified; replacement dispatch is blocked.")
-            task.acc.failure_diagnostic["settlement"] = "needs_attention"
-            self.persist(task)
-            return
+        # This registry spawned and retains the subprocess handle, just as for
+        # local cancellation. Cross-process argv markers can disappear when a CLI
+        # retitles itself; they are not the ownership proof for our own child.
+        # Recovered tasks use the separate identity-checked control paths.
         _signal_group(task, signal.SIGTERM)
         await _escalate(task)
 

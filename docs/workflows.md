@@ -671,9 +671,11 @@ session identity. Monitor keeps it in task notices and workflow recovery state a
 is dismissed.
 
 Polybridge stops forwarding input and reports queued messages as undelivered. It allows five
-seconds for the affected process to exit before attempting identity-checked termination. A
+seconds for the affected process to exit before termination. The owning server uses its retained
+child-process handle, as it does for local cancellation; a CLI changing its process title does not
+prevent settlement. Recovered cross-process control still requires verified process identity. A
 replacement cannot start until process ownership and settlement are established. Uncertain
-ownership requires attention rather than a duplicate dispatch.
+recovered ownership requires attention rather than a duplicate dispatch.
 
 For a settled worker limit, the orchestrator receives the failure and eligible configured
 candidates. Polybridge does not automatically launch the next candidate. The orchestrator must
