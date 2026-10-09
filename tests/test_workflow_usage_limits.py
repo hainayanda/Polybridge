@@ -87,7 +87,7 @@ async def test_orchestrator_limit_requires_exact_caller_answer_and_preserves_che
     assert LIMIT["failure_diagnostic"]["reset_at"] in run["input_question"]
     pending = copy.deepcopy(run["pending"])
     for answer in ("yes", "continue", "probably fallback please"):
-        with pytest.raises(w.WorkflowError, match="exact offered fallback"):
+        with pytest.raises(w.WorkflowError, match="exact offered recovery"):
             storage.control(run["workflow_run_id"], "resume", answer, decision_id=run["input_decision_id"])
     approved = storage.control(run["workflow_run_id"], "resume", "fallback", decision_id=run["input_decision_id"])
     assert approved["pending"][0]["id"] == pending[0]["id"]
@@ -164,7 +164,7 @@ async def test_pause_retains_limit_checkpoint_and_resume_requires_fallback_conse
     assert paused["input_decision_id"] == run["input_decision_id"]
     assert paused["orchestrator_usage_recovery"] == run["orchestrator_usage_recovery"]
     assert paused["pending"] == run["pending"]
-    with pytest.raises(w.WorkflowError, match="exact offered fallback"):
+    with pytest.raises(w.WorkflowError, match="exact offered recovery"):
         storage.control(run["workflow_run_id"], "resume", "continue", decision_id=run["input_decision_id"])
     with pytest.raises(w.WorkflowError, match="current input decision_id"):
         storage.control(run["workflow_run_id"], "resume", "fallback", decision_id="stale")
@@ -283,7 +283,7 @@ async def test_failed_approved_control_fallback_requires_new_consent(storage, tm
     assert recovered["pending"][0]["id"] == pending[0]["id"]
     recovery = recovered["orchestrator_usage_recovery"]
     assert recovery["failure_diagnostic"] == LIMIT["failure_diagnostic"]
-    assert [c["candidate"]["model"] for c in recovery["choices"]] == ["remaining-fixture"]
+    assert [c["candidate"]["model"] for c in recovery["choices"] if c["answer"] != "retry_current"] == ["remaining-fixture"]
     assert recovered["usage_recovery_history"][-1]["selection_failure"]
     with pytest.raises(w.WorkflowError, match="current input decision_id"):
         storage.control(run["workflow_run_id"], "resume", "fallback", decision_id=old_decision)
@@ -431,3 +431,94 @@ async def test_worker_restart_with_dead_quota_returns_choice_to_orchestrator(sto
     workers = [a for a in finished['activations'] if a['role'] == 'node']
     assert len(workers) == 2
     assert workers[-1]['tasks'][0]['candidate']['model'] == 'fallback-fixture'
+
+
+async def test_paused_control_limit_without_fallback_can_explicitly_retry_current(storage, tmp_path):
+    value = definition()
+    value['orchestrator'].pop('fallbacks')
+    registry = LimitedRegistry(storage.root, limited_role='orchestrator')
+    run, _ = await run_flow(storage, tmp_path, value, registry, guided=True)
+    assert [c['answer'] for c in run['orchestrator_usage_recovery']['choices']] == ['retry_current']
+    before = len(registry.calls)
+    paused = storage.control(run['workflow_run_id'], 'pause')
+    await w.WorkflowSupervisor(registry, storage).execute(run['workflow_run_id'])
+    assert len(registry.calls) == before
+    assert paused['input_decision_id'] == run['input_decision_id']
+    with pytest.raises(w.WorkflowError, match='current input decision_id'):
+        storage.control(run['workflow_run_id'], 'resume', 'retry_current', decision_id='stale')
+    identity = 'orchestrator:' + w._candidate_key(run['orchestrator_usage_recovery']['failed_candidate'])
+    storage.update_run(run['workflow_run_id'], lambda r: r['suppressed_candidates'].extend([identity, 'orchestrator:unrelated']), 'test_suppression')
+    approved = storage.control(run['workflow_run_id'], 'resume', 'retry_current', decision_id=run['input_decision_id'])
+    assert 'orchestrator:unrelated' in approved['suppressed_candidates']
+    assert identity not in approved['suppressed_candidates']
+    registry.start = Registry.start.__get__(registry)
+    await w.WorkflowSupervisor(registry, storage).execute(run['workflow_run_id'])
+    finished = storage.get_run(run['workflow_run_id'])
+    assert finished['status'] == 'completed'
+    controls = [a for a in finished['activations'] if a['role'] == 'orchestrator']
+    assert controls[1]['tasks'][0]['session_mode'] == 'fresh'
+    assert controls[2]['tasks'][0]['session_mode'] == 'resume'
+    assert len([a for a in finished['activations'] if a['role'] == 'node']) == 1
+
+
+async def test_retry_current_repeated_limit_reissues_consent_without_auto_launch(storage, tmp_path):
+    value = definition()
+    value['orchestrator'].pop('fallbacks')
+    registry = LimitedRegistry(storage.root, limited_role='orchestrator')
+    run, _ = await run_flow(storage, tmp_path, value, registry, guided=True)
+    storage.control(run['workflow_run_id'], 'resume', 'retry_current', decision_id=run['input_decision_id'])
+    await w.WorkflowSupervisor(registry, storage).execute(run['workflow_run_id'])
+    checkpoint = storage.get_run(run['workflow_run_id'])
+    assert checkpoint['status'] == 'needs_input'
+    assert checkpoint['input_decision_id'] != run['input_decision_id']
+    assert [c['answer'] for c in checkpoint['orchestrator_usage_recovery']['choices']] == ['retry_current']
+    assert len(registry.calls) == 2
+    assert 'orchestrator_recovery_candidate' not in checkpoint
+    with pytest.raises(w.WorkflowError, match='current input decision_id'):
+        storage.control(run['workflow_run_id'], 'resume', 'retry_current', decision_id=run['input_decision_id'])
+
+
+async def test_retry_current_config_removal_reoffers_current_configuration(storage, tmp_path):
+    value = definition()
+    value['orchestrator'].pop('fallbacks')
+    registry = LimitedRegistry(storage.root, limited_role='orchestrator')
+    run, _ = await run_flow(storage, tmp_path, value, registry, guided=True)
+    storage.update_run(run['workflow_run_id'], lambda r: r['definition']['orchestrator'].update(model='new-config'), 'replace_config')
+    storage.control(run['workflow_run_id'], 'resume', 'retry_current', decision_id=run['input_decision_id'])
+    before = len(registry.calls)
+    await w.WorkflowSupervisor(registry, storage).execute(run['workflow_run_id'])
+    checkpoint = storage.get_run(run['workflow_run_id'])
+    assert checkpoint['status'] == 'needs_input'
+    assert len(registry.calls) == before
+    choices = checkpoint['orchestrator_usage_recovery']['choices']
+    assert [c['answer'] for c in choices] == ['fallback']
+    assert choices[0]['candidate']['model'] == 'new-config'
+
+
+async def test_unsettled_orchestrator_limit_never_offers_retry_current(storage, tmp_path):
+    run, registry = await run_flow(storage, tmp_path, definition(), LimitedRegistry(storage.root, limited_role='orchestrator', unknown=True), guided=True)
+    assert run['status'] == 'needs_attention'
+    assert 'orchestrator_usage_recovery' not in run
+    assert len(registry.calls) == 1
+
+
+async def test_builder_without_fallback_can_explicitly_retry_current(storage, tmp_path, monkeypatch):
+    monkeypatch.setattr(w.CheckoutLease, '_orphan_owner', lambda *_: None)
+    value = definition()
+    value['orchestrator'].pop('fallbacks')
+    run = storage.create_run(w.validate_definition(value), 'Builder', tmp_path, kind='builder')
+    storage.update_run(run['workflow_run_id'], lambda r: r.update(status='running'), 'test_running')
+    registry = LimitedRegistry(storage.root, limited_role='orchestrator')
+    supervisor = w.WorkflowSupervisor(registry, storage)
+    supervisor.run_id = run['workflow_run_id']
+    activation = supervisor._activation('builder', 'builder')
+    assert await supervisor._dispatch({'id': 'builder'}, 'Control assignment', 'builder', activation) is None
+    checkpoint = supervisor.run()
+    assert checkpoint['orchestrator_usage_recovery']['role'] == 'builder'
+    assert [c['answer'] for c in checkpoint['orchestrator_usage_recovery']['choices']] == ['retry_current']
+    storage.control(run['workflow_run_id'], 'resume', 'retry_current', decision_id=checkpoint['input_decision_id'])
+    registry.start = Registry.start.__get__(registry)
+    activation = supervisor._activation('builder', 'builder')
+    assert (await supervisor._dispatch({'id': 'builder'}, 'Control retry', 'builder', activation))['status'] == 'completed'
+    assert supervisor.run()['activations'][-1]['tasks'][0]['session_mode'] == 'fresh'
+    assert 'orchestrator_recovery_candidate' not in supervisor.run()

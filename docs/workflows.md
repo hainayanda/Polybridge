@@ -675,7 +675,10 @@ seconds for the affected process to exit before termination. The owning server u
 child-process handle, as it does for local cancellation; a CLI changing its process title does not
 prevent settlement. Recovered cross-process control still requires verified process identity. A
 replacement cannot start until process ownership and settlement are established. Uncertain
-recovered ownership requires attention rather than a duplicate dispatch.
+recovered ownership requires attention rather than a duplicate dispatch. After a server restart,
+a retained authoritative usage-limit diagnostic plus confirmed process death establishes a
+failed outcome even if the owner never persisted its exit receipt. Worker recovery returns to
+the orchestrator; control recovery restores the caller question before another control turn.
 
 For a settled worker limit, the orchestrator receives the failure and eligible configured
 candidates. Polybridge does not automatically launch the next candidate. The orchestrator must
@@ -685,12 +688,15 @@ ask the caller to pause, cancel, or continue with a fallback for the affected no
 answer returns to the orchestrator, which still must select the issued candidate explicitly.
 
 If the orchestrator itself reaches its limit, the workflow asks its caller whether to pause,
-cancel, or continue with an eligible configured fallback. Recovery preserves the pending decision, checkpoints,
+cancel, retry the configured current harness after its limit resets, or continue with an eligible configured fallback. Recovery preserves the pending decision, checkpoints,
 and completed workers. An approved fallback orchestrator starts a fresh conversation with restored
 workflow context; it does not repeat completed work or broaden permissions.
 Resume with the current `input_decision_id` and the exact answer offered in the question:
 `fallback` selects its first eligible candidate, and `fallback:2` selects its second when offered.
-Other answers do not authorize a launch. Use the existing cancel control to stop.
+`retry_current` explicitly retries the limited configured harness in a Fresh session; it is available
+even when no fallback is configured. It clears suppression only for that chosen harness. Reset
+timestamps are informational and never schedule a retry. Other answers do not authorize a launch.
+Use the existing cancel control to stop.
 The existing pause control retains the question and decision ID. Resuming a paused usage-limit
 checkpoint still requires that decision ID and an explicit recovery answer; pause never approves
 a fallback implicitly.

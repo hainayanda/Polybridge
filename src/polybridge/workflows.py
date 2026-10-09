@@ -1154,6 +1154,7 @@ class WorkflowStore:
                 if any(a["status"] in {"reserved", "uncertain", "running"} and not a.get("invocation") or any(t["status"] in {"reserved", "uncertain", "running"} for t in a["tasks"]) for a in r["activations"]):
                     raise WorkflowError("Unresolved dispatches must be reconciled before resume")
                 answered_executions: set[str] = set()
+                usage_recovery_answer = False
                 if r["status"] == "needs_input" or (r.get("orchestrator_usage_recovery") or r.get("worker_usage_recovery")):
                     if not isinstance(instructions, str) or not instructions.strip():
                         raise WorkflowError("Resuming needs_input requires an answer or reason")
@@ -1161,9 +1162,15 @@ class WorkflowStore:
                         raise WorkflowError("Resuming needs_input requires the current input decision_id")
                     recovery = r.get("orchestrator_usage_recovery")
                     if recovery:
+                        usage_recovery_answer = True
                         choice = next((c for c in recovery["choices"] if instructions.strip().lower() == c["answer"]), None)
                         if choice is None:
-                            raise WorkflowError("Usage-limit recovery requires an exact offered fallback answer; cancel to stop")
+                            raise WorkflowError("Usage-limit recovery requires an exact offered recovery answer; cancel to stop")
+                        if choice["answer"] == "retry_current":
+                            role = recovery.get("role", "builder" if r.get("kind") == "builder" else "orchestrator")
+                            identity = role + ":" + _candidate_key(choice["candidate"])
+                            r["suppressed_candidates"] = [c for c in r["suppressed_candidates"] if c != identity]
+                            r["suppressed_capability_candidates"] = [c for c in r.get("suppressed_capability_candidates", []) if c != identity]
                         r["orchestrator_recovery_candidate"] = copy.deepcopy(choice["candidate"])
                         r.setdefault("usage_recovery_history", []).append({**copy.deepcopy(recovery), "accepted_answer": choice["answer"], "accepted_at": time.time()})
                         r.pop("orchestrator_usage_recovery", None)
@@ -1200,7 +1207,8 @@ class WorkflowStore:
                 r.pop("optional_review_skip_available", None)
                 r.pop("worker_usage_recovery", None)
                 r.pop("failure_reason", None)
-                r["suppressed_candidates"] = []
+                if not usage_recovery_answer:
+                    r["suppressed_candidates"] = []
                 exhausted_edges = r.pop("exhausted_retry_edges", [])
                 if additional_attempts:
                     _positive(additional_attempts, "additional_attempts")
@@ -2067,13 +2075,16 @@ class WorkflowSupervisor:
         # Number choices after filtering, so the first offered answer is always fallback.
         for i, choice in enumerate(choices):
             choice["answer"] = "fallback" if i == 0 else f"fallback:{i + 1}"
+        current = next((c for c in candidates if _candidate_key(c) == _candidate_key(candidate)), None)
+        if current:
+            choices.append({"answer": "retry_current", "candidate": {k: v for k, v in current.items() if k != "fallbacks"}})
         token = activation.get("token") or {}
         decision_id = activation.get("decision_id") or token.get("decision_id") or uuid.uuid4().hex
         question = ("Workflow builder" if role == "builder" else "Orchestrator") + " reached a provider usage limit: " + reason + ". "
         if choices:
             question += "Resume with the exact answer " + "; ".join(choice["answer"] + " to start Fresh with " + _candidate_key(choice["candidate"]) for choice in choices) + ", or pause_workflow to wait, or cancel_workflow to stop."
         else:
-            question += "No configured fallback is eligible. Use pause_workflow to wait or cancel_workflow to stop; no replacement is authorized."
+            question += "No configured recovery candidate is eligible. Use pause_workflow to wait or cancel_workflow to stop; no replacement is authorized."
         if selection_failure:
             question = "Selected recovery candidate unavailable: " + selection_failure[1] + ". " + question
         def checkpoint(r: dict[str, Any]) -> None:
@@ -2088,7 +2099,7 @@ class WorkflowSupervisor:
                 if identity not in r["suppressed_candidates"]:
                     r["suppressed_candidates"].append(identity)
                 r["usage_recovery_history"][-1]["selection_failure"] = selection_failure[1]
-            r.update(status="needs_input", input_question=question, input_decision_id=decision_id, attention_reason=reason, orchestrator_usage_recovery={"decision_id": decision_id, "failure_diagnostic": copy.deepcopy(diagnostic), "failed_candidate": copy.deepcopy(candidate), "choices": choices, "token_id": token.get("id")})
+            r.update(status="needs_input", input_question=question, input_decision_id=decision_id, attention_reason=reason, orchestrator_usage_recovery={"decision_id": decision_id, "role": role, "failure_diagnostic": copy.deepcopy(diagnostic), "failed_candidate": copy.deepcopy(candidate), "choices": choices, "token_id": token.get("id")})
             r.get("sessions", {}).pop(role, None)
         self.update(checkpoint, "usage_limit_recovery_required", {"role": role, "diagnostic": diagnostic})
         self.context_baselines.clear()

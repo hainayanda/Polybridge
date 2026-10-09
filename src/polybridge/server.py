@@ -1406,10 +1406,10 @@ async def resume_workflow(workflow_run_id: str, instructions: str | None = None,
     run carries a forwarded question from a Run workflow descendant, the answer is applied to
     the attention source run; additional_attempts go to that source and grant no fresh child.
     For an orchestrator usage-limit checkpoint, instructions must exactly match an offered
-    recovery answer (fallback, fallback:2, and so on); this approves a Fresh configured
-    fallback for the preserved decision. Other prose does not approve replacement dispatch.
+    recovery answer (fallback, fallback:2, and so on, or retry_current); this approves a Fresh
+    configured recovery candidate for the preserved decision. Other prose does not approve replacement dispatch.
     Use pause_workflow to wait or cancel_workflow to stop. A paused quota checkpoint retains
-    its decision_id and still requires the exact offered fallback answer on resume.
+    its decision_id and still requires the exact offered recovery answer (fallback or retry_current) on resume.
     Worker usage-limit recovery is selected explicitly by the
     orchestrator using an issued retry continuation and candidate_id, within attempt limits.
     The orchestrator may instead ask the caller to pause, cancel, or choose a configured
