@@ -324,16 +324,21 @@ def test_native_cap_exhaustion_cannot_complete_even_with_tool_completed():
 async def test_authoritative_observer_failure_does_not_stop_parent_stdout_drain(tmp_path):
     from types import SimpleNamespace
     from test_cancel import make_task
-    from polybridge.tasks import _drain_stdout
+    from polybridge.tasks import _drain_stdout, TaskRegistry
     task = make_task(tmp_path, "transport")
     reader = asyncio.StreamReader()
     reader.feed_data((json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": "First"}]}}) + "\n" + json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": "Second"}]}}) + "\n").encode())
     reader.feed_eof()
-    task.proc = SimpleNamespace(stdout=reader)
+    async def wait():
+        return 0
+    task.proc = SimpleNamespace(stdout=reader, returncode=0, wait=wait)
     def fail(_):
         raise OSError("authoritative storage failed")
-    registry = SimpleNamespace(_workflow_native_observers={"transport": fail})
+    registry = TaskRegistry(log_dir=tmp_path, owner={"pid": 1, "start_time": None, "markers": []}, open_monitor=False)
+    registry._workflow_native_observers = {"transport": fail}
     await _drain_stdout(task, registry)
+    await task.termination
+    assert task.cancel_requested
     assert registry._workflow_native_failures["transport"] == "authoritative storage failed"
     assert "transport" not in registry._workflow_native_observers
     assert task.drain_failed is False

@@ -975,8 +975,10 @@ Definitions live under `~/.polybridge/workflows/`. Immutable run snapshots, task
 decisions, and control history live under `~/.polybridge/workflow-runs/`. Ordinary agent streams
 remain under `~/.polybridge/tasks/` and use the existing event format.
 
-The orchestrator recommends decisions; it cannot grant additional node permissions. Builder and
-orchestrator agents run read-only, and workers retain the run's permission limits. Existing backend
+The orchestrator recommends decisions; it cannot grant additional node permissions. Builder agents
+remain read-only. New workflow orchestrators use their pinned per-owner permission contracts,
+expanded only for compatible native node candidates with matching harnesses. Workers retain the
+run's permission limits, and historical runs keep their original orchestrator contracts. Existing backend
 enforcement caveats still apply: a workflow does not create an OS sandbox for a backend that lacks
 one. Inspect each task's enforcement report.
 

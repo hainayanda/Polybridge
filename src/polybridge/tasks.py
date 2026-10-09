@@ -1989,6 +1989,19 @@ class TaskRegistry:
                     exc_info=True,
                 )
 
+    def _stop_native_transport(self, task: Task) -> None:
+        """Stop an invalid native control turn without waiting on its stdout drainer."""
+        try:
+            self._deliver_local_cancel(task)
+        except Exception:
+            # Failed evidence/control storage must not leave an invalid owner
+            # running. Retain the failure and stop the owned process directly.
+            task.cancel_requested = True
+            _signal_group(task, signal.SIGTERM)
+            log.warning("task %s: native transport cancel bookkeeping failed", task.task_id, exc_info=True)
+        if task.proc is not None and (task.termination is None or task.termination.done()):
+            task.termination = asyncio.create_task(_escalate(task), name=f"pb-native-terminate-{task.task_id}")
+
     async def cancel(self, task: Task) -> Task:
         """Stop a run, waiting for it to actually die before returning.
 
@@ -3032,7 +3045,8 @@ async def _drain_stdout(task: Task, registry: TaskRegistry) -> None:
                 continue
             # Native lifecycle persistence is authoritative and intentionally
             # precedes best-effort normalization. Failure invalidates native
-            # settlement but must never stop draining the parent subprocess.
+            # settlement and stops the owning transport. Draining continues so
+            # termination cannot deadlock against a full stdout pipe.
             observer = getattr(registry, "_workflow_native_observers", {}).get(task.task_id)
             if observer is not None:
                 try:
@@ -3043,7 +3057,8 @@ async def _drain_stdout(task: Task, registry: TaskRegistry) -> None:
                         failures = registry._workflow_native_failures = {}
                     failures[task.task_id] = str(exc)
                     registry._workflow_native_observers.pop(task.task_id, None)
-                    log.warning("Native lifecycle persistence failed for %s; draining continues", task.task_id, exc_info=True)
+                    registry._stop_native_transport(task)
+                    log.warning("Native lifecycle observation failed for %s; transport stop requested and draining continues", task.task_id, exc_info=True)
             backend = get_backend(task.backend)
             backend.ingest(event, task.acc)
             _record_events(task, backend, event, raw_offset)
