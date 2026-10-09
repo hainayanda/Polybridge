@@ -1,0 +1,1506 @@
+{
+  "version": 1,
+  "fixture": {
+    "version": 1,
+    "size": "small",
+    "definitions": 12,
+    "runs": 24,
+    "tasks": 32,
+    "blocked_records": 1,
+    "nested_runs": 12,
+    "snapshot_summary_chars": 380000
+  },
+  "repeats": 5,
+  "python": "3.13.5 (v3.13.5:6cb20a219a8, Jun 11 2025, 12:23:45) [Clang 16.0.0 (clang-1600.0.26.6)]",
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "summary": {
+    "cold_launch": {
+      "n": 5,
+      "percentile_method": "nearest rank",
+      "latency_boundary": "complete CLI sequence",
+      "p50_ms": 1297.8379170235712,
+      "p95_ms": 2216.4007910178043,
+      "cli_processes_per_repeat": [
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "transport_bytes_per_repeat": [
+        48794,
+        48795,
+        48794,
+        48793,
+        48792
+      ]
+    },
+    "cold_tasks": {
+      "n": 5,
+      "percentile_method": "nearest rank",
+      "latency_boundary": "complete CLI sequence",
+      "p50_ms": 125.05791601142846,
+      "p95_ms": 139.76008398458362,
+      "cli_processes_per_repeat": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "transport_bytes_per_repeat": [
+        21919,
+        21923,
+        21925,
+        21923,
+        21926
+      ]
+    },
+    "task_summary": {
+      "n": 5,
+      "percentile_method": "nearest rank",
+      "latency_boundary": "complete CLI sequence",
+      "p50_ms": 128.46579201868735,
+      "p95_ms": 135.46791701810434,
+      "cli_processes_per_repeat": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "transport_bytes_per_repeat": [
+        2045,
+        2045,
+        2045,
+        2045,
+        2045
+      ]
+    },
+    "saved_workflow_open": {
+      "n": 5,
+      "percentile_method": "nearest rank",
+      "latency_boundary": "complete CLI sequence",
+      "p50_ms": 674.8272500117309,
+      "p95_ms": 757.9789169831201,
+      "cli_processes_per_repeat": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "transport_bytes_per_repeat": [
+        1212,
+        1213,
+        1213,
+        1213,
+        1213
+      ]
+    },
+    "cold_workflow_open": {
+      "n": 5,
+      "percentile_method": "nearest rank",
+      "latency_boundary": "complete CLI sequence",
+      "p50_ms": 2552.7547069941647,
+      "p95_ms": 4307.883917004801,
+      "cli_processes_per_repeat": [
+        4,
+        4,
+        4,
+        4,
+        4
+      ],
+      "transport_bytes_per_repeat": [
+        389839,
+        389840,
+        389839,
+        389839,
+        389841
+      ]
+    },
+    "warm_reopen": {
+      "n": 5,
+      "percentile_method": "nearest rank",
+      "latency_boundary": "complete CLI sequence",
+      "p50_ms": 614.4003749941476,
+      "p95_ms": 1021.4258340129163,
+      "cli_processes_per_repeat": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "transport_bytes_per_repeat": [
+        5084,
+        5084,
+        5082,
+        5083,
+        5084
+      ]
+    },
+    "workflow_switch": {
+      "n": 5,
+      "percentile_method": "nearest rank",
+      "latency_boundary": "complete CLI sequence",
+      "p50_ms": 1329.18304100167,
+      "p95_ms": 1751.6292909858748,
+      "cli_processes_per_repeat": [
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "transport_bytes_per_repeat": [
+        4906,
+        4908,
+        4907,
+        4907,
+        4908
+      ]
+    },
+    "unchanged_poll": {
+      "n": 5,
+      "percentile_method": "nearest rank",
+      "latency_boundary": "complete CLI sequence",
+      "p50_ms": 683.4993330121506,
+      "p95_ms": 944.7276669961866,
+      "cli_processes_per_repeat": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "transport_bytes_per_repeat": [
+        5084,
+        5084,
+        5084,
+        5084,
+        5084
+      ]
+    },
+    "history_pagination": {
+      "n": 5,
+      "percentile_method": "nearest rank",
+      "latency_boundary": "complete CLI sequence",
+      "p50_ms": 598.6387910088524,
+      "p95_ms": 1304.0080000064336,
+      "cli_processes_per_repeat": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "transport_bytes_per_repeat": [
+        48240,
+        48241,
+        48241,
+        48242,
+        48242
+      ]
+    },
+    "blocked_history": {
+      "n": 5,
+      "percentile_method": "nearest rank",
+      "latency_boundary": "terminal blocked response",
+      "p50_ms": 111.70312500325963,
+      "p95_ms": 169.34087499976158,
+      "cli_processes_per_repeat": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "transport_bytes_per_repeat": [
+        1862,
+        1862,
+        1863,
+        1863,
+        1862
+      ]
+    }
+  },
+  "raw": [
+    {
+      "scenario": "cold_launch",
+      "terminal_catalog_state": "ready",
+      "first_ready_response_cli_ms": 2216.399666009238,
+      "terminal_cli_ms": 2216.4007910178043,
+      "complete_cli_ms": 2216.4007910178043,
+      "samples": [
+        {
+          "ctl_ms": 809.8782079759985,
+          "catalog_bootstrap_ms": 30.79095800057985,
+          "catalog_bootstrap_calls": 1,
+          "peak_rss_bytes": 83804160,
+          "wall_ms": 1253.6400419776328,
+          "decode_ms": 0.05137498374097049,
+          "response_bytes": 400,
+          "stderr_bytes": 154,
+          "cli_processes": 1
+        },
+        {
+          "ctl_ms": 656.0869999811985,
+          "catalog_bootstrap_ms": 11.295458010863513,
+          "catalog_bootstrap_calls": 1,
+          "peak_rss_bytes": 83427328,
+          "wall_ms": 962.1875829761848,
+          "decode_ms": 0.27879199478775263,
+          "response_bytes": 48085,
+          "stderr_bytes": 155,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "cold_tasks",
+      "terminal_catalog_state": "ready",
+      "first_ready_response_cli_ms": 134.8351249762345,
+      "terminal_cli_ms": 134.83583397464827,
+      "complete_cli_ms": 134.83583397464827,
+      "samples": [
+        {
+          "ctl_ms": 18.31529100309126,
+          "catalog_bootstrap_ms": 0.151333020767197,
+          "catalog_bootstrap_calls": 1,
+          "peak_rss_bytes": 37978112,
+          "wall_ms": 134.60212500649504,
+          "decode_ms": 0.12420798884704709,
+          "response_bytes": 21765,
+          "stderr_bytes": 154,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "task_summary",
+      "terminal_catalog_state": null,
+      "first_ready_response_cli_ms": 135.46733401017264,
+      "terminal_cli_ms": 135.46791701810434,
+      "complete_cli_ms": 135.46791701810434,
+      "samples": [
+        {
+          "ctl_ms": 14.384166017407551,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 37748736,
+          "wall_ms": 135.30520899803378,
+          "decode_ms": 0.06024999311193824,
+          "response_bytes": 1906,
+          "stderr_bytes": 139,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "saved_workflow_open",
+      "terminal_catalog_state": null,
+      "first_ready_response_cli_ms": 757.9784169793129,
+      "terminal_cli_ms": 757.9789169831201,
+      "complete_cli_ms": 757.9789169831201,
+      "samples": [
+        {
+          "ctl_ms": 492.013582988875,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 80642048,
+          "wall_ms": 757.414207997499,
+          "decode_ms": 0.04408301902003586,
+          "response_bytes": 1075,
+          "stderr_bytes": 137,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "cold_workflow_open",
+      "terminal_catalog_state": null,
+      "first_ready_response_cli_ms": 734.0304999961518,
+      "terminal_cli_ms": 3341.2103329610545,
+      "complete_cli_ms": 3341.2103329610545,
+      "samples": [
+        {
+          "ctl_ms": 481.9126249931287,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 82493440,
+          "wall_ms": 733.7297500052955,
+          "decode_ms": 0.19187497673556209,
+          "response_bytes": 132390,
+          "stderr_bytes": 138,
+          "cli_processes": 1
+        },
+        {
+          "ctl_ms": 543.3809160022065,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 81477632,
+          "wall_ms": 830.7991250185296,
+          "decode_ms": 0.2322089858353138,
+          "response_bytes": 131642,
+          "stderr_bytes": 138,
+          "cli_processes": 1
+        },
+        {
+          "ctl_ms": 585.8990419947077,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 81625088,
+          "wall_ms": 879.5140000001993,
+          "decode_ms": 0.1517500204499811,
+          "response_bytes": 124006,
+          "stderr_bytes": 138,
+          "cli_processes": 1
+        },
+        {
+          "ctl_ms": 603.3012920233887,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 82051072,
+          "wall_ms": 895.9587090066634,
+          "decode_ms": 0.06654197932220995,
+          "response_bytes": 1249,
+          "stderr_bytes": 138,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "warm_reopen",
+      "terminal_catalog_state": null,
+      "first_ready_response_cli_ms": 1021.4232090220321,
+      "terminal_cli_ms": 1021.4258340129163,
+      "complete_cli_ms": 1021.4258340129163,
+      "samples": [
+        {
+          "ctl_ms": 620.4037499846891,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 82853888,
+          "wall_ms": 1021.0156669782009,
+          "decode_ms": 0.22166600683704019,
+          "response_bytes": 4946,
+          "stderr_bytes": 138,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "workflow_switch",
+      "terminal_catalog_state": null,
+      "first_ready_response_cli_ms": 1041.2758750026114,
+      "terminal_cli_ms": 1751.6292909858748,
+      "complete_cli_ms": 1751.6292909858748,
+      "samples": [
+        {
+          "ctl_ms": 665.5661249824334,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 81444864,
+          "wall_ms": 1041.00933400332,
+          "decode_ms": 0.07375000859610736,
+          "response_bytes": 4351,
+          "stderr_bytes": 138,
+          "cli_processes": 1
+        },
+        {
+          "ctl_ms": 440.586082986556,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 81362944,
+          "wall_ms": 710.1131670060568,
+          "decode_ms": 0.058833014918491244,
+          "response_bytes": 280,
+          "stderr_bytes": 137,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "unchanged_poll",
+      "terminal_catalog_state": null,
+      "first_ready_response_cli_ms": 779.7201669891365,
+      "terminal_cli_ms": 779.7211249999236,
+      "complete_cli_ms": 779.7211249999236,
+      "samples": [
+        {
+          "ctl_ms": 500.4147090076003,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 82591744,
+          "wall_ms": 779.5195420039818,
+          "decode_ms": 0.06062499596737325,
+          "response_bytes": 4946,
+          "stderr_bytes": 138,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "history_pagination",
+      "terminal_catalog_state": "ready",
+      "first_ready_response_cli_ms": 995.8073339948896,
+      "terminal_cli_ms": 995.8079589996487,
+      "complete_cli_ms": 995.8079589996487,
+      "samples": [
+        {
+          "ctl_ms": 681.5383339999244,
+          "catalog_bootstrap_ms": 0.3720420063473284,
+          "catalog_bootstrap_calls": 1,
+          "peak_rss_bytes": 81592320,
+          "wall_ms": 995.4562920029275,
+          "decode_ms": 0.23654199321754277,
+          "response_bytes": 48085,
+          "stderr_bytes": 155,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "blocked_history",
+      "terminal_catalog_state": "blocked",
+      "first_ready_response_cli_ms": null,
+      "terminal_cli_ms": 169.34087499976158,
+      "complete_cli_ms": null,
+      "samples": [
+        {
+          "ctl_ms": 19.06187500571832,
+          "catalog_bootstrap_ms": 2.6183329755440354,
+          "catalog_bootstrap_calls": 1,
+          "peak_rss_bytes": 37912576,
+          "wall_ms": 169.0752090071328,
+          "decode_ms": 0.038875004975125194,
+          "response_bytes": 495,
+          "stderr_bytes": 1367,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "cold_launch",
+      "terminal_catalog_state": "ready",
+      "first_ready_response_cli_ms": 1447.8471250040457,
+      "terminal_cli_ms": 1447.847625007853,
+      "complete_cli_ms": 1447.847625007853,
+      "samples": [
+        {
+          "ctl_ms": 448.2328750018496,
+          "catalog_bootstrap_ms": 15.950041997712106,
+          "catalog_bootstrap_calls": 1,
+          "peak_rss_bytes": 83689472,
+          "wall_ms": 708.7904999789316,
+          "decode_ms": 0.038457976188510656,
+          "response_bytes": 400,
+          "stderr_bytes": 155,
+          "cli_processes": 1
+        },
+        {
+          "ctl_ms": 484.95854198699817,
+          "catalog_bootstrap_ms": 8.008915989194065,
+          "catalog_bootstrap_calls": 1,
+          "peak_rss_bytes": 83312640,
+          "wall_ms": 738.5904159746133,
+          "decode_ms": 0.2177499991375953,
+          "response_bytes": 48085,
+          "stderr_bytes": 155,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "cold_tasks",
+      "terminal_catalog_state": "ready",
+      "first_ready_response_cli_ms": 139.75870900321752,
+      "terminal_cli_ms": 139.76008398458362,
+      "complete_cli_ms": 139.76008398458362,
+      "samples": [
+        {
+          "ctl_ms": 15.499957982683554,
+          "catalog_bootstrap_ms": 0.1515829935669899,
+          "catalog_bootstrap_calls": 1,
+          "peak_rss_bytes": 37863424,
+          "wall_ms": 139.53545899130404,
+          "decode_ms": 0.11933298083022237,
+          "response_bytes": 21767,
+          "stderr_bytes": 156,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "task_summary",
+      "terminal_catalog_state": null,
+      "first_ready_response_cli_ms": 134.35308300540783,
+      "terminal_cli_ms": 134.35458298772573,
+      "complete_cli_ms": 134.35458298772573,
+      "samples": [
+        {
+          "ctl_ms": 12.767457985319197,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 37830656,
+          "wall_ms": 134.19962499756366,
+          "decode_ms": 0.05600001895800233,
+          "response_bytes": 1906,
+          "stderr_bytes": 139,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "saved_workflow_open",
+      "terminal_catalog_state": null,
+      "first_ready_response_cli_ms": 674.8240830202121,
+      "terminal_cli_ms": 674.8272500117309,
+      "complete_cli_ms": 674.8272500117309,
+      "samples": [
+        {
+          "ctl_ms": 421.1676249979064,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 80773120,
+          "wall_ms": 674.6162500057835,
+          "decode_ms": 0.07258300320245326,
+          "response_bytes": 1075,
+          "stderr_bytes": 138,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "cold_workflow_open",
+      "terminal_catalog_state": null,
+      "first_ready_response_cli_ms": 834.2239580233581,
+      "terminal_cli_ms": 4307.883917004801,
+      "complete_cli_ms": 4307.883917004801,
+      "samples": [
+        {
+          "ctl_ms": 546.8989580112975,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 82804736,
+          "wall_ms": 833.7631670001429,
+          "decode_ms": 0.28241699328646064,
+          "response_bytes": 132390,
+          "stderr_bytes": 138,
+          "cli_processes": 1
+        },
+        {
+          "ctl_ms": 582.1657500055153,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 81330176,
+          "wall_ms": 889.4297499791719,
+          "decode_ms": 0.18400000408291817,
+          "response_bytes": 131642,
+          "stderr_bytes": 138,
+          "cli_processes": 1
+        },
+        {
+          "ctl_ms": 1228.7352080165874,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 81461248,
+          "wall_ms": 1860.067750007147,
+          "decode_ms": 0.14687501243315637,
+          "response_bytes": 124006,
+          "stderr_bytes": 139,
+          "cli_processes": 1
+        },
+        {
+          "ctl_ms": 459.7168750187848,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 82264064,
+          "wall_ms": 723.1868329981808,
+          "decode_ms": 0.05004199920222163,
+          "response_bytes": 1249,
+          "stderr_bytes": 138,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "warm_reopen",
+      "terminal_catalog_state": null,
+      "first_ready_response_cli_ms": 664.6742500015534,
+      "terminal_cli_ms": 664.675875013927,
+      "complete_cli_ms": 664.675875013927,
+      "samples": [
+        {
+          "ctl_ms": 438.5295409883838,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 82296832,
+          "wall_ms": 664.5217920013238,
+          "decode_ms": 0.052207993576303124,
+          "response_bytes": 4946,
+          "stderr_bytes": 138,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "workflow_switch",
+      "terminal_catalog_state": null,
+      "first_ready_response_cli_ms": 779.1396660031751,
+      "terminal_cli_ms": 1695.859917002963,
+      "complete_cli_ms": 1695.859917002963,
+      "samples": [
+        {
+          "ctl_ms": 509.18283298960887,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 81510400,
+          "wall_ms": 778.9140419918112,
+          "decode_ms": 0.10012497659772635,
+          "response_bytes": 4351,
+          "stderr_bytes": 139,
+          "cli_processes": 1
+        },
+        {
+          "ctl_ms": 645.6345829938073,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 81723392,
+          "wall_ms": 916.4622919925023,
+          "decode_ms": 0.06049999501556158,
+          "response_bytes": 280,
+          "stderr_bytes": 138,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "unchanged_poll",
+      "terminal_catalog_state": null,
+      "first_ready_response_cli_ms": 944.7245839983225,
+      "terminal_cli_ms": 944.7276669961866,
+      "complete_cli_ms": 944.7276669961866,
+      "samples": [
+        {
+          "ctl_ms": 615.8663750102278,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 82280448,
+          "wall_ms": 944.4401670189109,
+          "decode_ms": 0.10041700443252921,
+          "response_bytes": 4946,
+          "stderr_bytes": 138,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "history_pagination",
+      "terminal_catalog_state": "ready",
+      "first_ready_response_cli_ms": 1304.0059579943772,
+      "terminal_cli_ms": 1304.0080000064336,
+      "complete_cli_ms": 1304.0080000064336,
+      "samples": [
+        {
+          "ctl_ms": 839.1127909999341,
+          "catalog_bootstrap_ms": 0.20766700617969036,
+          "catalog_bootstrap_calls": 1,
+          "peak_rss_bytes": 81592320,
+          "wall_ms": 1303.629958012607,
+          "decode_ms": 0.2278749889228493,
+          "response_bytes": 48085,
+          "stderr_bytes": 156,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "blocked_history",
+      "terminal_catalog_state": "blocked",
+      "first_ready_response_cli_ms": null,
+      "terminal_cli_ms": 122.11791699519381,
+      "complete_cli_ms": null,
+      "samples": [
+        {
+          "ctl_ms": 13.060959026915953,
+          "catalog_bootstrap_ms": 1.915041997563094,
+          "catalog_bootstrap_calls": 1,
+          "peak_rss_bytes": 37912576,
+          "wall_ms": 121.93850000039674,
+          "decode_ms": 0.033666001399978995,
+          "response_bytes": 495,
+          "stderr_bytes": 1367,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "cold_launch",
+      "terminal_catalog_state": "ready",
+      "first_ready_response_cli_ms": 1297.8358750115149,
+      "terminal_cli_ms": 1297.8379170235712,
+      "complete_cli_ms": 1297.8379170235712,
+      "samples": [
+        {
+          "ctl_ms": 434.3970839981921,
+          "catalog_bootstrap_ms": 16.991083015454933,
+          "catalog_bootstrap_calls": 1,
+          "peak_rss_bytes": 84426752,
+          "wall_ms": 651.675625005737,
+          "decode_ms": 0.042957981349900365,
+          "response_bytes": 400,
+          "stderr_bytes": 155,
+          "cli_processes": 1
+        },
+        {
+          "ctl_ms": 428.0775410006754,
+          "catalog_bootstrap_ms": 6.713041017064825,
+          "catalog_bootstrap_calls": 1,
+          "peak_rss_bytes": 83410944,
+          "wall_ms": 645.6999579968397,
+          "decode_ms": 0.21104200277477503,
+          "response_bytes": 48085,
+          "stderr_bytes": 154,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "cold_tasks",
+      "terminal_catalog_state": "ready",
+      "first_ready_response_cli_ms": 125.05591599619947,
+      "terminal_cli_ms": 125.05791601142846,
+      "complete_cli_ms": 125.05791601142846,
+      "samples": [
+        {
+          "ctl_ms": 15.373125002952293,
+          "catalog_bootstrap_ms": 0.2970409987028688,
+          "catalog_bootstrap_calls": 1,
+          "peak_rss_bytes": 37584896,
+          "wall_ms": 124.81658399337903,
+          "decode_ms": 0.14091699267737567,
+          "response_bytes": 21769,
+          "stderr_bytes": 156,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "task_summary",
+      "terminal_catalog_state": null,
+      "first_ready_response_cli_ms": 128.4636250056792,
+      "terminal_cli_ms": 128.46579201868735,
+      "complete_cli_ms": 128.46579201868735,
+      "samples": [
+        {
+          "ctl_ms": 13.954333000583574,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 37650432,
+          "wall_ms": 128.22758400579914,
+          "decode_ms": 0.06191700231283903,
+          "response_bytes": 1906,
+          "stderr_bytes": 139,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "saved_workflow_open",
+      "terminal_catalog_state": null,
+      "first_ready_response_cli_ms": 658.534750022227,
+      "terminal_cli_ms": 658.5370840039104,
+      "complete_cli_ms": 658.5370840039104,
+      "samples": [
+        {
+          "ctl_ms": 425.8790420135483,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 80674816,
+          "wall_ms": 658.3399999944959,
+          "decode_ms": 0.07383301272056997,
+          "response_bytes": 1075,
+          "stderr_bytes": 138,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "cold_workflow_open",
+      "terminal_catalog_state": null,
+      "first_ready_response_cli_ms": 712.209791992791,
+      "terminal_cli_ms": 2374.4785839808173,
+      "complete_cli_ms": 2374.4785839808173,
+      "samples": [
+        {
+          "ctl_ms": 462.1813749836292,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 82575360,
+          "wall_ms": 711.8986250134185,
+          "decode_ms": 0.1729580108076334,
+          "response_bytes": 132390,
+          "stderr_bytes": 138,
+          "cli_processes": 1
+        },
+        {
+          "ctl_ms": 370.139584003482,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 81133568,
+          "wall_ms": 548.4125420043711,
+          "decode_ms": 0.13929099077358842,
+          "response_bytes": 131642,
+          "stderr_bytes": 137,
+          "cli_processes": 1
+        },
+        {
+          "ctl_ms": 368.9557090110611,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 81035264,
+          "wall_ms": 556.6087499901187,
+          "decode_ms": 0.13258299441076815,
+          "response_bytes": 124006,
+          "stderr_bytes": 138,
+          "cli_processes": 1
+        },
+        {
+          "ctl_ms": 376.46770899300463,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 81494016,
+          "wall_ms": 556.5745419880841,
+          "decode_ms": 0.04237500252202153,
+          "response_bytes": 1249,
+          "stderr_bytes": 139,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "warm_reopen",
+      "terminal_catalog_state": null,
+      "first_ready_response_cli_ms": 566.6133749764413,
+      "terminal_cli_ms": 566.6150409961119,
+      "complete_cli_ms": 566.6150409961119,
+      "samples": [
+        {
+          "ctl_ms": 368.12437500339,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 83017728,
+          "wall_ms": 566.4530840003863,
+          "decode_ms": 0.05004199920222163,
+          "response_bytes": 4946,
+          "stderr_bytes": 136,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "workflow_switch",
+      "terminal_catalog_state": null,
+      "first_ready_response_cli_ms": 606.7533749737777,
+      "terminal_cli_ms": 1205.0848329963628,
+      "complete_cli_ms": 1205.0848329963628,
+      "samples": [
+        {
+          "ctl_ms": 412.8741660097148,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 81199104,
+          "wall_ms": 606.5919160027988,
+          "decode_ms": 0.06829202175140381,
+          "response_bytes": 4351,
+          "stderr_bytes": 138,
+          "cli_processes": 1
+        },
+        {
+          "ctl_ms": 383.8996249833144,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 81297408,
+          "wall_ms": 598.174790997291,
+          "decode_ms": 0.04225000157020986,
+          "response_bytes": 280,
+          "stderr_bytes": 138,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "unchanged_poll",
+      "terminal_catalog_state": null,
+      "first_ready_response_cli_ms": 618.003416020656,
+      "terminal_cli_ms": 618.0051660048775,
+      "complete_cli_ms": 618.0051660048775,
+      "samples": [
+        {
+          "ctl_ms": 416.4817089913413,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 82116608,
+          "wall_ms": 617.8480829985347,
+          "decode_ms": 0.04808299127034843,
+          "response_bytes": 4946,
+          "stderr_bytes": 138,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "history_pagination",
+      "terminal_catalog_state": "ready",
+      "first_ready_response_cli_ms": 577.8691660088953,
+      "terminal_cli_ms": 577.8707079880405,
+      "complete_cli_ms": 577.8707079880405,
+      "samples": [
+        {
+          "ctl_ms": 395.9100419888273,
+          "catalog_bootstrap_ms": 0.17358301556669176,
+          "catalog_bootstrap_calls": 1,
+          "peak_rss_bytes": 81461248,
+          "wall_ms": 577.5256250053644,
+          "decode_ms": 0.23941599647514522,
+          "response_bytes": 48085,
+          "stderr_bytes": 156,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "blocked_history",
+      "terminal_catalog_state": "blocked",
+      "first_ready_response_cli_ms": null,
+      "terminal_cli_ms": 111.70312500325963,
+      "complete_cli_ms": null,
+      "samples": [
+        {
+          "ctl_ms": 13.743582996539772,
+          "catalog_bootstrap_ms": 2.0181669970043004,
+          "catalog_bootstrap_calls": 1,
+          "peak_rss_bytes": 37699584,
+          "wall_ms": 111.52791700442322,
+          "decode_ms": 0.034165976103395224,
+          "response_bytes": 495,
+          "stderr_bytes": 1368,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "cold_launch",
+      "terminal_catalog_state": "ready",
+      "first_ready_response_cli_ms": 1228.3042079943698,
+      "terminal_cli_ms": 1228.3046249940526,
+      "complete_cli_ms": 1228.3046249940526,
+      "samples": [
+        {
+          "ctl_ms": 426.47250002482906,
+          "catalog_bootstrap_ms": 15.5336250027176,
+          "catalog_bootstrap_calls": 1,
+          "peak_rss_bytes": 83673088,
+          "wall_ms": 625.9951250103768,
+          "decode_ms": 0.0396659888792783,
+          "response_bytes": 400,
+          "stderr_bytes": 154,
+          "cli_processes": 1
+        },
+        {
+          "ctl_ms": 401.8684590118937,
+          "catalog_bootstrap_ms": 5.598082992946729,
+          "catalog_bootstrap_calls": 1,
+          "peak_rss_bytes": 83345408,
+          "wall_ms": 601.8104589893483,
+          "decode_ms": 0.2529170014895499,
+          "response_bytes": 48085,
+          "stderr_bytes": 154,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "cold_tasks",
+      "terminal_catalog_state": "ready",
+      "first_ready_response_cli_ms": 115.6102909881156,
+      "terminal_cli_ms": 115.61062498367392,
+      "complete_cli_ms": 115.61062498367392,
+      "samples": [
+        {
+          "ctl_ms": 14.564666984369978,
+          "catalog_bootstrap_ms": 0.1709589851088822,
+          "catalog_bootstrap_calls": 1,
+          "peak_rss_bytes": 37634048,
+          "wall_ms": 115.3698329871986,
+          "decode_ms": 0.1381250040140003,
+          "response_bytes": 21767,
+          "stderr_bytes": 156,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "task_summary",
+      "terminal_catalog_state": null,
+      "first_ready_response_cli_ms": 116.33891699602827,
+      "terminal_cli_ms": 116.33945800713263,
+      "complete_cli_ms": 116.33945800713263,
+      "samples": [
+        {
+          "ctl_ms": 13.048833003267646,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 37519360,
+          "wall_ms": 116.16629199124873,
+          "decode_ms": 0.05112501094117761,
+          "response_bytes": 1906,
+          "stderr_bytes": 139,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "saved_workflow_open",
+      "terminal_catalog_state": null,
+      "first_ready_response_cli_ms": 627.2937920002732,
+      "terminal_cli_ms": 627.2940839990042,
+      "complete_cli_ms": 627.2940839990042,
+      "samples": [
+        {
+          "ctl_ms": 416.1955410090741,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 80658432,
+          "wall_ms": 627.1151670080144,
+          "decode_ms": 0.04991702735424042,
+          "response_bytes": 1075,
+          "stderr_bytes": 138,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "cold_workflow_open",
+      "terminal_catalog_state": null,
+      "first_ready_response_cli_ms": 589.6319999883417,
+      "terminal_cli_ms": 2552.7547069941647,
+      "complete_cli_ms": 2552.7547069941647,
+      "samples": [
+        {
+          "ctl_ms": 404.3186670169234,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 82247680,
+          "wall_ms": 589.3244580074679,
+          "decode_ms": 0.17645800835452974,
+          "response_bytes": 132390,
+          "stderr_bytes": 138,
+          "cli_processes": 1
+        },
+        {
+          "ctl_ms": 410.3584160038736,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 81330176,
+          "wall_ms": 654.6835830085911,
+          "decode_ms": 0.14433299656957388,
+          "response_bytes": 131642,
+          "stderr_bytes": 138,
+          "cli_processes": 1
+        },
+        {
+          "ctl_ms": 404.2077499907464,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 81231872,
+          "wall_ms": 622.5292079907376,
+          "decode_ms": 0.1455830060876906,
+          "response_bytes": 124006,
+          "stderr_bytes": 138,
+          "cli_processes": 1
+        },
+        {
+          "ctl_ms": 451.6941250185482,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 81641472,
+          "wall_ms": 685.1814169785939,
+          "decode_ms": 0.0464579788967967,
+          "response_bytes": 1249,
+          "stderr_bytes": 138,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "warm_reopen",
+      "terminal_catalog_state": null,
+      "first_ready_response_cli_ms": 594.5494170009624,
+      "terminal_cli_ms": 594.5497089996934,
+      "complete_cli_ms": 594.5497089996934,
+      "samples": [
+        {
+          "ctl_ms": 385.901500005275,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 82247680,
+          "wall_ms": 594.3654589937069,
+          "decode_ms": 0.05895798676647246,
+          "response_bytes": 4946,
+          "stderr_bytes": 137,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "workflow_switch",
+      "terminal_catalog_state": null,
+      "first_ready_response_cli_ms": 611.1986670002807,
+      "terminal_cli_ms": 1329.18304100167,
+      "complete_cli_ms": 1329.18304100167,
+      "samples": [
+        {
+          "ctl_ms": 391.8921249860432,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 81133568,
+          "wall_ms": 610.9757910016924,
+          "decode_ms": 0.11175000690855086,
+          "response_bytes": 4351,
+          "stderr_bytes": 138,
+          "cli_processes": 1
+        },
+        {
+          "ctl_ms": 479.9853330187034,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 81395712,
+          "wall_ms": 717.81541701057,
+          "decode_ms": 0.035500008380040526,
+          "response_bytes": 280,
+          "stderr_bytes": 138,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "unchanged_poll",
+      "terminal_catalog_state": null,
+      "first_ready_response_cli_ms": 653.2828749914188,
+      "terminal_cli_ms": 653.283374995226,
+      "complete_cli_ms": 653.283374995226,
+      "samples": [
+        {
+          "ctl_ms": 431.5829169936478,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 82214912,
+          "wall_ms": 653.0505419941619,
+          "decode_ms": 0.10129201109521091,
+          "response_bytes": 4946,
+          "stderr_bytes": 138,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "history_pagination",
+      "terminal_catalog_state": "ready",
+      "first_ready_response_cli_ms": 598.6383749986999,
+      "terminal_cli_ms": 598.6387910088524,
+      "complete_cli_ms": 598.6387910088524,
+      "samples": [
+        {
+          "ctl_ms": 405.06691599148326,
+          "catalog_bootstrap_ms": 0.16104101086966693,
+          "catalog_bootstrap_calls": 1,
+          "peak_rss_bytes": 81494016,
+          "wall_ms": 598.3167910017073,
+          "decode_ms": 0.21341699175536633,
+          "response_bytes": 48085,
+          "stderr_bytes": 157,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "blocked_history",
+      "terminal_catalog_state": "blocked",
+      "first_ready_response_cli_ms": null,
+      "terminal_cli_ms": 104.06137502286583,
+      "complete_cli_ms": null,
+      "samples": [
+        {
+          "ctl_ms": 12.459416990168393,
+          "catalog_bootstrap_ms": 1.7807089898269624,
+          "catalog_bootstrap_calls": 1,
+          "peak_rss_bytes": 37830656,
+          "wall_ms": 103.87816600268707,
+          "decode_ms": 0.038124999264255166,
+          "response_bytes": 495,
+          "stderr_bytes": 1368,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "cold_launch",
+      "terminal_catalog_state": "ready",
+      "first_ready_response_cli_ms": 1181.814041978214,
+      "terminal_cli_ms": 1181.8144169810694,
+      "complete_cli_ms": 1181.8144169810694,
+      "samples": [
+        {
+          "ctl_ms": 409.3889170035254,
+          "catalog_bootstrap_ms": 13.955583010101691,
+          "catalog_bootstrap_calls": 1,
+          "peak_rss_bytes": 83574784,
+          "wall_ms": 568.1669169862289,
+          "decode_ms": 0.03483402542769909,
+          "response_bytes": 400,
+          "stderr_bytes": 155,
+          "cli_processes": 1
+        },
+        {
+          "ctl_ms": 407.9227500187699,
+          "catalog_bootstrap_ms": 6.1029159987811,
+          "catalog_bootstrap_calls": 1,
+          "peak_rss_bytes": 83197952,
+          "wall_ms": 613.208458002191,
+          "decode_ms": 0.21966701024211943,
+          "response_bytes": 48085,
+          "stderr_bytes": 152,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "cold_tasks",
+      "terminal_catalog_state": "ready",
+      "first_ready_response_cli_ms": 118.1084580020979,
+      "terminal_cli_ms": 118.10879097902216,
+      "complete_cli_ms": 118.10879097902216,
+      "samples": [
+        {
+          "ctl_ms": 15.527708979789168,
+          "catalog_bootstrap_ms": 0.13833297998644412,
+          "catalog_bootstrap_calls": 1,
+          "peak_rss_bytes": 37732352,
+          "wall_ms": 117.86637498880737,
+          "decode_ms": 0.1417909807059914,
+          "response_bytes": 21769,
+          "stderr_bytes": 157,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "task_summary",
+      "terminal_catalog_state": null,
+      "first_ready_response_cli_ms": 115.03049999009818,
+      "terminal_cli_ms": 115.03079198882915,
+      "complete_cli_ms": 115.03079198882915,
+      "samples": [
+        {
+          "ctl_ms": 12.692832999164239,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 37601280,
+          "wall_ms": 114.88612499670126,
+          "decode_ms": 0.049875001423060894,
+          "response_bytes": 1906,
+          "stderr_bytes": 139,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "saved_workflow_open",
+      "terminal_catalog_state": null,
+      "first_ready_response_cli_ms": 733.7381250108592,
+      "terminal_cli_ms": 733.7384159909561,
+      "complete_cli_ms": 733.7384159909561,
+      "samples": [
+        {
+          "ctl_ms": 475.5261249956675,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 80691200,
+          "wall_ms": 733.5839169973042,
+          "decode_ms": 0.04420900950208306,
+          "response_bytes": 1075,
+          "stderr_bytes": 138,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "cold_workflow_open",
+      "terminal_catalog_state": null,
+      "first_ready_response_cli_ms": 621.4847920055036,
+      "terminal_cli_ms": 2456.9566670106724,
+      "complete_cli_ms": 2456.9566670106724,
+      "samples": [
+        {
+          "ctl_ms": 395.04374997341074,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 82264064,
+          "wall_ms": 621.1721249856055,
+          "decode_ms": 0.2062499988824129,
+          "response_bytes": 132390,
+          "stderr_bytes": 139,
+          "cli_processes": 1
+        },
+        {
+          "ctl_ms": 461.71745800529607,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 81395712,
+          "wall_ms": 694.7915419877972,
+          "decode_ms": 0.15554201672784984,
+          "response_bytes": 131642,
+          "stderr_bytes": 139,
+          "cli_processes": 1
+        },
+        {
+          "ctl_ms": 393.8187919848133,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 81313792,
+          "wall_ms": 592.5256250193343,
+          "decode_ms": 0.15574999270029366,
+          "response_bytes": 124006,
+          "stderr_bytes": 138,
+          "cli_processes": 1
+        },
+        {
+          "ctl_ms": 363.9103749883361,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 81674240,
+          "wall_ms": 547.4680420011282,
+          "decode_ms": 0.04166699363850057,
+          "response_bytes": 1249,
+          "stderr_bytes": 138,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "warm_reopen",
+      "terminal_catalog_state": null,
+      "first_ready_response_cli_ms": 614.400124992244,
+      "terminal_cli_ms": 614.4003749941476,
+      "complete_cli_ms": 614.4003749941476,
+      "samples": [
+        {
+          "ctl_ms": 405.4896669986192,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 82231296,
+          "wall_ms": 614.2329160065856,
+          "decode_ms": 0.06054199184291065,
+          "response_bytes": 4946,
+          "stderr_bytes": 138,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "workflow_switch",
+      "terminal_catalog_state": null,
+      "first_ready_response_cli_ms": 616.0314590088092,
+      "terminal_cli_ms": 1308.1618750293273,
+      "complete_cli_ms": 1308.1618750293273,
+      "samples": [
+        {
+          "ctl_ms": 393.7127499957569,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 81215488,
+          "wall_ms": 615.8479589794297,
+          "decode_ms": 0.08087500464171171,
+          "response_bytes": 4351,
+          "stderr_bytes": 138,
+          "cli_processes": 1
+        },
+        {
+          "ctl_ms": 461.40508298412897,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 81494016,
+          "wall_ms": 691.9853749859612,
+          "decode_ms": 0.039457983803004026,
+          "response_bytes": 280,
+          "stderr_bytes": 139,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "unchanged_poll",
+      "terminal_catalog_state": null,
+      "first_ready_response_cli_ms": 683.4990420029499,
+      "terminal_cli_ms": 683.4993330121506,
+      "complete_cli_ms": 683.4993330121506,
+      "samples": [
+        {
+          "ctl_ms": 446.9284580263775,
+          "catalog_bootstrap_ms": 0,
+          "catalog_bootstrap_calls": 0,
+          "peak_rss_bytes": 82280448,
+          "wall_ms": 683.3364169870038,
+          "decode_ms": 0.059416022850200534,
+          "response_bytes": 4946,
+          "stderr_bytes": 138,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "history_pagination",
+      "terminal_catalog_state": "ready",
+      "first_ready_response_cli_ms": 587.0671669836156,
+      "terminal_cli_ms": 587.0675839832984,
+      "complete_cli_ms": 587.0675839832984,
+      "samples": [
+        {
+          "ctl_ms": 397.68691698554903,
+          "catalog_bootstrap_ms": 0.14454202027991414,
+          "catalog_bootstrap_calls": 1,
+          "peak_rss_bytes": 81412096,
+          "wall_ms": 586.7719590023626,
+          "decode_ms": 0.19474999862723053,
+          "response_bytes": 48085,
+          "stderr_bytes": 157,
+          "cli_processes": 1
+        }
+      ]
+    },
+    {
+      "scenario": "blocked_history",
+      "terminal_catalog_state": "blocked",
+      "first_ready_response_cli_ms": null,
+      "terminal_cli_ms": 102.9498329735361,
+      "complete_cli_ms": null,
+      "samples": [
+        {
+          "ctl_ms": 12.771832989528775,
+          "catalog_bootstrap_ms": 1.839124975958839,
+          "catalog_bootstrap_calls": 1,
+          "peak_rss_bytes": 37765120,
+          "wall_ms": 102.77629099437036,
+          "decode_ms": 0.0399590062443167,
+          "response_bytes": 495,
+          "stderr_bytes": 1367,
+          "cli_processes": 1
+        }
+      ]
+    }
+  ],
+  "limitations": "CLI proxy only; synthetic human ancestry; warm reopening assumes existing digest cache; warm OS caches; no UI readiness, reconciliation, main-thread stalls or app memory measured. RSS is the CLI child high-water mark. Cold means fresh catalog, not dropped filesystem caches."
+}

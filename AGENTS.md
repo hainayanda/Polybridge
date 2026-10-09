@@ -727,6 +727,13 @@ Rendering state publishers emit once per changed content, with complete `Equatab
 producer-boundary deduplication where possible. Commands and disposable notifications retain
 their event semantics; preserve explicit clock updates. See `macos/AGENTS.md` for the shared rule.
 
+Routine work must run off the main actor wherever possible: I/O, decoding, filtering, indexing,
+grouping, sorting and reconciliation operate on immutable, `Sendable` snapshots. Keep UI interaction
+and application of changed presentation state on the main actor. An async function or a `Task`
+created inside a main-actor context does not by itself move computation into the background.
+Reject stale results after cancellation or a newer data, search or selection generation. Unchanged
+polling must not republish rendering state; explicit time-dependent presentation changes still do.
+
 `macos/PolybridgeMonitor` reads `polybridge-ctl --json` (`CTL_JSON_VERSION`, now 7 — adds separate Monitor cancellation eligibility;
 v6 added native execution metadata, v5 added Run workflow links,
 v4 added workflow result-error presentation metadata;
