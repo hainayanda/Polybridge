@@ -131,7 +131,7 @@ private func toolbarPreview(viewModel: TaskDetailViewModelMock, showsInspector: 
                 ).equatable()
             }
     }
-    .frame(width: 900, height: 500)
+    .frame(width: PbRadius.Metrics.toolbarPreviewWidth, height: PbRadius.Metrics.toolbarPreviewHeight)
 }
 
 #Preview("Toolbar, running") {
