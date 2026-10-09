@@ -63,7 +63,7 @@ Monitor shows children beneath their parent and as regular workflow entries, wit
 
 ## Get started
 
-The runner supports **macOS and Linux with Python 3.11+**. The visual Monitor requires **macOS 14+**.
+The runner supports **macOS and Linux with Python 3.11+**. The visual Monitor requires **macOS 26+**.
 Install and sign in to at least one supported agent CLI separately; Polybridge uses the harnesses
 already available on your machine.
 

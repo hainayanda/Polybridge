@@ -67,36 +67,18 @@ struct TaskDetailToolbar: View, Equatable {
     }
 
     @ToolbarContentBuilder private var toolbarContent: some ToolbarContent {
-        if #available(macOS 26.0, *) {
-            ToolbarSpacer(.flexible)
-            ToolbarItem(id: "task-detail.status", placement: .primaryAction) { statusLabel }
-                .sharedBackgroundVisibility(.hidden)
-            ToolbarItem(id: "task-detail.takeover", placement: .primaryAction) { takeoverButton }
-                .sharedBackgroundVisibility(.hidden)
-            ToolbarItem(id: "task-detail.more", placement: .primaryAction) {
-                Menu { menuItems } label: { Label("More actions", systemImage: "ellipsis") }
-                    .menuIndicator(.hidden)
+        ToolbarSpacer(.flexible)
+        ToolbarItem(id: "task-detail.status", placement: .primaryAction) { statusLabel }
+            .sharedBackgroundVisibility(.hidden)
+        ToolbarItem(id: "task-detail.takeover", placement: .primaryAction) { takeoverButton }
+            .sharedBackgroundVisibility(.hidden)
+        ToolbarItem(id: "task-detail.more", placement: .primaryAction) {
+            Menu { menuItems } label: { Label("More actions", systemImage: "ellipsis") }
+                .menuIndicator(.hidden)
 .help("More actions")
-            }.sharedBackgroundVisibility(.hidden)
-            ToolbarItem(id: "task-detail.inspector", placement: .primaryAction) { inspectorToggle }
-                .sharedBackgroundVisibility(.hidden)
-        } else {
-            ToolbarItem(id: "task-detail.actions", placement: .primaryAction) {
-                HStack(spacing: 10) {
-                    statusLabel
-                    takeoverButton
-                    Menu { menuItems } label: {
-                        Image(systemName: "ellipsis.circle").frame(width: 24, height: 24).contentShape(Rectangle())
-                    }
-                    .menuStyle(.borderlessButton)
-.menuIndicator(.hidden)
-.fixedSize()
-                    .help("More actions")
-.accessibilityLabel("More actions")
-                    inspectorToggle
-                }.fixedSize()
-            }
-        }
+        }.sharedBackgroundVisibility(.hidden)
+        ToolbarItem(id: "task-detail.inspector", placement: .primaryAction) { inspectorToggle }
+            .sharedBackgroundVisibility(.hidden)
     }
 
     private var statusLabel: some View {
@@ -130,3 +112,33 @@ struct TaskDetailToolbar: View, Equatable {
         Button("Raw events", action: actions.showRawEvents)
     }
 }
+
+#if DEBUG
+@MainActor
+private func toolbarPreview(viewModel: TaskDetailViewModelMock, showsInspector: Bool = false) -> some View {
+    let task = viewModel.task ?? TaskDetailViewModelMock.sampleTask()
+    return NavigationStack {
+        Text("Activity")
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background {
+                TaskDetailToolbar(
+                    snapshot: TaskDetailToolbarSnapshot(viewModel, task: task, showsInspector: showsInspector),
+                    actions: TaskDetailToolbarActions(
+                        takeover: viewModel.didTapTakeover, cancel: viewModel.didTapCancel,
+                        copyResumeCommand: viewModel.didTapCopyResumeCommand, openTask: viewModel.didTapTask,
+                        showRawEvents: {}, toggleInspector: {}
+                    )
+                ).equatable()
+            }
+    }
+    .frame(width: 900, height: 500)
+}
+
+#Preview("Toolbar, running") {
+    toolbarPreview(viewModel: TaskDetailViewModelMock())
+}
+
+#Preview("Toolbar, finished with inspector shown") {
+    toolbarPreview(viewModel: TaskDetailViewModelMock.finished(), showsInspector: true)
+}
+#endif

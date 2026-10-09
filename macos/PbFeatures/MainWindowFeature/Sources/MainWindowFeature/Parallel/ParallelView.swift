@@ -105,24 +105,16 @@ struct ParallelView<VM: ParallelViewModel>: View {
         }
     }
 
-    /// The group's header lives in the window's toolbar row, as the task detail's does. On macOS 26
-    /// the title sits on the bare toolbar (no glass capsule) and a spacer pushes the actions trailing.
-    @ViewBuilder
+    /// The group's header lives in the window's toolbar row, as the task detail's does. The title
+    /// sits on the bare toolbar (no glass capsule) and a spacer pushes the actions trailing.
     private func withToolbar(@ViewBuilder content: () -> some View) -> some View {
-        if #available(macOS 26.0, *) {
-            content().toolbar {
-                ToolbarItem(placement: .navigation) { groupTitle }.sharedBackgroundVisibility(.hidden)
-                ToolbarSpacer(.flexible)
-                // The task screen's quiet buttons, each on the bare toolbar — no glass capsule.
-                ToolbarItem(placement: .primaryAction) { viewPromptButton }.sharedBackgroundVisibility(.hidden)
-                if viewModel.canCancelAll {
-                    ToolbarItem(placement: .primaryAction) { cancelAllButton }.sharedBackgroundVisibility(.hidden)
-                }
-            }
-        } else {
-            content().toolbar {
-                ToolbarItem(placement: .navigation) { groupTitle }
-                ToolbarItemGroup(placement: .primaryAction) { groupActions }
+        content().toolbar {
+            ToolbarItem(placement: .navigation) { groupTitle }.sharedBackgroundVisibility(.hidden)
+            ToolbarSpacer(.flexible)
+            // The task screen's quiet buttons, each on the bare toolbar — no glass capsule.
+            ToolbarItem(placement: .primaryAction) { viewPromptButton }.sharedBackgroundVisibility(.hidden)
+            if viewModel.canCancelAll {
+                ToolbarItem(placement: .primaryAction) { cancelAllButton }.sharedBackgroundVisibility(.hidden)
             }
         }
     }
@@ -132,12 +124,6 @@ struct ParallelView<VM: ParallelViewModel>: View {
             Text(viewModel.groupName).font(.pb(.headline, weight: .semibold)).lineLimit(1)
             Text(viewModel.headerSubtitle).font(.pb(.secondary)).foregroundStyle(Color.secondaryText).lineLimit(1)
         }
-    }
-
-    @ViewBuilder
-    private var groupActions: some View {
-        viewPromptButton
-        if viewModel.canCancelAll { cancelAllButton }
     }
 
     private var viewPromptButton: some View {

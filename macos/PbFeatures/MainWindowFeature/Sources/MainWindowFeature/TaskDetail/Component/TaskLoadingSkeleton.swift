@@ -178,14 +178,10 @@ private struct LoadingToolbar: ViewModifier {
                 Divider()
                 content
             }
-        } else if #available(macOS 26.0, *) {
+        } else {
             content.toolbar {
                 ToolbarSpacer(.flexible)
                 ToolbarItem(placement: .primaryAction) { actions }.sharedBackgroundVisibility(.hidden)
-            }
-        } else {
-            content.toolbar {
-                ToolbarItem(placement: .primaryAction) { actions }
             }
         }
     }
