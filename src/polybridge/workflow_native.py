@@ -125,7 +125,9 @@ async def _dispatch_native_one(supervisor: Any, node: dict[str, Any], assignment
         control_held = True
         await supervisor.tree.acquire_slot(continue_running)
         worker_held = True
-        async with CheckoutLease(supervisor.store, run["repo_path"], tree_write_strength(run, settings["freedom"]), continue_running, pool=supervisor.checkout_leases):
+        root_id = (run.get("parent_link") or {}).get("root_workflow_run_id", run["workflow_run_id"])
+        lease_run = run if root_id == run["workflow_run_id"] else supervisor.store.get_run(root_id)
+        async with CheckoutLease(supervisor.store, run["repo_path"], tree_write_strength(lease_run, record.freedom), continue_running, pool=supervisor.checkout_leases):
             def reserve(r: dict[str, Any]) -> None:
                 a = next(a for a in r["activations"] if a["id"] == activation["id"])
                 a["tasks"].append(copy.deepcopy(child))
