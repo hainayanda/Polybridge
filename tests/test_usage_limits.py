@@ -7,11 +7,11 @@ from polybridge.backends.base import Accumulator
 def test_limit_is_sticky_after_progress_and_success(name, envelope):
     backend = get_backend(name)
     acc = Accumulator(summary='partial work', saw_final_message=True)
-    error = {'code':'usage_limit_reached', 'reset_at':'tomorrow'}
+    error = {'code':'usage_limit_reached', 'reset_at':'2026-10-10T01:02:03Z'}
     event = {'event':'result', 'result':{'status':'ERROR','error':error}} if name == 'antigravity' else {'type':envelope,'error':error}
     backend.ingest(event, acc)
     assert acc.failure_diagnostic['category'] == 'usage_limit'
-    assert acc.failure_diagnostic['reset_at'] == 'tomorrow'
+    assert acc.failure_diagnostic['reset_at'] == '2026-10-10T01:02:03Z'
     assert acc.error_result_seen
     assert backend.classify(acc, 0) == 'failed'
     first = acc.failure_diagnostic.copy()
@@ -213,7 +213,8 @@ def test_antigravity_string_usage_reason_is_generic():
 
 
 @pytest.mark.parametrize('name', ['claude', 'codex', 'opencode', 'vibe', 'antigravity'])
-async def test_sensitive_stderr_does_not_enter_durable_public_usage_metadata(tmp_path, name):
+@pytest.mark.parametrize('source', ['stderr', 'reset'])
+async def test_sensitive_stderr_does_not_enter_durable_public_usage_metadata(tmp_path, name, source):
     import json
     from datetime import datetime, timezone
     from polybridge import store, workflows as w
@@ -222,6 +223,11 @@ async def test_sensitive_stderr_does_not_enter_durable_public_usage_metadata(tmp
     from test_workflow_delegation import graph
     line = 'API Error: rate_limit_exceeded Authorization: Bearer synthetic-private-token Cookie: synthetic-session api_key=synthetic-key'
     diagnostic = get_backend(name).stderr_usage_limit_diagnostic(line)
+    if source == 'reset':
+        error = {'code': 'usage_limit_reached', 'reset_at': line}
+        envelope = 'turn.failed' if name == 'codex' else 'error'
+        event = {'event': 'result', 'result': {'status': 'ERROR', 'error': error}} if name == 'antigravity' else {'type': envelope, 'error': error}
+        diagnostic = get_backend(name).usage_limit_diagnostic(event)
     registry = TaskRegistry(log_dir=tmp_path / 'tasks')
     task = Task(task_id='limited', backend=name, session_id='session', repo_path=tmp_path,
                 prompt='work', max_turns=None, log_path=tmp_path / 'tasks' / 'limited.jsonl',
@@ -238,6 +244,26 @@ async def test_sensitive_stderr_does_not_enter_durable_public_usage_metadata(tmp
     supervisor.run_id = run['workflow_run_id']
     activation = supervisor._activation('orchestrator', 'orchestrator')
     supervisor._usage_limit_outcome({'status': 'failed', 'failure_diagnostic': diagnostic}, {'id': 'orchestrator'}, 'orchestrator', activation, definition['orchestrator'], [])
-    public = json.dumps({'diagnostic': diagnostic, 'live_brief': task.brief(), 'recovered_brief': store.brief(registry.log_dir, persisted), 'recovery': compact(supervisor.run())})
+    public = json.dumps({'diagnostic': diagnostic, 'live_brief': task.brief(), 'snapshot': task.snapshot(), 'recovered_brief': store.brief(registry.log_dir, persisted), 'recovery': compact(supervisor.run())})
     for secret in ('synthetic-private-token', 'synthetic-session', 'synthetic-key', 'Authorization', 'Cookie'):
         assert secret not in public
+
+
+@pytest.mark.parametrize('name,envelope', [('claude', 'error'), ('codex', 'turn.failed'), ('opencode', 'error'), ('vibe', 'error'), ('antigravity', 'result'), ('claude', 'rate_limit_event')])
+@pytest.mark.parametrize('value', ['Authorization: Bearer synthetic-private-token', 'Cookie: synthetic-session', 'tomorrow', '', '2026-10-10', '2026-10-10T01:02:03', '2026-02-30T01:02:03Z', '2026-10-10T25:02:03Z', '2026-10-10T01:02:03+01:99', '2026-10-10T01:02:03+24:00', '2026-10-10T01:02:03Z api_key=synthetic-key', True, False, None, float('nan'), float('inf'), float('-inf'), {}, []])
+def test_invalid_reset_metadata_is_dropped_without_losing_quota(name, envelope, value):
+    if envelope == 'rate_limit_event':
+        event = {'type': envelope, 'rate_limit_info': {'status': 'rejected', 'resetsAt': value}}
+    else:
+        error = {'code': 'usage_limit_reached', 'data': {'reset_at': value}}
+        event = {'event': 'result', 'result': {'status': 'ERROR', 'error': error}} if name == 'antigravity' else {'type': envelope, 'error': error}
+    diagnostic = get_backend(name).usage_limit_diagnostic(event)
+    assert diagnostic['category'] == 'usage_limit'
+    assert 'reset_at' not in diagnostic
+
+
+@pytest.mark.parametrize('value', ['2026-10-10T01:02:03Z', '2026-10-10T01:02:03.123456+05:30', '2026-10-10T01:02:03-07:00', 1791594123, 1791594123.5, 0, -1])
+@pytest.mark.parametrize('claude_rate', [False, True])
+def test_valid_reset_metadata_is_preserved_unchanged(value, claude_rate):
+    event = {'type': 'rate_limit_event', 'rate_limit_info': {'status': 'rejected', 'resetsAt': value}} if claude_rate else {'type': 'error', 'error': {'code': 'usage_limit_reached', 'reset_at': value}}
+    assert get_backend('claude').usage_limit_diagnostic(event)['reset_at'] == value

@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 import json
 import math
+from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -162,4 +163,13 @@ def stderr_usage_limit(line: str, *, claude: bool = False) -> dict[str, Any] | N
 
 
 def _reset_value(value: Any) -> bool:
-    return isinstance(value, str) or (type(value) in (int, float) and math.isfinite(value))
+    if type(value) in (int, float):
+        return math.isfinite(value)
+    if not isinstance(value, str) or not re.fullmatch(
+        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)", value
+    ):
+        return False
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).utcoffset() is not None
+    except ValueError:
+        return False

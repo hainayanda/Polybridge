@@ -675,7 +675,8 @@ outage, or missing-model signal cannot bypass it, regardless of order. Warnings 
 outages retain availability fallback behavior when no quota signal accompanies them.
 
 Task snapshots expose `failure_diagnostic` with category `usage_limit`, a reason, evidence source,
-and optional provider-supplied `reset_at`. Its reason is a generic provider-rejection explanation;
+and optional provider-supplied `reset_at` (a finite epoch number or a valid ISO timestamp
+with date, time, and timezone; other values are omitted). Its reason is a generic provider-rejection explanation;
 raw error text is not copied into diagnostic reasons, notices, or caller recovery questions.
 The diagnostic is retained with partial output and
 session identity. Monitor keeps it in task notices and workflow recovery state after a notification
