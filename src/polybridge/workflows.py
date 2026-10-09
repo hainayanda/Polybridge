@@ -2040,7 +2040,7 @@ class WorkflowSupervisor:
                 r["attention_reason"] = reason
         self.update(set_status, "needs_attention", reason)
 
-    def _usage_limit_outcome(self, snapshot: dict[str, Any], node: dict[str, Any], role: str, activation: dict[str, Any], candidate: dict[str, Any], candidates: list[dict[str, Any]]) -> dict[str, Any] | None:
+    def _usage_limit_outcome(self, snapshot: dict[str, Any], node: dict[str, Any], role: str, activation: dict[str, Any], candidate: dict[str, Any], candidates: list[dict[str, Any]], *, selection_failure: tuple[dict[str, Any], str] | None = None) -> dict[str, Any] | None:
         diagnostic = usage_limit(snapshot)
         assert diagnostic is not None
         if snapshot.get("status") != "failed" or snapshot.get("outcome_unknown"):
@@ -2055,23 +2055,48 @@ class WorkflowSupervisor:
         if role == "orchestrator" and getattr(self, "orchestrator_override", None):
             config = self.orchestrator_override[1]
         candidates = [config] + config.get("fallbacks", [])
-        choices = [{"answer": "fallback" if i == 0 else f"fallback:{i + 1}", "candidate": {k: v for k, v in c.items() if k != "fallbacks"}} for i, c in enumerate(candidates) if _candidate_key(c) != _candidate_key(candidate) and role + ":" + _candidate_key(c) not in self.run().get("suppressed_candidates", [])]
+        suppressed = self.run().get("suppressed_candidates", [])
+        if selection_failure:
+            suppressed = [*suppressed, role + ":" + _candidate_key(selection_failure[0])]
+        choices = [{"answer": "fallback" if i == 0 else f"fallback:{i + 1}", "candidate": {k: v for k, v in c.items() if k != "fallbacks"}} for i, c in enumerate(candidates) if _candidate_key(c) != _candidate_key(candidate) and role + ":" + _candidate_key(c) not in suppressed]
         # Number choices after filtering, so the first offered answer is always fallback.
         for i, choice in enumerate(choices):
             choice["answer"] = "fallback" if i == 0 else f"fallback:{i + 1}"
         token = activation.get("token") or {}
         decision_id = activation.get("decision_id") or token.get("decision_id") or uuid.uuid4().hex
-        question = "Orchestrator reached a provider usage limit: " + reason + ". "
+        question = ("Workflow builder" if role == "builder" else "Orchestrator") + " reached a provider usage limit: " + reason + ". "
         if choices:
             question += "Resume with the exact answer " + "; ".join(choice["answer"] + " to start Fresh with " + _candidate_key(choice["candidate"]) for choice in choices) + ", or pause_workflow to wait, or cancel_workflow to stop."
         else:
             question += "No configured fallback is eligible. Use pause_workflow to wait or cancel_workflow to stop; no replacement is authorized."
+        if selection_failure:
+            question = "Selected recovery candidate unavailable: " + selection_failure[1] + ". " + question
         def checkpoint(r: dict[str, Any]) -> None:
+            if selection_failure:
+                r.pop("orchestrator_recovery_candidate", None)
+                identity = role + ":" + _candidate_key(selection_failure[0])
+                if identity not in r["suppressed_candidates"]:
+                    r["suppressed_candidates"].append(identity)
+                r["usage_recovery_history"][-1]["selection_failure"] = selection_failure[1]
             r.update(status="needs_input", input_question=question, input_decision_id=decision_id, attention_reason=reason, orchestrator_usage_recovery={"decision_id": decision_id, "failure_diagnostic": copy.deepcopy(diagnostic), "failed_candidate": copy.deepcopy(candidate), "choices": choices, "token_id": token.get("id")})
             r.get("sessions", {}).pop(role, None)
         self.update(checkpoint, "usage_limit_recovery_required", {"role": role, "diagnostic": diagnostic})
         self.context_baselines.clear()
         return None
+
+    def _retry_usage_recovery_choice(self, node: dict[str, Any], role: str, activation: dict[str, Any], candidate: dict[str, Any], reason: str) -> bool:
+        """Reissue consent only after a selected control attempt is positively settled."""
+        run = self.run()
+        if role == "node" or not run.get("orchestrator_recovery_candidate"):
+            return False
+        history = run.get("usage_recovery_history", [])
+        if not history:
+            return False
+        original = history[-1]
+        checkpoint = {**activation, "decision_id": uuid.uuid4().hex,
+                      "token": {"id": original.get("token_id")}}
+        self._usage_limit_outcome({"status": "failed", "failure_diagnostic": original["failure_diagnostic"]}, node, role, checkpoint, original["failed_candidate"], [], selection_failure=(candidate, reason))
+        return True
 
     async def _dispatch(self, node: dict[str, Any], prompt: str, role: str, activation: dict[str, Any]) -> dict[str, Any] | None:
         from .tasks import SessionUnknownError, SessionBusyError, RepoUnavailableError
@@ -2096,6 +2121,8 @@ class WorkflowSupervisor:
         if selected_candidate:
             selected = next((c for c in candidates if _candidate_key(c) == _candidate_key(selected_candidate)), None)
             if selected is None:
+                if self._retry_usage_recovery_choice(node, role, activation, selected_candidate, "Recovery candidate is no longer configured"):
+                    return None
                 self.attention("Recovery candidate is no longer configured")
                 return None
             candidates = [selected]
@@ -2178,6 +2205,8 @@ class WorkflowSupervisor:
                 continue
             observed = next((t.get("result") for t in reversed(activation["tasks"]) if _candidate_key(t.get("candidate", {})) == _candidate_key(candidate) and t.get("result")), None)
             if observed and usage_limit(observed):
+                if observed.get("status") == "failed" and not observed.get("outcome_unknown") and self._retry_usage_recovery_choice(node, role, activation, candidate, usage_limit(observed).get("reason", "Provider usage limit reached")):
+                    return None
                 if strict_child_resume:
                     child_resume_refused("Child Resume reached a usage limit; explicit Fresh child selection required")
                     return None
@@ -2434,6 +2463,8 @@ class WorkflowSupervisor:
                         continue  # Cancellation settled before a Fresh fallback is dispatched.
                     return {**snapshot, "execution_failure": snapshot["summary"], "optional_failure_eligible": True}
                 if usage_limit(snapshot):
+                    if snapshot.get("status") == "failed" and not snapshot.get("outcome_unknown") and self._retry_usage_recovery_choice(node, role, activation, candidate, usage_limit(snapshot).get("reason", "Provider usage limit reached")):
+                        return None
                     if strict_child_resume:
                         child_resume_refused("Child Resume reached a usage limit; explicit Fresh child selection required")
                         return None
@@ -2461,6 +2492,8 @@ class WorkflowSupervisor:
                         return {**snapshot, "execution_failure": reason, "blocked_failure": bool(unsafe), "optional_failure_eligible": not unsafe}
                     if role == "node" and snapshot["status"] == "failed" and not snapshot.get("permission_denials") and optional_failure_join(self.run(), node, activation.get("token") or {}):
                         return {"optional_failure": reason, "failure_evidence": _bounded(snapshot)}
+                    if snapshot["status"] == "failed" and not snapshot.get("outcome_unknown") and not snapshot.get("permission_denials") and self._retry_usage_recovery_choice(node, role, activation, candidate, reason):
+                        return None
                     self.attention(reason)
                     return None
                 if role == "orchestrator" and orchestrator_override is not None:
@@ -2471,7 +2504,7 @@ class WorkflowSupervisor:
                     self.store.update_run(owner_id, record_owner_session, "session_recorded", {"child_workflow_run_id": run["workflow_run_id"], "task_id": task_id})
                 else:
                     self.update(lambda r: r["sessions"].__setitem__(key, {"candidate": identity, "task_id": task_id, "session_id": snapshot.get("session_id")}), "session_recorded", key)
-                if role == "orchestrator" and selected_candidate:
+                if role in {"orchestrator", "builder"} and selected_candidate:
                     self.update(lambda r: r.pop("orchestrator_recovery_candidate", None), "usage_recovery_dispatched")
                 if recovered_inherited_turn:
                     self.update(lambda r: r.pop("recovered_inherited_turn", None), "inherited_recovery_continued")
@@ -2483,11 +2516,15 @@ class WorkflowSupervisor:
                     if all(t["status"] == "not_started" for t in current["tasks"]):
                         current["status"] = "not_started"
                 self.update(not_started, "dispatch_not_started")
+                if self._retry_usage_recovery_choice(node, role, activation, candidate, str(exc)):
+                    return None
                 if "wait exhausted" in str(exc):
                     self.attention(str(exc))
                 return None
             except backends.NestedDispatchRefused as exc:
                 self._task_update(activation["id"], task_id, {"status": "not_started", "error": str(exc)})
+                if self._retry_usage_recovery_choice(node, role, activation, candidate, str(exc)):
+                    return None
                 self.attention(f"Dispatch configuration refused: {exc}")
                 return None
             except backends.UnsupportedCapability as exc:
@@ -2515,6 +2552,8 @@ class WorkflowSupervisor:
                     activation = next(a for a in self.run()["activations"] if a["id"] == activation["id"])
                     previous = {}
                     continue
+                if self._retry_usage_recovery_choice(node, role, activation, candidate, str(exc)):
+                    return None
                 if strict_child_resume:
                     child_resume_refused(f"Child Resume configuration refused: {exc}")
                 else:
@@ -2529,6 +2568,8 @@ class WorkflowSupervisor:
                 if not_started:
                     self.update(lambda r: next(a for a in r["activations"] if a["id"] == activation["id"]).update(status="not_started") if all(t["status"] == "not_started" for a in r["activations"] if a["id"] == activation["id"] for t in a["tasks"]) else None, "dispatch_not_started")
                 reason = f"Dispatch {task_id} did not start: {exc}" if not_started else f"Dispatch {task_id} requires reconciliation: {exc}"
+                if not_started and self._retry_usage_recovery_choice(node, role, activation, candidate, reason):
+                    return None
                 if strict_child_resume:
                     child_resume_refused(reason)
                 else:
@@ -2542,6 +2583,8 @@ class WorkflowSupervisor:
                 else:
                     self.tree.release_slot(control=role != "node")
         reason = f"All agents unavailable for {key}"
+        if selected_candidate and self._retry_usage_recovery_choice(node, role, activation, selected_candidate, reason):
+            return None
         if role == "node" and run.get("execution_contract") == "delegation":
             if capability_refused:
                 self.attention(reason)

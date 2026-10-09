@@ -229,3 +229,92 @@ async def test_current_child_uses_owner_config_before_restricting_approved_candi
     assert observed["candidate"]["model"] == "fallback-fixture"
     assert observed["session_mode"] == "fresh"
     assert "orchestrator_recovery_candidate" not in storage.get_run(child["workflow_run_id"])
+
+
+@pytest.mark.parametrize("failure", ["missing", "removed", "capability", "not_started", "unavailable", "uncertain", "unsettled_unavailable", "repo_unavailable", "failed", "repeated_limit"])
+async def test_failed_approved_control_fallback_requires_new_consent(storage, tmp_path, monkeypatch, failure):
+    value = definition()
+    value["orchestrator"]["fallbacks"].append({"backend": "claude", "model": "remaining-fixture"})
+    registry = LimitedRegistry(storage.root, limited_role="orchestrator")
+    run, _ = await run_flow(storage, tmp_path, value, registry, guided=True)
+    old_decision = run["input_decision_id"]
+    pending = copy.deepcopy(run["pending"])
+    storage.control(run["workflow_run_id"], "resume", "fallback", decision_id=old_decision)
+    if failure == "removed":
+        storage.update_run(run["workflow_run_id"], lambda r: r["definition"]["orchestrator"]["fallbacks"].pop(0), "remove_selected")
+    elif failure == "missing":
+        # Different backend makes installed-state failure specific to the selected CLI.
+        monkeypatch.setattr(w.backends, "is_installed", lambda backend: backend.name != "codex")
+    else:
+        original_start = registry.start
+        async def fail_selected(prompt, repo, **kwargs):
+            if kwargs.get("model") == "fallback-fixture":
+                if failure == "repo_unavailable":
+                    from polybridge.tasks import RepoUnavailableError
+                    raise RepoUnavailableError("fixture repo unavailable")
+                if failure == "capability":
+                    raise w.backends.UnsupportedCapability("fixture capability unavailable")
+                if failure == "not_started":
+                    exc = RuntimeError("fixture definitely did not spawn")
+                    exc.polybridge_not_started = True
+                    raise exc
+                if failure == "uncertain":
+                    raise RuntimeError("fixture spawn uncertain")
+                task = await original_start(prompt, repo, **kwargs)
+                if failure == "repeated_limit":
+                    task.result.update(copy.deepcopy(LIMIT))
+                else:
+                    task.result.update(status="failed", stderr_tail=[] if failure == "failed" else ["model_not_found"], is_error=True, **({"outcome_unknown": True} if failure == "unsettled_unavailable" else {}))
+                return task
+            return await original_start(prompt, repo, **kwargs)
+        registry.start = fail_selected
+    await w.WorkflowSupervisor(registry, storage).execute(run["workflow_run_id"])
+    recovered = storage.get_run(run["workflow_run_id"])
+    if failure in {"uncertain", "unsettled_unavailable"}:
+        assert recovered["status"] == "needs_attention"
+        assert "orchestrator_usage_recovery" not in recovered
+        assert recovered["orchestrator_recovery_candidate"]["model"] == "fallback-fixture"
+        if failure == "uncertain":
+            assert any(t["status"] == "uncertain" for a in recovered["activations"] for t in a["tasks"])
+        return
+    assert recovered["status"] == "needs_input"
+    assert "orchestrator_recovery_candidate" not in recovered
+    assert recovered["input_decision_id"] != old_decision
+    assert recovered["pending"][0]["id"] == pending[0]["id"]
+    recovery = recovered["orchestrator_usage_recovery"]
+    assert recovery["failure_diagnostic"] == LIMIT["failure_diagnostic"]
+    assert [c["candidate"]["model"] for c in recovery["choices"]] == ["remaining-fixture"]
+    assert recovered["usage_recovery_history"][-1]["selection_failure"]
+    with pytest.raises(w.WorkflowError, match="current input decision_id"):
+        storage.control(run["workflow_run_id"], "resume", "fallback", decision_id=old_decision)
+    assert not any(kwargs.get("model") == "remaining-fixture" for _, kwargs in registry.calls)
+    registry.start = Registry.start.__get__(registry)
+    monkeypatch.setattr(w.backends, "is_installed", lambda backend: True)
+    storage.control(run["workflow_run_id"], "resume", "fallback", decision_id=recovered["input_decision_id"])
+    await w.WorkflowSupervisor(registry, storage).execute(run["workflow_run_id"])
+    assert storage.get_run(run["workflow_run_id"])["status"] == "completed"
+    assert sum(kwargs.get("model") == "remaining-fixture" and "Assignment:\n" not in prompt for prompt, kwargs in registry.calls) >= 1
+
+
+async def test_builder_success_consumes_fallback_and_feedback_resumes_session(storage, tmp_path, monkeypatch):
+    monkeypatch.setattr(w.CheckoutLease, "_orphan_owner", lambda self: None)
+    run = storage.create_run(w.validate_definition(definition()), "Builder", tmp_path)
+    storage.update_run(run["workflow_run_id"], lambda r: r.update(status="running"), "test_running")
+    registry = LimitedRegistry(storage.root, limited_role="orchestrator")
+    supervisor = w.WorkflowSupervisor(registry, storage)
+    supervisor.run_id = run["workflow_run_id"]
+    node = {"id": "builder"}
+    first = supervisor._activation("builder", "builder")
+    assert await supervisor._dispatch(node, "Control assignment", "builder", first) is None
+    limited = supervisor.run()
+    storage.control(run["workflow_run_id"], "resume", "fallback", decision_id=limited["input_decision_id"])
+    second = supervisor._activation("builder", "builder")
+    assert (await supervisor._dispatch(node, "Control assignment", "builder", second))["status"] == "completed"
+    assert "orchestrator_recovery_candidate" not in supervisor.run()
+    storage.update_run(run["workflow_run_id"], lambda r: r.update(builder_followup=True), "builder_feedback")
+    third = supervisor._activation("builder", "builder")
+    assert (await supervisor._dispatch(node, "Control feedback", "builder", third))["status"] == "completed"
+    task = supervisor.run()["activations"][-1]["tasks"][0]
+    assert task["candidate"]["model"] == "fallback-fixture"
+    assert task["session_mode"] == "resume"
+    assert task["resume_task_id"] == supervisor.run()["activations"][-2]["tasks"][0]["task_id"]
