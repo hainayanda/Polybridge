@@ -887,7 +887,7 @@ class WorkflowStore:
         from .catalog import catalog_lock, Catalog
         with self.lock(f"tree-mutation:{root_id}"), self.lock(f"run:{run_id}"), catalog_lock(self.runs):
             run = self.get_run(run_id)
-            if event in {"dispatch_reserved", "native_reserved", "invocation_reserved", "child_decision_reopened"}:
+            if event in {"dispatch_reserved", "native_reserved", "native_batch_reserved", "invocation_reserved", "child_decision_reopened"}:
                 root = run if root_id == run_id else self.get_run(root_id)
                 runnable = {"running", "building"} if run.get("kind") == "builder" else {"running"}
                 if root.get("status") not in runnable or event != "child_decision_reopened" and run.get("status") not in runnable:

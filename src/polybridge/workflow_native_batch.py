@@ -109,8 +109,11 @@ async def _execute(requests: list[dict[str, Any]]) -> list[tuple[bool, dict[str,
                     a = next(a for a in r["activations"] if a["id"] == item["request"]["activation"]["id"])
                     a["tasks"].append(copy.deepcopy(item["child"]))
                     a.update(presentation(item["child"]))
+                    a.pop("execution_fallback_reason", None)
                 r["activations"].append({"id": transport_id, "node_id": "orchestrator", "role": "native_control", "status": "running", "created_at": time.time(), "tasks": [{"task_id": transport_id, "status": "reserved", "dispatch_stage": "preparing", "candidate": {"backend": record.backend, "model": record.model, "reasoning_effort": record.reasoning_effort}, "freedom": record.freedom, "network": record.network, "repo_path": run["repo_path"], "native_owner_execution_ids": [i["child"]["task_id"] for i in children]}]})
             supervisor.update(reserve, "native_batch_reserved", {"transport_task_id": transport_id, "count": len(children)})
+            for item in children:
+                item["request"]["activation"].pop("execution_fallback_reason", None)
             reserved = True
             for item in children:
                 item["state"]["batch_entries"] = entries

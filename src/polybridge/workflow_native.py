@@ -132,8 +132,10 @@ async def _dispatch_native_one(supervisor: Any, node: dict[str, Any], assignment
                 a = next(a for a in r["activations"] if a["id"] == activation["id"])
                 a["tasks"].append(copy.deepcopy(child))
                 a.update(presentation(child))
+                a.pop("execution_fallback_reason", None)
                 r["activations"].append({"id": transport_id, "node_id": "orchestrator", "role": "native_control", "status": "running", "created_at": time.time(), "tasks": [{"task_id": transport_id, "status": "reserved", "dispatch_stage": "preparing", "candidate": {"backend": record.backend, "model": record.model, "reasoning_effort": record.reasoning_effort}, "freedom": record.freedom, "network": record.network, "repo_path": run["repo_path"], "native_owner_execution_id": execution_id}]})
             supervisor.update(reserve, "native_reserved", {"execution_id": execution_id, "nonce": nonce})
+            activation.pop("execution_fallback_reason", None)
             log = events.EventLog(events.events_path(supervisor.registry._log_dir, execution_id), execution_id)
 
             def publish(updates: list[dict[str, Any]]) -> None:
