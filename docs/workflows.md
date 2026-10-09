@@ -90,7 +90,8 @@ Network enforcement depends on the harness; a request to disable it is not an en
 These permissions also apply to the orchestrator itself, which is instructed to coordinate.
 Permissions remain fixed for that owner session across optional branches and retries. Preview
 changes invalidate Run until the summary refreshes; the start request verifies its preview hash.
-The inspector retains the pinned contracts. Historical runs never acquire expanded permissions.
+The CLI JSON contract is v8 for permission previews and pinned owner contracts; the Monitor
+continues decoding supported historical versions. The inspector retains the pinned contracts. Historical runs never acquire expanded permissions.
 
 CLI callers can inspect the same plan with `polybridge-ctl workflow-preview NAME --repo PATH --json`. Pass its `preview_hash` to `workflow-start --expected-preview-hash HASH` to reject
 a changed definition or permission plan before launch. MCP callers use `preview_workflow_run`
