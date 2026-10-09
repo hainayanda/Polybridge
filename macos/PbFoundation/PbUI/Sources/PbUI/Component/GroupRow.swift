@@ -74,7 +74,7 @@ public struct GroupRow: View {
         case .some:
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color.pillFill)
+                    Capsule().fill(prominence == .increased ? Color.sidebarSelectedProgressTrack : Color.pillFill)
                     Capsule()
                         .fill(prominence == .increased ? Color.onAccent : Color.runningFG)
                         .frame(width: proxy.size.width * Self.progress(finished: doneCount, total: total))
@@ -142,6 +142,20 @@ public struct GroupRow: View {
     GroupRowSidebarPreview().preferredColorScheme(.dark)
 }
 
+#Preview("GroupRow sidebar emphasized - light") {
+    GroupRowSidebarPreview(emphasized: true)
+        .preferredColorScheme(.light)
+        .environment(\.backgroundProminence, .increased)
+        .environment(\.pbReduceMotionOverride, true)
+}
+
+#Preview("GroupRow sidebar emphasized - dark") {
+    GroupRowSidebarPreview(emphasized: true)
+        .preferredColorScheme(.dark)
+        .environment(\.backgroundProminence, .increased)
+        .environment(\.pbReduceMotionOverride, true)
+}
+
 /// A settled group in the sidebar — no progress strip, no spinner, the honest "finished" count.
 #Preview("GroupRow sidebar finished - light") {
     GroupRowSidebarPreview(finished: true).preferredColorScheme(.light)
@@ -160,6 +174,7 @@ public struct GroupRow: View {
 
 private struct GroupRowSidebarPreview: View {
     var finished = false
+    var emphasized = false
 
     var body: some View {
         // `ParallelGroup`/`TaskNode` have no public initializer (MonitorCore builds them internally),
@@ -174,7 +189,7 @@ private struct GroupRowSidebarPreview: View {
         GroupRow(group: Lineage.sections(tasks).parallel.first!, sidebarAppearance: SidebarRowAppearance())
             .padding(PbRadius.Metrics.spacing16)
             .frame(width: PbRadius.Metrics.groupPreviewWidth)
-            .background(Color.sidebarBG)
+            .background(emphasized ? Color.accentFill : Color.sidebarBG)
     }
 }
 

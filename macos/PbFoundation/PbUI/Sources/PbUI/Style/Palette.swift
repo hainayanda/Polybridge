@@ -70,6 +70,8 @@ public extension Color {
     static let primaryText = Palette.primaryText.color
     /// Text on an `accentFill` surface: white in both appearances.
     static let onAccent = Palette.onAccent.color
+    /// The unfilled sidebar progress track on an emphasized native selection.
+    static let sidebarSelectedProgressTrack = Palette.onAccent.color.opacity(0.25)
     /// Ink for the design's 1 pt elevation shadows, black in both appearances.
     static let shadow = Palette.shadow.color
     /// The pulsing dot beside a live step.

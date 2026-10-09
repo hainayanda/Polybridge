@@ -397,13 +397,7 @@ struct SidebarView<VM: SidebarViewModel>: View {
                 GroupRow(group: group.group, conversations: group.conversations, sidebarAppearance: SidebarRowAppearance())
                 if group.conversations.count > 1 {
                     Button { toggleExpansion(group.id) } label: {
-                        Image(systemName: "chevron.right")
-                            .rotationEffect(.degrees(group.isExpanded ? 90 : 0))
-                            .animation(PbMotion.disclosure(reduceMotion: reduceMotion), value: group.isExpanded)
-                            .font(.pb(.caption, weight: .semibold))
-                            .foregroundStyle(Color.secondaryText)
-                            .frame(width: PbRadius.Metrics.rowChevronFrame, height: PbRadius.Metrics.rowChevronFrame)
-                            .contentShape(Rectangle())
+                        SidebarGroupDisclosure(isExpanded: group.isExpanded, reduceMotion: reduceMotion)
                     }
                     .buttonStyle(.borderless)
                     .accessibilityLabel("Expand or collapse \(group.name)")
