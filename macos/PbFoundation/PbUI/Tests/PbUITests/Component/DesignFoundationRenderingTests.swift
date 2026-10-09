@@ -24,6 +24,40 @@ import Testing
 
     // MARK: Deterministic rendering
 
+    @Test func givenGroupedActivityCard_whenRendered_thenItsFullOnePointBorderMatchesTheReference() async throws {
+        for dark in [false, true] {
+            // given — a blank card isolates the border from row content. Padding leaves room for
+            // the outer half of the centered stroke, including its rounded corners, at 2×.
+            let card = GroupedActivityCard {
+                Color.cardFill.frame(height: PbRadius.Metrics.spacing20 * 4)
+            }
+            let reference = RoundedRectangle(cornerRadius: PbRadius.card)
+                .fill(Color.cardFill)
+                .overlay(
+                    RoundedRectangle(cornerRadius: PbRadius.card)
+                        .stroke(Color.cardBorder, lineWidth: PbRadius.Metrics.hairlineStroke)
+                )
+                .frame(height: PbRadius.Metrics.spacing20 * 4)
+
+            // when
+            let actual = try await renderPNG(cardBorderFixture(card, dark: dark), dark: dark)
+            let expected = try await renderPNG(cardBorderFixture(reference, dark: dark), dark: dark)
+
+            // then — the reference has the complete specified 1 pt stroke, with no clipping.
+            #expect(actual.png.elementsEqual(expected.png), "The \(dark ? "dark" : "light") card must retain both halves of its 1 pt border")
+        }
+    }
+
+    private func cardBorderFixture(_ card: some View, dark: Bool) -> some View {
+        card
+            .frame(width: PbRadius.Metrics.activityPreviewWidth)
+            .padding(PbRadius.Metrics.spacing20)
+            .environment(\.colorScheme, dark ? .dark : .light)
+            .environment(\.pbReduceMotionOverride, true)
+            .frame(width: PbRadius.Metrics.foundationWidth, height: PbRadius.Metrics.foundationHeight)
+            .background(Color.windowBG)
+    }
+
     @Test func givenTakenOverAnnotation_whenRendered_thenPixelsDifferFromTheUnannotatedBadge() async throws {
         for dark in [false, true] {
             // given — identical completed badges, with only the taken-over annotation differing.

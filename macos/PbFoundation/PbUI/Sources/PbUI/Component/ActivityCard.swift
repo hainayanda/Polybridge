@@ -43,11 +43,11 @@ public struct GroupedActivityCard<Content: View>: View {
         VStack(alignment: .leading, spacing: PbRadius.Metrics.zero) { content }
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: PbRadius.card).fill(Color.cardFill))
+            .clipShape(RoundedRectangle(cornerRadius: PbRadius.card))
             .overlay(
                 RoundedRectangle(cornerRadius: PbRadius.card)
                     .stroke(Color.cardBorder, lineWidth: PbRadius.Metrics.hairlineStroke)
             )
-            .clipShape(RoundedRectangle(cornerRadius: PbRadius.card))
     }
 }
 
