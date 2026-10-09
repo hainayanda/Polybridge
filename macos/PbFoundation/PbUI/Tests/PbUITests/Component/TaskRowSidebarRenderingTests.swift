@@ -1,5 +1,6 @@
 import AppKit
 import MonitorCore
+import PbTestUtilities
 @testable import PbUI
 import SwiftUI
 import Testing
@@ -28,6 +29,77 @@ import Testing
         let host = NSHostingView(rootView: view.fixedSize())
         host.layoutSubtreeIfNeeded()
         return host.fittingSize
+    }
+
+    // MARK: - Sidebar metadata identity
+
+    @Test(arguments: ["claude", "custom-backend", "workflow"], ["repo", ""])
+    func givenExistingRowMetadata_whenSidebarSubtitleIsDerived_thenAgentComesFirstWithoutChangingSharedSubtitle(
+        backend: String, repo: String
+    ) {
+        for summary in [nil, "2 sub-tasks, 1 running"] as [String?] {
+            // given
+            let row = TaskRowModel(id: "metadata", backend: backend, title: "Task", status: .completed,
+                                   repoName: repo, ageText: "3h", subTaskSummary: summary)
+            let agent = BackendStyle.displayName(backend)
+            let suffix = summary.map { " · \($0)" } ?? ""
+
+            // when
+            let sidebar = row.sidebarSubtitle
+            let shared = row.subtitle
+
+            // then — the existing display-name mapping handles unknown and workflow identities.
+            #expect(sidebar == agent + (repo.isEmpty ? "" : " · \(repo)") + suffix)
+            #expect(shared == (repo.isEmpty ? "" : "\(repo) · ") + agent + suffix)
+        }
+    }
+
+    @Test(arguments: [false, true])
+    func givenActualTaskRow_whenHosted_thenItsMetadataUsesTheSelectedAppearance(sidebar: Bool) async throws {
+        // given — activate only this test application's accessibility descriptors.
+        _ = NSApplication.shared
+        NSApplication.shared.accessibilitySetValue(true, forAttribute: NSAccessibility.Attribute(rawValue: "AXEnhancedUserInterface"))
+        let row = model()
+        let host = NSHostingView(rootView: TaskRow(model: row, sidebarAppearance: sidebar ? SidebarRowAppearance() : nil).fixedSize())
+        host.layoutSubtreeIfNeeded()
+        let window = NSWindow(contentRect: CGRect(origin: .zero, size: host.fittingSize),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        window.orderFront(nil)
+        defer { window.contentView = nil; window.close() }
+        let expected = sidebar ? row.sidebarSubtitle : row.subtitle
+
+        // when — inspect the actual Text emitted by the production view, not just the helper.
+        await waitUntil {
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.01))
+            host.layoutSubtreeIfNeeded()
+            host.displayIfNeeded()
+            return accessibilityStrings(in: host).contains(expected)
+        }
+        let strings = accessibilityStrings(in: host)
+
+        // then
+        #expect(strings.contains(expected))
+        #expect(!strings.contains(sidebar ? row.subtitle : row.sidebarSubtitle))
+    }
+
+    private func accessibilityStrings(in host: NSView) -> Set<String> {
+        var strings: Set<String> = []
+        var visited: Set<ObjectIdentifier> = []
+        func collect(_ element: NSObject) {
+            guard visited.insert(ObjectIdentifier(element)).inserted else { return }
+            for key in ["accessibilityValue", "accessibilityLabel", "accessibilityTitle"] where element.responds(to: NSSelectorFromString(key)) {
+                if let value = element.value(forKey: key) as? String { strings.insert(value) }
+            }
+            if element.responds(to: NSSelectorFromString("accessibilityChildren")),
+               let children = element.value(forKey: "accessibilityChildren") as? [NSObject] {
+                children.forEach(collect)
+            }
+            if let view = element as? NSView { view.subviews.forEach(collect) }
+        }
+        collect(host)
+        return strings
     }
 
     // MARK: - Default versus sidebar geometry

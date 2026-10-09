@@ -55,6 +55,14 @@ public struct TaskRowModel: Identifiable, Equatable, Sendable {
         return parts.joined(separator: " · ")
     }
 
+    /// Sidebar metadata puts the backend name immediately after its identity dot, followed by
+    /// the existing repository name and optional sub-task summary. Shared rows keep `subtitle`.
+    public var sidebarSubtitle: String {
+        var parts = [BackendStyle.displayName(backend), repoName].filter { !$0.isEmpty }
+        if let subTaskSummary { parts.append(subTaskSummary) }
+        return parts.joined(separator: " · ")
+    }
+
     /// The disclosure chevron's accessibility label, task-specific per the settled plan ("Collapse
     /// <title>" / "Expand <title>") — meaningful only when `hasChildren`.
     public var chevronAccessibilityLabel: String { (isExpanded ? "Collapse " : "Expand ") + title }
@@ -160,7 +168,7 @@ public struct TaskRow: View {
         case .some:
             HStack(spacing: PbRadius.Metrics.spacing4) {
                 BackendDot(backend: model.backend)
-                Text(model.subtitle).font(.pb(.secondary)).monospacedDigit().foregroundStyle(metaColor).lineLimit(1)
+                Text(model.sidebarSubtitle).font(.pb(.secondary)).monospacedDigit().foregroundStyle(metaColor).lineLimit(1)
             }
         case nil:
             Text(model.subtitle).font(.pb(.caption)).foregroundStyle(metaColor).lineLimit(1)
