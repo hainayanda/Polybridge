@@ -1864,3 +1864,58 @@ async def test_usage_limit_unverified_process_preserves_attention_and_queued_inp
     assert any(event['kind'] == 'undelivered' and event.get('message_id') == 'queued-limit-message' for event in _events(registry.log_dir, task.task_id))
     # Explicit owner cancellation is test cleanup, separate from usage-limit classification.
     await registry.cancel(task)
+
+
+async def test_usage_limit_settlement_does_not_break_a_concurrent_sender_flock(tmp_path, monkeypatch):
+    """Termination stays bounded while the single pump waits for the sender's lock."""
+    import asyncio
+    from polybridge import identity
+    rejection = json.dumps({'type': 'rate_limit_event', 'rate_limit_info': {'status': 'rejected'}})
+    class Limited(_CatDouble):
+        name = 'locked-usage-limit-double'
+        def build_start_argv(self, prompt, **kwargs):
+            return Invocation([self.binary, '-c', f"head -n 1 > {self.sink}; sleep 0.1; echo '{rejection}'; exec sleep 60"], stdin_mode=STDIN_PIPE, initial_input=self.encode_live_message(prompt))
+    backend = Limited(tmp_path / 'sink')
+    monkeypatch.setitem(backends.BACKENDS, backend.name, backend)
+    monkeypatch.setattr(identity, 'check_detail', lambda value: ('alive', 'matched'))
+    monkeypatch.setattr(identity, 'signalable', lambda verdict, reason: verdict == 'alive')
+    registry = TaskRegistry(log_dir=tmp_path / 'streams', owner=OWNER)
+    held = {}
+    original_record = registry._record_usage_limit
+    def record_limit(current):
+        held['fd'] = inbox.lock_sync(registry.log_dir, current.task_id)
+        current.inbox_queue.append({'id': 'memory-limit-message', 'text': 'continue'})
+        original_record(current)
+    monkeypatch.setattr(registry, '_record_usage_limit', record_limit)
+    force_calls = []
+    original_force = registry._force_close
+    def force_close(*args):
+        force_calls.append(args)
+        return original_force(*args)
+    monkeypatch.setattr(registry, '_force_close', force_close)
+    seal_calls = []
+    original_seal = inbox.seal
+    def seal(*args):
+        seal_calls.append(args)
+        return original_seal(*args)
+    monkeypatch.setattr(inbox, 'seal', seal)
+    task = await registry.start('work', tmp_path, backend=backend)
+    try:
+        await asyncio.wait_for(task.proc.wait(), 8)
+        # The sender deliberately holds its real flock beyond the five-second grace.
+        assert held and not task.input_closed
+        assert not task.inbox_sealed
+        assert not seal_calls and not force_calls
+        assert not task.done.is_set()
+        inbox.append_locked(registry.log_dir, task.task_id, {'id': 'disk-limit-message', 'text': 'late queued work'})
+    finally:
+        if held:
+            inbox.unlock(held.pop('fd'))
+        if task.proc.returncode is None:
+            await registry.cancel(task)
+    await asyncio.wait_for(task.done.wait(), 5)
+    assert task.status == 'failed'
+    assert task.input_closed and task.inbox_sealed
+    assert not force_calls
+    undelivered = [event['message_id'] for event in _events(registry.log_dir, task.task_id) if event['kind'] == 'undelivered']
+    assert sorted(undelivered) == ['disk-limit-message', 'memory-limit-message']

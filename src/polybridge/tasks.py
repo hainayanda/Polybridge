@@ -2006,11 +2006,10 @@ class TaskRegistry:
 
     async def _settle_usage_limit(self, task: Task) -> None:
         deadline = time.monotonic() + 5.0
-        if task.live_input:
-            try:
-                await asyncio.wait_for(self._close_input(task, drop_reason="the provider rejected the turn because of a usage limit"), timeout=5.0)
-            except asyncio.TimeoutError:
-                self._force_close(task, "usage-limit close exceeded its grace period", DEFAULT_LIVE_IDLE_SECONDS)
+        # The live-input pump owns the inbox close protocol under its flock. It was
+        # woken when the evidence was latched; do not race another close against it
+        # or cancel its lock acquisition to seal an inbox without ownership. Process
+        # settlement has its own deadline even if a sender keeps the inbox locked.
         if task.proc is None:
             return
         try:
