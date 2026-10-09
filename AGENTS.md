@@ -240,7 +240,8 @@ Measured on this machine. Do not "tidy" these away:
   completion, a `tool_result` with `ok = (item's own status == "completed")` — codex reports no
   per-change status, only one for the whole item. A completion-only item (no prior `item.started`)
   synthesizes its `tool_call`s first, exactly like the shell/MCP completion paths already did.
-- **Native workflow children (measured 0.160.1, 2026-10-06).** The installed CLI uses
+- **Native workflow children (initially measured 0.160.1, 2026-10-06; re-certified on
+  0.162.0, 2026-10-09).** The installed CLI uses
   `collaboration.spawn_agent` with `task_name`, `message`, and `fork_turns="none"`, followed by
   `collaboration.wait_agent`. It has no child-close tool. Child `SubAgentActivity` and terminal
   evidence are persisted in session rollouts but are omitted from the exec JSON stream, so the
@@ -249,15 +250,19 @@ Measured on this machine. Do not "tidy" these away:
 - **An `agents={...}` override deep-merges ambient roles.** A hostile `agents.default.config_file`
   replaced the child's model despite the explicit parent model. Native invocations therefore
   override the selected default role with the packaged `backends/codex_native.toml` profile, pinning
-  `gpt-6.1-sol`, read-only access and approval policy `never`. The real CLI fixture verifies the
-  exact model and provider, inherited effort, two distinct children through persisted parent
-  resume, a refused nested spawn, denied shell writes and blocked network. The operative nested
+  `gpt-6.1-sol`, the selected certified access profile and approval policy `never`. Read-only
+  workers use `codex_native.toml`; repository writers use `codex_native_write.toml`. The real CLI
+  fixture verifies the exact model and provider, inherited effort, distinct sequential and parallel
+  children through persisted parent resume, a refused nested spawn, denied read-only shell writes,
+  permitted repository writes and blocked network. The operative nested
   spawn refusal is the thread limit; disabling feature flags alone does not establish that the
   installed runtime removes its collaboration tools. Re-measure rather than assuming the public
   release source or a feature name describes this installed binary.
 - Certification uses `PB_CLI_INTEGRATION=1 uv run pytest tests/test_codex_native_subagent_cli.py`
   against an isolated localhost fake API, with no paid model calls. Native support remains limited
-  to the pinned version/model and fresh sequential read-only workers; no turn-cap support is added.
+  to CLI 0.162.0, model `gpt-6.1-sol`, fresh sequential or bounded parallel workers, and read-only
+  or repository-write access with blocked network. Child access must match its owning session;
+  read-only children cannot narrow a write owner. No turn-cap support is added.
 
 **opencode (1.18.18)**
 - `run --format json` emits clean JSONL — `step_start`, `tool_use`, `text`, `step_finish`, `error` —
@@ -734,7 +739,8 @@ created inside a main-actor context does not by itself move computation into the
 Reject stale results after cancellation or a newer data, search or selection generation. Unchanged
 polling must not republish rendering state; explicit time-dependent presentation changes still do.
 
-`macos/PolybridgeMonitor` reads `polybridge-ctl --json` (`CTL_JSON_VERSION`, now 7 — adds separate Monitor cancellation eligibility;
+`macos/PolybridgeMonitor` reads `polybridge-ctl --json` (`CTL_JSON_VERSION`, now 8 — adds pinned owner permissions and guarded launch previews;
+v7 added separate Monitor cancellation eligibility;
 v6 added native execution metadata, v5 added Run workflow links,
 v4 added workflow result-error presentation metadata;
 v3 added pending messages and workflow ownership/status;
