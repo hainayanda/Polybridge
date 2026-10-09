@@ -942,3 +942,9 @@ proven by these counts. The heartbeat fixtures now hold a scoped user-initiated 
 process activity and use explicit user-initiated scheduling while their native windows are
 occluded. Every timeout, heartbeat threshold, and functional assertion remains unchanged.
 All four tests passed locally after this scheduling correction; CI remains the delivery gate.
+
+The foreground activity alone did not resolve hosted misses (152, 140, 149, 143 pulses),
+weakening the App Nap hypothesis. Heartbeat timers now request strict 50 ms delivery and
+failure messages report independent timer-handler firing counts alongside main-actor pulses.
+This is a controlled measurement correction; timer coalescing is not established as the cause.
+All four affected tests passed locally again; no assertions or deadlines were relaxed.

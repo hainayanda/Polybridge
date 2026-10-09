@@ -2,6 +2,7 @@ import AppKit
 @testable import MainWindowFeature
 import Mockable
 import MonitorCore
+import os
 import PbTestUtilities
 import PbUI
 import SwiftUI
@@ -24,9 +25,13 @@ import Testing
         let pulse = StarvationPulse(path: ProcessInfo.processInfo.environment["PB_ACTIVITY_HEARTBEAT"])
         defer { pulse.finish() }
         try pulse.record(phase: "mounting")
-        let timer = DispatchSource.makeTimerSource(queue: .global(qos: .userInitiated))
+        let delivery = HeartbeatDelivery()
+        let timer = DispatchSource.makeTimerSource(flags: .strict, queue: .global(qos: .userInitiated))
         timer.schedule(deadline: .now(), repeating: .milliseconds(50))
-        timer.setEventHandler { @Sendable in Task(priority: .userInitiated) { @MainActor in try pulse.record(phase: "running") } }
+        timer.setEventHandler { @Sendable in
+            delivery.record()
+            Task(priority: .userInitiated) { @MainActor in try pulse.record(phase: "running") }
+        }
         timer.resume()
         defer { timer.cancel() }
         let fixture = try ShortHistoryFixture(shortFill: shortFill)
@@ -59,7 +64,7 @@ import Testing
         #expect(fixture.sut.timelineModel.rows.count == fixture.fullItems.count)
         #expect(!fixture.sut.timelineModel.history.hasMore)
         #expect(!fixture.sut.timelineModel.history.isLoading)
-        #expect(pulse.count >= 160)
+        #expect(pulse.count >= 160, "Timer handler firings: \(delivery.count)")
         try pulse.record(phase: "completed")
     }
 
@@ -69,9 +74,13 @@ import Testing
         let pulse = StarvationPulse(path: ProcessInfo.processInfo.environment["PB_ACTIVITY_HEARTBEAT"])
         defer { pulse.finish() }
         try pulse.record(phase: "mounting")
-        let timer = DispatchSource.makeTimerSource(queue: .global(qos: .userInitiated))
+        let delivery = HeartbeatDelivery()
+        let timer = DispatchSource.makeTimerSource(flags: .strict, queue: .global(qos: .userInitiated))
         timer.schedule(deadline: .now(), repeating: .milliseconds(50))
-        timer.setEventHandler { @Sendable in Task(priority: .userInitiated) { @MainActor in try pulse.record(phase: "running") } }
+        timer.setEventHandler { @Sendable in
+            delivery.record()
+            Task(priority: .userInitiated) { @MainActor in try pulse.record(phase: "running") }
+        }
         timer.resume()
         defer { timer.cancel() }
         let harness = TaskDetailVMTests().makeSUT()
@@ -103,7 +112,7 @@ import Testing
         // then — require actual activity publication as well as independent heartbeat progress.
         #expect(harness.sut.timelineModel.rows.count == items.count)
         #expect(!harness.sut.timelineModel.isLoading)
-        #expect(pulse.count >= 160)
+        #expect(pulse.count >= 160, "Timer handler firings: \(delivery.count)")
         try pulse.record(phase: "completed")
     }
 
@@ -113,9 +122,11 @@ import Testing
         let pulse = StarvationPulse(path: ProcessInfo.processInfo.environment["PB_ACTIVITY_HEARTBEAT"])
         defer { pulse.finish() }
         try pulse.record(phase: "mounting")
-        let timer = DispatchSource.makeTimerSource(queue: .global(qos: .userInitiated))
+        let delivery = HeartbeatDelivery()
+        let timer = DispatchSource.makeTimerSource(flags: .strict, queue: .global(qos: .userInitiated))
         timer.schedule(deadline: .now(), repeating: .milliseconds(50))
         timer.setEventHandler { @Sendable in
+            delivery.record()
             Task(priority: .userInitiated) { @MainActor in try pulse.record(phase: "running") }
         }
         timer.resume()
@@ -144,7 +155,7 @@ import Testing
         }
         // then — alignment, resize, and reading restoration are separate behaviors.
         #expect(Date().timeIntervalSince(started) >= 10)
-        #expect(pulse.count >= 160)
+        #expect(pulse.count >= 160, "Timer handler firings: \(delivery.count)")
         try pulse.record(phase: "completed")
     }
 
@@ -285,4 +296,11 @@ import Testing
         let value = "\(ProcessInfo.processInfo.processIdentifier) \(count) \(phase)\n"
         try Data(value.utf8).write(to: url, options: .atomic)
     }
+}
+
+/// Distinguish timer delivery from main-actor progress without touching observed UI state.
+private final class HeartbeatDelivery: Sendable {
+    private let value = OSAllocatedUnfairLock(initialState: 0)
+    func record() { value.withLock { $0 += 1 } }
+    var count: Int { value.withLock { $0 } }
 }
