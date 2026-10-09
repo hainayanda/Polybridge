@@ -46,9 +46,12 @@ def plan_owner_contracts(definition: dict[str, Any], tree: dict[str, Any] | None
     definitions[root_id] = definition
     owners: dict[str, Any] = {}
 
-    def collect(ident: str, path: list[str]) -> tuple[list[dict[str, Any]], list[str]]:
+    def collect(ident: str, path: list[str], seen: set[str]) -> tuple[list[dict[str, Any]], list[str]]:
         if ident in path:
             raise ValueError("Cyclic pinned workflow owner tree")
+        if ident in seen:
+            return [], []
+        seen.add(ident)
         current = definitions[ident]
         nodes: list[dict[str, Any]] = []
         child_owners: list[str] = []
@@ -61,7 +64,7 @@ def plan_owner_contracts(definition: dict[str, Any], tree: dict[str, Any] | None
                 if target not in definitions:
                     raise ValueError("Pinned workflow dependency is missing: " + target)
                 if node.get("orchestrator_mode", "child") == "current":
-                    descendants, children = collect(target, path + [ident])
+                    descendants, children = collect(target, path + [ident], seen)
                     nodes.extend(descendants)
                     child_owners.extend(children)
                 else:
@@ -72,7 +75,7 @@ def plan_owner_contracts(definition: dict[str, Any], tree: dict[str, Any] | None
         if ident in owners:
             return
         current = definitions[ident]
-        nodes, children = collect(ident, [])
+        nodes, children = collect(ident, [], set())
         config = current["orchestrator"]
         plans: dict[str, Any] = {}
         for candidate in [config, *config.get("fallbacks", [])]:

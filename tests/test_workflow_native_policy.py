@@ -144,3 +144,31 @@ def test_preview_hash_rejects_changes_before_launch(tmp_path, monkeypatch, certi
     run = asyncio.run(w.start_workflow("root", "Go", repo, root=storage.root, expected_preview_hash=preview["preview_hash"], _verified_caller=None))
     assert run["owner_contracts"] == preview["owner_contracts"]
     assert run["definition"]["context_delivery"] == "optimized_v1"
+
+
+def test_repeated_and_diamond_current_definitions_are_collected_once_per_owner(certified):
+    root, left, right, leaf, child = [definition(name) for name in ("root", "left", "right", "leaf", "child")]
+    def link(parent, target, ident, mode="current"):
+        parent["nodes"].append({"id": ident, "type": "workflow", "workflow_ref": {"workflow_id": target["workflow_id"]}, "orchestrator_mode": mode})
+    link(root, left, "left")
+    link(root, left, "left-again")
+    link(root, right, "right")
+    link(left, leaf, "leaf")
+    link(right, leaf, "leaf")
+    link(root, child, "child", "child")
+    link(child, leaf, "leaf")
+    tree = {"workflows": {d["workflow_id"]: {"definition": d} for d in (left, right, leaf, child)}}
+    plan = plan_owner_contracts(root, tree)
+    root_owner = orchestrator_contract({"definition": root, "owner_contracts": plan})
+    assert len(root_owner["nodes"]) == len(root_owner["contributing_nodes"]) == 4
+    assert {n["workflow_id"] for n in root_owner["nodes"]} == {"root", "left", "right", "leaf"}
+    child_owner = next(iter(plan["owners"]["child"]["candidates"].values()))
+    assert {n["workflow_id"] for n in child_owner["nodes"]} == {"child", "leaf"}
+
+
+def test_current_collection_still_rejects_cycles(certified):
+    root, child = definition("root"), definition("child")
+    for parent, target in ((root, child), (child, root)):
+        parent["nodes"].append({"id": "call", "type": "workflow", "workflow_ref": {"workflow_id": target["workflow_id"]}, "orchestrator_mode": "current"})
+    with pytest.raises(ValueError, match="Cyclic"):
+        plan_owner_contracts(root, {"workflows": {"child": {"definition": child}}})

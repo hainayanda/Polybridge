@@ -1375,10 +1375,11 @@ async def wait_for_workflow(workflow_run_id: str, timeout_seconds: int = 30) -> 
 
 @mcp.tool()
 async def get_workflow_run_detail(workflow_run_id: str, view: str, cursor: str | None = None, limit: int = 8000) -> dict[str, Any]:
-    """Losslessly read executions, decisions, checklist, technical_plan, definition, builder_draft, generated_definition, question, reason or wait_reason.
+    """Losslessly read executions, decisions, checklist, technical_plan, definition, owner_contracts, builder_draft, generated_definition, question, reason or wait_reason.
 
-    Concatenate chunk fields then decode JSON. Cursors bind content, run and view; changed
-    content requires restarting. Managed orchestrators use settled node inspection for executions.
+    owner_contracts contains the pinned per-owner permission plan. Concatenate chunk fields
+    then decode JSON. Cursors bind content, run and view; changed content requires restarting.
+    Managed orchestrators use settled node inspection for executions.
     """
     return await _workflow_call("detail", run_id=workflow_run_id, view=view, cursor=cursor, limit=limit)
 
