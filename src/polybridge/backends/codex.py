@@ -263,12 +263,12 @@ class CodexBackend:
     @staticmethod
     def workflow_stderr_availability_failure(diagnostic: str) -> str | None:
         from .workflow_diagnostics import stderr_availability
-        return stderr_availability(diagnostic, quota_patterns=('(?im)^.*(?:usage_limit_reached|insufficient_quota|model_not_found|rate_limit_exceeded).*$',))
+        return stderr_availability(diagnostic, model_patterns=(r"(?im)^.*\bmodel_not_found\b.*$",))
 
     @staticmethod
     def workflow_availability_failure(event: dict[str, Any]) -> str | None:
         from .workflow_diagnostics import provider_error
-        return provider_error(event, event_type="turn.failed", quota_reason="codex availability rejected")
+        return provider_error(event, event_type="turn.failed", model_reason="codex model unavailable")
 
     @staticmethod
     def workflow_failure_diagnostic(event: dict[str, Any]) -> str | None:

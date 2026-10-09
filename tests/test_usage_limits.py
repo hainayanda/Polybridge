@@ -77,3 +77,55 @@ def test_live_and_recovered_briefs_retain_durable_usage_evidence(tmp_path):
                 started_at=datetime.now(timezone.utc))
     live.acc.failure_diagnostic = diagnostic
     assert live.brief()['failure_diagnostic'] == store.brief(tmp_path, record)['failure_diagnostic'] == diagnostic
+
+
+@pytest.mark.parametrize('name', ['claude', 'codex', 'opencode', 'vibe', 'antigravity'])
+@pytest.mark.parametrize('line', ["You've hit your limit", 'Credit balance is too low', 'usage_limit_reached', 'insufficient_quota', 'rate_limit_exceeded', 'rate_limit_error', 'Warning: rate_limit_exceeded'])
+def test_plain_quota_stderr_never_authorizes_automatic_fallback(name, line):
+    backend = get_backend(name)
+    assert backend.stderr_usage_limit_diagnostic(line) is None
+    assert backend.workflow_stderr_availability_failure(line) is None
+
+
+@pytest.mark.parametrize('name,envelope', [('claude', 'error'), ('codex', 'turn.failed'), ('opencode', 'error'), ('vibe', 'error'), ('antigravity', 'result')])
+def test_authoritative_quota_remains_separate_from_automatic_availability(name, envelope):
+    backend = get_backend(name)
+    error = {'code': 'rate_limit_exceeded'}
+    event = {'event': 'result', 'result': {'status': 'ERROR', 'error': error}} if name == 'antigravity' else {'type': envelope, 'error': error}
+    assert backend.usage_limit_diagnostic(event)['category'] == 'usage_limit'
+    assert backend.workflow_availability_failure(event) is None
+    line = 'API Error: rate_limit_exceeded'
+    assert backend.stderr_usage_limit_diagnostic(line)['category'] == 'usage_limit'
+    assert backend.workflow_stderr_availability_failure(line) is None
+    assert backend.workflow_stderr_availability_failure('API Error: 503 Service unavailable')
+
+
+@pytest.mark.parametrize('name', ['claude', 'codex', 'opencode', 'vibe'])
+def test_missing_model_still_authorizes_availability_fallback(name):
+    backend = get_backend(name)
+    assert backend.workflow_stderr_availability_failure('model_not_found')
+    assert backend.stderr_usage_limit_diagnostic('API Error: model_not_found') is None
+
+
+def test_rejected_claude_rate_envelope_does_not_authorize_automatic_fallback():
+    backend = get_backend('claude')
+    event = {'type': 'rate_limit_event', 'rate_limit_info': {'status': 'rejected'}}
+    assert backend.usage_limit_diagnostic(event)
+    assert backend.workflow_availability_failure(event) is None
+
+
+@pytest.mark.parametrize('name,envelope', [('claude', 'error'), ('codex', 'turn.failed'), ('opencode', 'error'), ('vibe', 'error'), ('antigravity', 'result')])
+def test_mixed_quota_transport_codes_never_authorize_automatic_fallback(name, envelope):
+    backend = get_backend(name)
+    error = {'type': 'overloaded_error', 'code': 'rate_limit_exceeded'}
+    event = {'event': 'result', 'result': {'status': 'ERROR', 'error': error}} if name == 'antigravity' else {'type': envelope, 'error': error}
+    assert backend.workflow_availability_failure(event) is None
+    assert backend.usage_limit_diagnostic(event)
+    assert backend.workflow_stderr_availability_failure('API Error: rate_limit_exceeded; provider timed out') is None
+
+
+def test_claude_api_error_with_quota_code_is_not_transport_fallback():
+    backend = get_backend('claude')
+    event = {'type': 'error', 'error': {'type': 'api_error', 'code': 'rate_limit_error'}}
+    assert backend.workflow_availability_failure(event) is None
+    assert backend.usage_limit_diagnostic(event)

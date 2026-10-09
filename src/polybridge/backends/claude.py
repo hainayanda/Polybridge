@@ -340,14 +340,11 @@ class ClaudeBackend:
     @staticmethod
     def workflow_stderr_availability_failure(diagnostic: str) -> str | None:
         from .workflow_diagnostics import stderr_availability
-        return stderr_availability(diagnostic, quota_patterns=("(?im)^.*(?:You've hit your limit|Credit balance is too low|rate_limit_error|model_not_found).*$",))
+        return stderr_availability(diagnostic, model_patterns=(r"(?im)^.*\bmodel_not_found\b.*$",))
 
     @staticmethod
     def workflow_availability_failure(event: dict[str, Any]) -> str | None:
         from .workflow_diagnostics import provider_error
-        info = event.get("rate_limit_info")
-        if event.get("type") == "rate_limit_event" and isinstance(info, dict) and info.get("status") == "rejected":
-            return "claude quota rejected"
         return provider_error(event, event_type="error", extra_transport_codes=("api_error",))
 
     @staticmethod

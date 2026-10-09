@@ -9,12 +9,12 @@ from pathlib import Path
 from typing import Any
 
 OUTAGES = {500, 502, 503, 504, 529}
-QUOTA_CODES = {"usage_limit_reached", "insufficient_quota", "model_not_found", "rate_limit_exceeded"}
+MODEL_CODES = {"model_not_found"}
 TRANSPORT_CODES = {"overloaded_error", "api_connection_error", "APITimeoutError", "APIConnectionError", "service_unavailable"}
 
 
-def stderr_availability(diagnostic: str, *, quota_patterns: tuple[str, ...] = ()) -> str | None:
-    if any(re.search(pattern, diagnostic) for pattern in quota_patterns):
+def stderr_availability(diagnostic: str, *, model_patterns: tuple[str, ...] = ()) -> str | None:
+    if any(re.search(pattern, diagnostic) for pattern in model_patterns):
         return "backend availability rejected"
     for line in diagnostic.splitlines():
         match = re.match(r"(?i)^(?:API[ _]Error|Provider[ _]Error|HTTP[ _]Error|APIConnectionError|APITimeoutError|ConnectError|ConnectionError)\s*:?\s*(.*)$", line)
@@ -26,12 +26,14 @@ def stderr_availability(diagnostic: str, *, quota_patterns: tuple[str, ...] = ()
             if int(status.group(1)) in OUTAGES:
                 return "provider server unavailable"
             continue
+        if re.search(r"\b(?:usage_limit_reached|insufficient_quota|rate_limit_exceeded|rate_limit_error)\b", body):
+            continue
         if re.search(r"(?i)\b(?:overloaded_error|api_connection_error|service unavailable|connection (?:reset|refused)|provider timeout|timed out)\b", body):
             return "provider transport unavailable"
     return None
 
 
-def provider_error(event: dict[str, Any], *, event_type: str, extra_transport_codes: tuple[str, ...] = (), quota_reason: str | None = None) -> str | None:
+def provider_error(event: dict[str, Any], *, event_type: str, extra_transport_codes: tuple[str, ...] = (), model_reason: str | None = None) -> str | None:
     if event.get("type") != event_type:
         return None
     error = event.get("error")
@@ -45,10 +47,12 @@ def provider_error(event: dict[str, Any], *, event_type: str, extra_transport_co
     if any(type(status) is int and status in OUTAGES for status in statuses):
         return "provider server unavailable"
     codes = [error.get("type"), error.get("code"), error.get("name")]
+    if any(isinstance(code, str) and code in USAGE_CODES for code in codes):
+        return None  # Quota evidence never becomes an automatic transport fallback.
     if any(isinstance(code, str) and code in TRANSPORT_CODES | set(extra_transport_codes) for code in codes):
         return "provider transport unavailable"
-    if quota_reason and any(isinstance(code, str) and code in QUOTA_CODES for code in codes):
-        return quota_reason
+    if model_reason and any(isinstance(code, str) and code in MODEL_CODES for code in codes):
+        return model_reason
     return None
 
 

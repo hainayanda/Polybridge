@@ -305,8 +305,10 @@ class AntigravityBackend:
         result = event.get("result")
         if event.get("event") != "result" or not isinstance(result, dict) or result.get("status") != "ERROR" or result.get("denied_actions"):
             return None
+        if AntigravityBackend.usage_limit_diagnostic(event):
+            return None
         error = result.get("error")
-        codes = {"insufficient_quota", "model_not_found", "rate_limit_exceeded", "usage_limit_reached"}
+        codes = {"model_not_found"}
         outages = {"overloaded_error", "api_connection_error", "APITimeoutError", "APIConnectionError", "service_unavailable"}
         if isinstance(error, dict):
             if any(type(error.get(key)) is int and error[key] in {401, 403} for key in ("status", "status_code", "statusCode")):
@@ -320,7 +322,7 @@ class AntigravityBackend:
         elif isinstance(error, str):
             if re.match(r"(?i)^(?:API[ _]Error|Provider[ _]Error|HTTP[ _]Error)\s*:?\s*(?:HTTP\s*)?(?:401|403)\b", error):
                 return None
-            if re.search(r"\b(?:insufficient_quota|model_not_found|rate_limit_exceeded|usage_limit_reached)\b", error):
+            if re.search(r"\bmodel_not_found\b", error):
                 return "backend availability rejected"
             if re.match(r"(?i)^(?:API[ _]Error|Provider[ _]Error|HTTP[ _]Error)\s*:?\s*(?:HTTP\s*)?(?:500|502|503|504|529)\b", error):
                 return "provider server unavailable"

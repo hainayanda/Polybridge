@@ -665,6 +665,12 @@ signals. A confirmed rejection remains a failure even after useful progress or a
 successful turn. Warnings, assistant/tool prose, and silence do not establish a usage limit.
 Unsupported signal shapes remain unverified; Polybridge does not guess a reset time.
 
+Usage limits never authorize automatic availability fallback, including older stderr and stream
+quota forms. Verified provider envelopes and error-prefixed stderr produce structured recovery
+diagnostics. Unsupported plain quota text remains a task failure requiring attention; it does
+not grant a replacement launch. Model unavailability and provider outages retain availability
+fallback behavior.
+
 Task snapshots expose `failure_diagnostic` with category `usage_limit`, a reason, evidence source,
 and optional provider-supplied `reset_at`. The diagnostic is retained with partial output and
 session identity. Monitor keeps it in task notices and workflow recovery state after a notification
