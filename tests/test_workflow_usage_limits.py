@@ -318,3 +318,116 @@ async def test_builder_success_consumes_fallback_and_feedback_resumes_session(st
     assert task["candidate"]["model"] == "fallback-fixture"
     assert task["session_mode"] == "resume"
     assert task["resume_task_id"] == supervisor.run()["activations"][-2]["tasks"][0]["task_id"]
+
+
+@pytest.mark.parametrize('verdict,known', [('dead', True), ('alive', False), ('undecidable', False)])
+@pytest.mark.parametrize('diagnostic', [LIMIT['failure_diagnostic'], None, {'category': 'other', 'reason': 'generic error'}])
+def test_restart_quota_authority_requires_confirmed_dead_process(tmp_path, monkeypatch, verdict, known, diagnostic):
+    from types import SimpleNamespace
+    from polybridge import identity
+    from polybridge.backends.base import Accumulator
+    record = SimpleNamespace(status='running', exit_code=None, pid=123, start_time='old', markers=[])
+    monkeypatch.setattr(identity, 'check_detail', lambda *_: (verdict, 'fixture'))
+    monkeypatch.setattr(w.task_store, 'resolve_status', lambda *a, **k: ('failed', 'Recovered', Accumulator(failure_diagnostic=diagnostic), []))
+    observed = w.task_liveness(tmp_path, record)
+    assert observed['outcome_known'] is (known and diagnostic == LIMIT['failure_diagnostic'])
+    assert observed['process_alive'] is {'dead': False, 'alive': True, 'undecidable': None}[verdict]
+
+
+async def test_orchestrator_restart_with_dead_quota_reissues_explicit_caller_recovery(storage, tmp_path, monkeypatch):
+    from polybridge import identity, store
+    registry = LimitedRegistry(storage.root, limited_role='orchestrator')
+    run, _ = await run_flow(storage, tmp_path, definition(), registry, guided=True)
+    pending = copy.deepcopy(run['pending'])
+    task_id = run['activations'][0]['tasks'][0]['task_id']
+    record = store.read(registry._log_dir, task_id)
+    from dataclasses import replace
+    record = replace(record, status='running', exit_code=None, finished_at=None, pid=123, start_time='fixture', failure_diagnostic=copy.deepcopy(LIMIT['failure_diagnostic']))
+    import json
+    store.log_path(registry._log_dir, task_id).write_text(json.dumps({'type': 'item.completed', 'item': {'type': 'agent_message', 'text': 'Partial progress retained'}}) + '\n')
+    store.record_path(registry._log_dir, task_id).unlink()
+    store.write(registry._log_dir, record)
+    def crash(r):
+        r.update(status='needs_attention')
+        for key in ('orchestrator_usage_recovery', 'input_decision_id', 'input_question', 'supervisor_identity', 'supervisor_pid'):
+            r.pop(key, None)
+        activation = r['activations'][0]
+        activation['status'] = 'running'
+        activation['tasks'][0].update(status='running')
+        activation['tasks'][0].pop('result', None)
+    storage.update_run(run['workflow_run_id'], crash, 'simulate_owner_crash')
+    registry.tasks.clear()
+    monkeypatch.setattr(w.CheckoutLease, '_orphan_owner', lambda *_: None)
+    monkeypatch.setattr(identity, 'check_detail', lambda value: ('dead', 'pid_absent') if value.get('pid') == 123 else ('alive', 'start_time_match'))
+    monkeypatch.setattr(identity, 'identity_check', lambda value: 'dead' if value and value.get('pid') == 123 else 'alive')
+    restored = storage.reconcile_run(run['workflow_run_id'])
+    result = restored['activations'][0]['tasks'][0]['result']
+    assert result['status'] == 'failed' and not result.get('outcome_unknown')
+    assert result['failure_diagnostic'] == LIMIT['failure_diagnostic']
+    assert result['session_id'] == record.session_id
+    assert result['summary'] == 'Partial progress retained'
+    before = len(registry.calls)
+    storage.control(run['workflow_run_id'], 'resume', 'Inspect recovered quota')
+    await w.WorkflowSupervisor(registry, storage).execute(run['workflow_run_id'])
+    checkpoint = storage.get_run(run['workflow_run_id'])
+    assert checkpoint['status'] == 'needs_input'
+    assert len(registry.calls) == before
+    assert checkpoint['pending'][0]['id'] == pending[0]['id']
+    storage.control(run['workflow_run_id'], 'resume', 'fallback', decision_id=checkpoint['input_decision_id'])
+    await w.WorkflowSupervisor(registry, storage).execute(run['workflow_run_id'])
+    assert storage.get_run(run['workflow_run_id'])['status'] == 'completed'
+
+
+async def test_worker_restart_with_dead_quota_returns_choice_to_orchestrator(storage, tmp_path, monkeypatch):
+    import json
+    from dataclasses import replace
+    from polybridge import identity, store
+    def policy(context, registry):
+        retry = next((c for c in context['valid_continuations'] if c.get('usage_limit_recovery')), None)
+        if retry and 'choose fallback' in context.get('recovery_instructions', ''):
+            selected = next(c for c in retry['available_candidates'] if c['candidate'].get('model') == 'fallback-fixture')
+            return {'decision_id': context['decision_id'], 'action': 'continue', 'reason': 'Explicit choice', 'next': [{'continuation_id': retry['continuation_id'], 'candidate_id': selected['candidate_id'], 'session_mode': 'fresh', 'prompt': 'Finish retained work'}]}
+        if retry:
+            return {'decision_id': context['decision_id'], 'action': 'needs_input', 'reason': 'Ask caller', 'question': 'Pause, cancel or choose fallback for work?'}
+        return default_decision(context, registry)
+    registry = LimitedRegistry(storage.root, policy)
+    run, _ = await run_flow(storage, tmp_path, definition(), registry, guided=True)
+    worker = next(a for a in run['activations'] if a['role'] == 'node')
+    task_id = worker['tasks'][0]['task_id']
+    record = replace(store.read(registry._log_dir, task_id), status='running', exit_code=None, finished_at=None, pid=123, start_time='fixture', failure_diagnostic=copy.deepcopy(LIMIT['failure_diagnostic']))
+    store.record_path(registry._log_dir, task_id).unlink()
+    store.write(registry._log_dir, record)
+    store.log_path(registry._log_dir, task_id).write_text(json.dumps({'type': 'item.completed', 'item': {'type': 'agent_message', 'text': 'Partial progress retained'}}) + '\n')
+    def crash(r):
+        r.update(status='needs_attention')
+        for key in ('worker_usage_recovery', 'input_decision_id', 'input_question', 'supervisor_identity', 'supervisor_pid'):
+            r.pop(key, None)
+        activation = next(a for a in r['activations'] if a['id'] == worker['id'])
+        activation.update(status='running')
+        activation.pop('node_result', None)
+        activation['tasks'][0].update(status='running')
+        activation['tasks'][0].pop('result', None)
+        token = next(t for t in r['pending'] if t['id'] == activation['token']['id'])
+        token.pop('execution_complete', None)
+    storage.update_run(run['workflow_run_id'], crash, 'simulate_owner_crash')
+    registry.tasks.pop(task_id)
+    monkeypatch.setattr(w.CheckoutLease, '_orphan_owner', lambda *_: None)
+    monkeypatch.setattr(identity, 'check_detail', lambda value: ('dead', 'pid_absent') if value.get('pid') == 123 else ('alive', 'start_time_match'))
+    monkeypatch.setattr(identity, 'identity_check', lambda value: 'dead' if value and value.get('pid') == 123 else 'alive')
+    recovered = storage.reconcile_run(run['workflow_run_id'])
+    observed = next(a for a in recovered['activations'] if a['id'] == worker['id'])['tasks'][0]['result']
+    assert not observed.get('outcome_unknown')
+    assert observed['summary'] == 'Partial progress retained'
+    storage.control(run['workflow_run_id'], 'resume', 'Inspect recovered quota')
+    await w.WorkflowSupervisor(registry, storage).execute(run['workflow_run_id'])
+    checkpoint = storage.get_run(run['workflow_run_id'])
+    assert checkpoint['status'] == 'needs_input'
+    assert len([a for a in checkpoint['activations'] if a['role'] == 'node']) == 1
+    assert any(c.get('usage_limit_recovery') for c in registry.contexts[-1]['valid_continuations'])
+    storage.control(run['workflow_run_id'], 'resume', 'choose fallback', decision_id=checkpoint['input_decision_id'])
+    await w.WorkflowSupervisor(registry, storage).execute(run['workflow_run_id'])
+    finished = storage.get_run(run['workflow_run_id'])
+    assert finished['status'] == 'completed'
+    workers = [a for a in finished['activations'] if a['role'] == 'node']
+    assert len(workers) == 2
+    assert workers[-1]['tasks'][0]['candidate']['model'] == 'fallback-fixture'

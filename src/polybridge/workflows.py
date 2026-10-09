@@ -1310,7 +1310,7 @@ class WorkflowStore:
         return result
 
     def reconcile_run(self, run_id: str) -> dict[str, Any]:
-        """Recover only outcomes positively recorded by their original task owner."""
+        """Recover recorded outcomes, or authoritative quota failures after confirmed death."""
         def reconcile(r: dict[str, Any]) -> None:
             for activation in r["activations"]:
                 for task in activation["tasks"]:
@@ -1823,8 +1823,13 @@ def task_liveness(log_dir: Path, record: Any) -> dict[str, Any]:
     verdict, reason = identity.check_detail(identity.task_identity(record.pid, record.start_time, record.markers))
     # An authoritative exit receipt proves the managed process has settled.
     alive = False if observed else {"alive": True, "dead": False}.get(verdict)
-    status, note, _, _ = task_store.resolve_status(log_dir, record, detail=False)
-    return {"process_alive": alive, "outcome_known": observed, "resolved_status": status, "reason": reason or note}
+    status, note, state, _ = task_store.resolve_status(log_dir, record, detail=False)
+    # A provider rejection already establishes this failure's cause. Once the
+    # process is positively dead, a missing owner exit receipt does not make that
+    # cause unknown. Generic reconstructed failures and uncertain/live processes
+    # still require reconciliation before any replacement can be considered.
+    quota_settled = alive is False and status == "failed" and usage_limit({"failure_diagnostic": getattr(state, "failure_diagnostic", None)}) is not None
+    return {"process_alive": alive, "outcome_known": observed or quota_settled, "resolved_status": status, "reason": reason or note}
 
 
 def observed_harness_metadata(snapshot: dict[str, Any], metadata: dict[str, Any]) -> dict[str, Any]:
@@ -2040,7 +2045,7 @@ class WorkflowSupervisor:
                 r["attention_reason"] = reason
         self.update(set_status, "needs_attention", reason)
 
-    def _usage_limit_outcome(self, snapshot: dict[str, Any], node: dict[str, Any], role: str, activation: dict[str, Any], candidate: dict[str, Any], candidates: list[dict[str, Any]], *, selection_failure: tuple[dict[str, Any], str] | None = None) -> dict[str, Any] | None:
+    def _usage_limit_outcome(self, snapshot: dict[str, Any], node: dict[str, Any], role: str, activation: dict[str, Any], candidate: dict[str, Any], candidates: list[dict[str, Any]], *, selection_failure: tuple[dict[str, Any], str] | None = None, recovered_task_id: str | None = None) -> dict[str, Any] | None:
         diagnostic = usage_limit(snapshot)
         assert diagnostic is not None
         if snapshot.get("status") != "failed" or snapshot.get("outcome_unknown"):
@@ -2072,6 +2077,11 @@ class WorkflowSupervisor:
         if selection_failure:
             question = "Selected recovery candidate unavailable: " + selection_failure[1] + ". " + question
         def checkpoint(r: dict[str, Any]) -> None:
+            if recovered_task_id:
+                for prior in r["activations"]:
+                    for task in prior["tasks"]:
+                        if task["task_id"] == recovered_task_id:
+                            task["usage_recovery_checkpointed"] = True
             if selection_failure:
                 r.pop("orchestrator_recovery_candidate", None)
                 identity = role + ":" + _candidate_key(selection_failure[0])
@@ -2084,7 +2094,7 @@ class WorkflowSupervisor:
         self.context_baselines.clear()
         return None
 
-    def _retry_usage_recovery_choice(self, node: dict[str, Any], role: str, activation: dict[str, Any], candidate: dict[str, Any], reason: str) -> bool:
+    def _retry_usage_recovery_choice(self, node: dict[str, Any], role: str, activation: dict[str, Any], candidate: dict[str, Any], reason: str, *, recovered_task_id: str | None = None) -> bool:
         """Reissue consent only after a selected control attempt is positively settled."""
         run = self.run()
         if role == "node" or not run.get("orchestrator_recovery_candidate"):
@@ -2095,7 +2105,7 @@ class WorkflowSupervisor:
         original = history[-1]
         checkpoint = {**activation, "decision_id": uuid.uuid4().hex,
                       "token": {"id": original.get("token_id")}}
-        self._usage_limit_outcome({"status": "failed", "failure_diagnostic": original["failure_diagnostic"]}, node, role, checkpoint, original["failed_candidate"], [], selection_failure=(candidate, reason))
+        self._usage_limit_outcome({"status": "failed", "failure_diagnostic": original["failure_diagnostic"]}, node, role, checkpoint, original["failed_candidate"], [], selection_failure=(candidate, reason), recovered_task_id=recovered_task_id)
         return True
 
     async def _dispatch(self, node: dict[str, Any], prompt: str, role: str, activation: dict[str, Any]) -> dict[str, Any] | None:
@@ -2162,6 +2172,21 @@ class WorkflowSupervisor:
             prompt = reset_scope + prompt
             if decision_context is not None:
                 decision_context = {**decision_context, "conversation_reset": reset_scope.strip()}
+        if role != "node":
+            # A recovered control failure belongs to its pending decision. Restore
+            # the caller checkpoint before launching another primary control turn.
+            recovered = next((task for prior in reversed(run["activations"]) if prior["role"] == role
+                              for task in reversed(prior["tasks"])
+                              if task.get("liveness", {}).get("outcome_known") and not task.get("usage_recovery_checkpointed")
+                              and task.get("status") == "failed" and usage_limit(task.get("result", {}))), None)
+            if recovered and selected_candidate:
+                if _candidate_key(recovered["candidate"]) == _candidate_key(selected_candidate) and self._retry_usage_recovery_choice(node, role, activation, selected_candidate, usage_limit(recovered["result"]).get("reason", "Provider usage limit reached"), recovered_task_id=recovered["task_id"]):
+                    return None
+            elif recovered:
+                if strict_child_resume:
+                    child_resume_refused("Child Resume reached a recovered usage limit; explicit Fresh child selection required")
+                    return None
+                return self._usage_limit_outcome(recovered["result"], node, role, activation, recovered["candidate"], candidates, recovered_task_id=recovered["task_id"])
         if (persistent_orchestrator or role == "builder" and run.get("builder_followup")) and previous.get("task_id"):
             parent = self.registry.get(previous["task_id"])
             record = task_store.read(self.registry._log_dir, previous["task_id"])
