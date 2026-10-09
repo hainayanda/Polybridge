@@ -522,3 +522,43 @@ async def test_builder_without_fallback_can_explicitly_retry_current(storage, tm
     assert (await supervisor._dispatch({'id': 'builder'}, 'Control retry', 'builder', activation))['status'] == 'completed'
     assert supervisor.run()['activations'][-1]['tasks'][0]['session_mode'] == 'fresh'
     assert 'orchestrator_recovery_candidate' not in supervisor.run()
+
+
+@pytest.mark.parametrize('reset', [0, 1791594123, 1791594123.5, '2026-10-10T01:02:03Z'])
+async def test_reset_type_survives_workflow_public_projections(storage, tmp_path, reset):
+    from polybridge.workflow_responses import compact, monitor, history_page
+    class ResetRegistry(LimitedRegistry):
+        async def start(self, prompt, repo, **kwargs):
+            task = await super().start(prompt, repo, **kwargs)
+            if task.result.get('failure_diagnostic'):
+                task.result['failure_diagnostic']['reset_at'] = reset
+            return task
+    run, registry = await run_flow(storage, tmp_path, definition(), ResetRegistry(storage.root, limited_role='orchestrator'), guided=True)
+    full = storage.get_run(run['workflow_run_id'])
+    for response in (compact(run), monitor(run), history_page([run])['runs'][0]):
+        value = response['usage_limit_recovery']['failure_diagnostic']['reset_at']
+        assert type(value) is type(reset) and value == reset
+    value = full['orchestrator_usage_recovery']['failure_diagnostic']['reset_at']
+    assert type(value) is type(reset) and value == reset
+    diagnostic = next(task.result['failure_diagnostic'] for task in registry.tasks.values() if task.result.get('failure_diagnostic'))
+    assert type(diagnostic['reset_at']) is type(reset)
+
+
+@pytest.mark.parametrize('reset', [True, float('nan'), float('inf'), 10 ** 1000, 'tomorrow', 'Authorization: Bearer synthetic-private-token'])
+def test_compact_omits_invalid_reset_metadata(reset):
+    from polybridge.workflow_responses import compact, monitor, history_page
+    run = {'workflow_run_id': 'r', 'status': 'needs_input', 'orchestrator_usage_recovery': {'failure_diagnostic': {**LIMIT['failure_diagnostic'], 'reset_at': reset}}}
+    for response in (compact(run), monitor(run), history_page([run])['runs'][0]):
+        assert 'reset_at' not in response['usage_limit_recovery']['failure_diagnostic']
+
+
+def test_oversized_iso_reset_is_omitted_from_bounded_projection():
+    import json
+    from polybridge.backends.workflow_diagnostics import valid_reset_value
+    from polybridge.workflow_responses import BUDGET, compact
+    reset = '2026-10-10T01:02:03.' + '1' * 30000 + 'Z'
+    assert not valid_reset_value(reset)
+    run = {'workflow_run_id': 'r', 'status': 'needs_input', 'orchestrator_usage_recovery': {'failure_diagnostic': {**LIMIT['failure_diagnostic'], 'reset_at': reset}}}
+    response = compact(run)
+    assert 'reset_at' not in response['usage_limit_recovery']['failure_diagnostic']
+    assert len(json.dumps(response).encode()) < BUDGET

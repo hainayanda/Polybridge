@@ -119,7 +119,7 @@ def usage_limit(event: dict[str, Any], *, envelope: str, claude: bool = False, a
     info = event.get("rate_limit_info")
     if claude and event.get("type") == "rate_limit_event" and isinstance(info, dict) and info.get("status") == "rejected":
         result = {"category": "usage_limit", "reason": USAGE_LIMIT_REASON, "source": "stream:rate_limit_event"}
-        if _reset_value(info.get("resetsAt")):
+        if valid_reset_value(info.get("resetsAt")):
             result["reset_at"] = info["resetsAt"]
         return result
     if agy:
@@ -146,7 +146,7 @@ def usage_limit(event: dict[str, Any], *, envelope: str, claude: bool = False, a
         return None
     diagnostic = {"category": "usage_limit", "reason": USAGE_LIMIT_REASON, "source": "stream:" + ("result" if agy else envelope)}
     reset = error.get("reset_at", data.get("reset_at"))
-    if _reset_value(reset):
+    if valid_reset_value(reset):
         diagnostic["reset_at"] = reset
     return diagnostic
 
@@ -162,10 +162,13 @@ def stderr_usage_limit(line: str, *, claude: bool = False) -> dict[str, Any] | N
     return {"category": "usage_limit", "reason": USAGE_LIMIT_REASON, "source": "stderr"}
 
 
-def _reset_value(value: Any) -> bool:
+def valid_reset_value(value: Any) -> bool:
     if type(value) in (int, float):
-        return math.isfinite(value)
-    if not isinstance(value, str) or not re.fullmatch(
+        try:
+            return math.isfinite(value)
+        except OverflowError:
+            return False
+    if not isinstance(value, str) or len(value) > 100 or not re.fullmatch(
         r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)", value
     ):
         return False
