@@ -21,6 +21,7 @@ class CertifiedAdapter:
 @pytest.fixture
 def certified(monkeypatch):
     monkeypatch.setattr("polybridge.backends.native.adapter", lambda backend: CertifiedAdapter())
+    monkeypatch.setattr(w.backends, "version", lambda _: "certified")
 
 
 def definition(name, access="write_in_repo"):
@@ -172,3 +173,20 @@ def test_current_collection_still_rejects_cycles(certified):
         parent["nodes"].append({"id": "call", "type": "workflow", "workflow_ref": {"workflow_id": target["workflow_id"]}, "orchestrator_mode": "current"})
     with pytest.raises(ValueError, match="Cyclic"):
         plan_owner_contracts(root, {"workflows": {"child": {"definition": child}}})
+
+
+def test_planning_caches_backend_versions_per_operation(certified, monkeypatch):
+    calls = []
+    def version(backend):
+        calls.append(backend.name)
+        return "certified"
+    monkeypatch.setattr(w.backends, "version", version)
+    root = definition("root")
+    for index in range(50):
+        node = copy.deepcopy(root["nodes"][1])
+        node["id"] = f"node-{index}"
+        root["nodes"].append(node)
+    plan_owner_contracts(root)
+    assert len(calls) == 1
+    plan_owner_contracts(root)
+    assert len(calls) == 2  # A new preview/start gets fresh evidence.

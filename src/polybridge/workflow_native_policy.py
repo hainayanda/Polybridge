@@ -45,6 +45,12 @@ def plan_owner_contracts(definition: dict[str, Any], tree: dict[str, Any] | None
     definitions = {ident: entry["definition"] for ident, entry in (tree or {}).get("workflows", {}).items()}
     definitions[root_id] = definition
     owners: dict[str, Any] = {}
+    versions: dict[str, str | None] = {}
+
+    def compatible(native: Any, parent: Any, item: dict[str, Any]) -> str | None:
+        if parent.backend not in versions:
+            versions[parent.backend] = backends.version(backends.get(parent.backend))
+        return native.eligible(parent, item["candidate"], {"freedom": item["freedom"], "network": item["network"], "session_mode": "fresh", "backend_version": versions[parent.backend]})
 
     def collect(ident: str, path: list[str], seen: set[str]) -> tuple[list[dict[str, Any]], list[str]]:
         if ident in path:
@@ -99,7 +105,7 @@ def plan_owner_contracts(definition: dict[str, Any], tree: dict[str, Any] | None
                     owner_freedom, owner_network = _requirements([item], network)
                     parent = SimpleNamespace(**{key: candidate.get(key) for key in ("backend", "model", "reasoning_effort", "max_turns")}, freedom=owner_freedom, network=owner_network)
                     try:
-                        reason = native.eligible(parent, item["candidate"], {"freedom": item["freedom"], "network": item["network"], "session_mode": "fresh"})
+                        reason = compatible(native, parent, item)
                     except (ValueError, OSError) as exc:
                         reason = "Native compatibility cannot be verified: " + str(exc)
                 outcome = {key: copy.deepcopy(item[key]) for key in ("workflow_id", "node_id", "title", "freedom", "network", "candidate", "candidate_position")}
@@ -115,7 +121,7 @@ def plan_owner_contracts(definition: dict[str, Any], tree: dict[str, Any] | None
                 rejected = []
                 for item in accepted:
                     try:
-                        reason = native.eligible(parent, item["candidate"], {"freedom": item["freedom"], "network": item["network"], "session_mode": "fresh"})
+                        reason = compatible(native, parent, item)
                     except (ValueError, OSError) as exc:
                         reason = "Native compatibility cannot be verified: " + str(exc)
                     if reason:

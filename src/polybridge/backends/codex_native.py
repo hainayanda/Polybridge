@@ -126,7 +126,7 @@ class CodexNativeAdapter:
 
     def eligible(self, parent: Any, candidate: dict[str, Any], settings: dict[str, Any]) -> str | None:
         from . import get, version
-        measured = version(get(parent.backend))
+        measured = settings["backend_version"] if "backend_version" in settings else version(get(parent.backend))
         if measured != f"codex-cli {CERTIFIED_VERSION}":
             return f"Native execution is certified only for Codex CLI {CERTIFIED_VERSION}"
         if parent.freedom not in {"read_only", "write_in_repo"} or settings["freedom"] not in {"read_only", "write_in_repo"}:

@@ -46,7 +46,7 @@ class ClaudeNativeAdapter:
 
     def eligible(self, parent: Any, candidate: dict[str, Any], settings: dict[str, Any]) -> str | None:
         from . import version, get
-        measured = version(get(parent.backend))
+        measured = settings["backend_version"] if "backend_version" in settings else version(get(parent.backend))
         if not measured or measured.split()[0] != CERTIFIED_VERSION:
             return f"Native execution is certified only for Claude Code {CERTIFIED_VERSION}"
         if settings["freedom"] not in {"read_only", "write_in_repo"} or parent.freedom not in {"read_only", "write_in_repo"}:

@@ -23,3 +23,15 @@ def test_codex_narrowing_requires_headless_because_cli_inherits_owner_sandbox(mo
     parent = SimpleNamespace(backend="codex", freedom="write_in_repo", network=False, model="gpt-6.1-sol", reasoning_effort=None, max_turns=None)
     reason = CodexNativeAdapter().eligible(parent, {"model": parent.model}, {"freedom": "read_only", "network": False})
     assert "inherits" in reason
+
+
+@pytest.mark.parametrize("adapter,backend", [(ClaudeNativeAdapter(), "claude"), (CodexNativeAdapter(), "codex")])
+def test_cached_unavailable_version_is_not_remeasured_but_runtime_is_fresh(monkeypatch, adapter, backend):
+    calls = []
+    monkeypatch.setattr(backends, "version", lambda harness: calls.append(harness) or None)
+    parent = SimpleNamespace(backend=backend)
+    assert adapter.eligible(parent, {}, {"backend_version": None})
+    assert calls == []
+    assert adapter.eligible(parent, {}, {})
+    assert adapter.eligible(parent, {}, {})
+    assert len(calls) == 2

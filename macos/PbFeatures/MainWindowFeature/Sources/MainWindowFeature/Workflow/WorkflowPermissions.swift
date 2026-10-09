@@ -58,7 +58,7 @@ struct WorkflowPermissionsModel: Equatable {
                     let model = candidate["model"]?.stringValue.map { " · " + $0 } ?? ""
                     return title + " · " + role + " · " + harness + model + ": " + reason
                 }
-                let network = plan["network"]?.boolValue.map { $0 ? "Allowed" : "Blocked" } ?? "Harness default"
+                let network = plan["network"]?.boolValue.map { $0 ? "Requested on" : "Requested off" } ?? "Harness default request"
                 result.append(Candidate(id: ownerID + ":" + key, title: title,
                                         access: WorkflowAccess.title(freedom), network: network,
                                         contributingNodes: Array(Set(names)).sorted(), fallbacks: fallbacks))
@@ -88,6 +88,7 @@ struct WorkflowPermissionsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(candidate.title).font(.pb(.secondary, weight: .semibold))
                     Text("\(candidate.access) · Network: \(candidate.network)")
+                    Text("Network enforcement depends on the harness.")
                     if candidate.contributingNodes.isEmpty {
                         Text("No native workers expand this orchestrator's access.")
                     } else {

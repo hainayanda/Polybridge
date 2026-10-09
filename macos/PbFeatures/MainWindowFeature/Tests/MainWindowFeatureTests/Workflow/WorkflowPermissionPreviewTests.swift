@@ -34,7 +34,7 @@ extension WorkflowTests {
         let candidate = try #require(preview.permissions.candidates.first)
         // then
         #expect(candidate.access == "Write in repository")
-        #expect(candidate.network == "Blocked")
+        #expect(candidate.network == "Requested off")
         #expect(candidate.contributingNodes == ["Implementation"])
         #expect(candidate.fallbacks == ["Review: Different harness"])
         #expect(WorkflowRunModel(raw: [:]).orchestratorPermissions == nil)

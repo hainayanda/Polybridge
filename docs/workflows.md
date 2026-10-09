@@ -85,7 +85,8 @@ candidates. Current-mode child workflows contribute recursively to that same own
 workflows receive separate owner contracts. A mismatched Headless worker never expands its owner's
 access. Primary/fallback order is preserved: a matching fallback does not skip an available primary.
 
-The Run sheet shows effective access, network, contributing nodes and Headless fallback reasons.
+The Run sheet shows access, the network request, contributing nodes and Headless fallback reasons.
+Network enforcement depends on the harness; a request to disable it is not an enforced block.
 These permissions also apply to the orchestrator itself, which is instructed to coordinate.
 Permissions remain fixed for that owner session across optional branches and retries. Preview
 changes invalidate Run until the summary refreshes; the start request verifies its preview hash.
