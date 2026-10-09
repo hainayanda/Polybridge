@@ -9,16 +9,30 @@ import SwiftUI
 public struct GroupRow: View {
     public let group: ParallelGroup
     private let conversations: [Conversation]
+    /// The sidebar's presentation-only appearance (SPEC §6.1), or `nil` for the shared default
+    /// rendering every other consumer (MenuBar today) relies on.
+    private let sidebarAppearance: SidebarRowAppearance?
     @Environment(\.backgroundProminence) private var prominence
 
-    /// Accepts the screen's actual-session projection while preserving ordinary group rendering by default.
-    public init(group: ParallelGroup, conversations: [Conversation]? = nil) {
+    /// - Parameters:
+    ///   - group: the parallel group to render.
+    ///   - conversations: the screen's actual-session projection; defaults to the group's own.
+    ///   - sidebarAppearance: the sidebar's presentation-only configuration, or `nil` for the
+    ///     unchanged default rendering.
+    public init(group: ParallelGroup, conversations: [Conversation]? = nil, sidebarAppearance: SidebarRowAppearance? = nil) {
         self.group = group
         self.conversations = conversations ?? group.conversations
+        self.sidebarAppearance = sidebarAppearance
     }
 
     private var total: Int { conversations.count }
-    private var doneCount: Int { conversations.filter(\.current.status.isTerminal).count }
+    private var doneCount: Int { Self.finishedCount(of: conversations.map(\.current.status)) }
+
+    /// Terminal members — done, failed, cancelled, timed out — all count as "finished": the count
+    /// says "this member has settled", never "succeeded" (SPEC §1.6 keeps the honest word).
+    public nonisolated static func finishedCount(of statuses: [TaskStatus]) -> Int {
+        statuses.filter(\.isTerminal).count
+    }
 
     /// "Parallel run · N of M finished" — or, for a group of one, "Group · <status>", since a
     /// single member is not a parallel run.
@@ -37,26 +51,68 @@ public struct GroupRow: View {
         anyRunning
     }
 
-    public var body: some View {
-        HStack(spacing: 8) {
-            BackendDotStack(backends: conversations.prefix(3).map(\.first.backend))
-            VStack(alignment: .leading, spacing: 3) {
-                Text(group.name).font(.pb(.body, weight: .medium)).lineLimit(1)
-                Text(Self.subtitle(finished: doneCount, total: total, singleMemberStatus: conversations.first?.current.status))
-                    .font(.pb(.caption))
-                    .foregroundStyle(Color.secondaryText(on: prominence))
-                    .lineLimit(1)
-                if Self.showsProgress(anyRunning: group.anyRunning) {
-                    ProgressView(value: Self.progress(finished: doneCount, total: total))
-                        .progressViewStyle(.linear)
-                        .controlSize(.mini)
-                        .tint(prominence == .increased ? Color.white : Color.runningFG)
+    @ViewBuilder
+    private var title: some View {
+        // The sidebar's title is full-contrast `primaryText` (§6.1); the default keeps no
+        // explicit style so other consumers inherit the system label colour untouched.
+        switch sidebarAppearance {
+        case .some:
+            Text(group.name)
+.font(.pb(.body, weight: .medium))
+.lineLimit(1)
+                .foregroundStyle(prominence == .increased ? Color.onAccent : Color.primaryText)
+        case nil:
+            Text(group.name).font(.pb(.body, weight: .medium)).lineLimit(1)
+        }
+    }
+
+    /// The in-flight bar: the sidebar's 3 pt strip in `runningFG` (§6.1); the shared default keeps
+    /// the system mini linear progress view.
+    @ViewBuilder
+    private var progress: some View {
+        switch sidebarAppearance {
+        case .some:
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.pillFill)
+                    Capsule()
+                        .fill(prominence == .increased ? Color.onAccent : Color.runningFG)
+                        .frame(width: proxy.size.width * Self.progress(finished: doneCount, total: total))
                 }
             }
-            Spacer(minLength: 4)
-            if group.anyRunning { RunningSpinner(tint: prominence == .increased ? .white : nil) }
+            .frame(height: PbRadius.Metrics.sidebarProgressHeight)
+            .accessibilityHidden(true)
+        case nil:
+            ProgressView(value: Self.progress(finished: doneCount, total: total))
+                .progressViewStyle(.linear)
+                .controlSize(.mini)
+                .tint(prominence == .increased ? Color.onAccent : Color.runningFG)
         }
-        .padding(.vertical, 6)
+    }
+
+    public var body: some View {
+        HStack(spacing: PbRadius.Metrics.rowItemSpacing) {
+            BackendDotStack(backends: conversations.prefix(3).map(\.first.backend))
+            VStack(alignment: .leading, spacing: PbRadius.Metrics.rowLineSpacing) {
+                title
+                subtitleText
+                if Self.showsProgress(anyRunning: group.anyRunning) {
+                    progress
+                }
+            }
+            Spacer(minLength: PbRadius.Metrics.spacing4)
+            if group.anyRunning { RunningSpinner(tint: prominence == .increased ? .onAccent : nil) }
+        }
+        .padding(.vertical, sidebarAppearance == nil ? PbRadius.Metrics.rowPaddingVertical : PbRadius.Metrics.sidebarRowPaddingVertical)
+    }
+
+    @ViewBuilder
+    private var subtitleText: some View {
+        let text = Text(Self.subtitle(finished: doneCount, total: total, singleMemberStatus: conversations.first?.current.status))
+            .font(.pb(sidebarAppearance == nil ? .caption : .secondary))
+            .foregroundStyle(Color.secondaryText(on: prominence))
+            .lineLimit(1)
+        if sidebarAppearance == nil { text } else { text.monospacedDigit() }
     }
 }
 
@@ -77,6 +133,51 @@ public struct GroupRow: View {
     GroupRowPreview(finished: true).preferredColorScheme(.dark)
 }
 
+/// The sidebar's group row (§6.1): full-contrast title and the 3 pt `runningFG` strip.
+#Preview("GroupRow sidebar - light") {
+    GroupRowSidebarPreview().preferredColorScheme(.light)
+}
+
+#Preview("GroupRow sidebar - dark") {
+    GroupRowSidebarPreview().preferredColorScheme(.dark)
+}
+
+/// A settled group in the sidebar — no progress strip, no spinner, the honest "finished" count.
+#Preview("GroupRow sidebar finished - light") {
+    GroupRowSidebarPreview(finished: true).preferredColorScheme(.light)
+}
+
+#Preview("GroupRow sidebar finished - dark") {
+    GroupRowSidebarPreview(finished: true).preferredColorScheme(.dark)
+}
+
+/// The sidebar's group row under Reduce Motion — the spinner holds still.
+#Preview("GroupRow sidebar - Reduce Motion") {
+    GroupRowSidebarPreview()
+        .preferredColorScheme(.dark)
+        .environment(\.pbReduceMotionOverride, true)
+}
+
+private struct GroupRowSidebarPreview: View {
+    var finished = false
+
+    var body: some View {
+        // `ParallelGroup`/`TaskNode` have no public initializer (MonitorCore builds them internally),
+        // so the preview goes through the same public `Lineage.sections` entry point the app uses.
+        let tasks = [
+            TaskInfo(.object([
+                "task_id": .string("abc123"), "backend": .string("claude"), "status": .string(finished ? "failed" : "running"),
+                "group": .string("release-notes")
+            ]))!,
+            TaskInfo(.object(["task_id": .string("def456"), "backend": .string("codex"), "status": .string("cancelled"), "group": .string("release-notes")]))!
+        ]
+        GroupRow(group: Lineage.sections(tasks).parallel.first!, sidebarAppearance: SidebarRowAppearance())
+            .padding(PbRadius.Metrics.spacing16)
+            .frame(width: PbRadius.Metrics.groupPreviewWidth)
+            .background(Color.sidebarBG)
+    }
+}
+
 private struct GroupRowPreview: View {
     var finished = false
 
@@ -91,8 +192,8 @@ private struct GroupRowPreview: View {
             TaskInfo(.object(["task_id": .string("def456"), "backend": .string("codex"), "status": .string("completed"), "group": .string("release-notes")]))!
         ]
         GroupRow(group: Lineage.sections(tasks).parallel.first!)
-            .padding()
-            .frame(width: 280)
+            .padding(PbRadius.Metrics.spacing16)
+            .frame(width: PbRadius.Metrics.groupPreviewWidth)
             .background(Color.sidebarBG)
     }
 }

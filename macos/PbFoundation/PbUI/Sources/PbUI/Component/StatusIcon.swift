@@ -10,12 +10,20 @@ import SwiftUI
 /// selection) turns the icon white so it doesn't vanish into the highlight.
 public struct StatusIcon: View {
     public let status: TaskStatus
+    /// The icon's square frame — a presentation-only input; the sidebar passes its 15 pt metric
+    /// (§6.1) while every other consumer keeps the shared 16 pt default. The glyph itself and the
+    /// accessibility label never change with it.
+    private let size: CGFloat
     /// `.increased` on a selected, emphasized List row (a solid accent highlight): the icon turns
     /// white there so it doesn't vanish into the highlight.
     @Environment(\.backgroundProminence) private var prominence
 
-    public init(status: TaskStatus) {
+    /// - Parameters:
+    ///   - status: the task status to draw.
+    ///   - size: the icon's square frame, 16 pt by default.
+    public init(status: TaskStatus, size: CGFloat = PbRadius.Metrics.statusIconSize) {
         self.status = status
+        self.size = size
     }
 
     /// The SF Symbol for a terminal or unknown status; `nil` while running or settling (a spinner
@@ -67,7 +75,7 @@ public struct StatusIcon: View {
                 RunningSpinner(tint: prominence == .increased ? .onAccent : nil)
             }
         }
-        .frame(width: PbRadius.Metrics.statusIconSize, height: PbRadius.Metrics.statusIconSize)
+        .frame(width: size, height: size)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(status.label)
     }
@@ -156,5 +164,28 @@ private struct StatusIconsPreview: View {
     .padding()
     .background(Color.windowBG)
     .environment(\.pbReduceMotionOverride, true)
+}
+
+/// The sidebar's 15 pt frame (§6.1) beside the shared 16 pt default — the glyph and semantics are
+/// identical, only the frame shrinks.
+#Preview("StatusIcon sidebar size - light") {
+    StatusIconSidebarSizePreview().preferredColorScheme(.light)
+}
+
+#Preview("StatusIcon sidebar size - dark") {
+    StatusIconSidebarSizePreview().preferredColorScheme(.dark)
+}
+
+private struct StatusIconSidebarSizePreview: View {
+    var body: some View {
+        HStack(spacing: PbRadius.Metrics.spacing12) {
+            StatusIcon(status: .completed)
+            StatusIcon(status: .completed, size: PbRadius.Metrics.sidebarStatusIconSize)
+            StatusIcon(status: .running)
+            StatusIcon(status: .running, size: PbRadius.Metrics.sidebarStatusIconSize)
+        }
+        .padding()
+        .background(Color.sidebarBG)
+    }
 }
 #endif

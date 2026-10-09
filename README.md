@@ -93,7 +93,9 @@ including standalone and embedded task views. Monitor offers Cancel for its own 
 and idle caller-owned workflows; linked child views route cancellation to the root.
 See [workflow interaction and recovery](docs/workflows.md) for eligibility and cancellation outcomes.
 
-Older sidebar history loads automatically when you scroll to the bottom.
+The sidebar has a fixed **New session** button (⌘N) above search and the compact backend filter.
+Older sidebar history loads automatically when you scroll to the bottom, and a **Load older**
+control offers the same request manually while more pages remain.
 Initial activity reads and summary scans share a four-job loading limit; large Parallel groups
 retain complete membership while queued feeds prepare in order.
 History indexing recovers automatically while Monitor retains loaded content. Blocked histories

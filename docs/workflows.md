@@ -1309,13 +1309,16 @@ before an explicit workflow recovery action.
 ### Bounded task, execution and activity history
 
 Monitor loads recent task and workflow headers in pages of 100, separately from live active
-updates. Scrolling to the bottom of the sidebar automatically requests older pages. Task and
+updates. Scrolling to the bottom of the sidebar automatically requests older pages, and a
+**Load older** control per source requests the next page manually while more history exists.
+Task and
 workflow history each allow one request at a time; loading pauses on errors or blocked indexing,
 with an explicit **Retry** action. Search and backend filters still apply locally to loaded history;
 scrolling can bring more matching rows into that history. Ordinary refreshes merge by stable identity
 and retain loaded pages. Direct ID lookup can reveal an execution outside the loaded page, including
 its ancestor and orchestrator session-owner headers. Root-tree totals do not depend on which
-historical page is visible. Loading, indexing, retry and end states remain explicit.
+historical page is visible. Loading, indexing and retry states remain explicit; exhausted history
+simply ends without an end-of-history row.
 
 `task-list-page` and `workflow-list-page` use opaque chronology cursors rather than shifting
 array offsets. Existing listing callers retain their original interfaces. A compact local catalog

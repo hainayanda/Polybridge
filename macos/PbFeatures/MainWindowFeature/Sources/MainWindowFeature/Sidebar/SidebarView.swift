@@ -2,10 +2,12 @@
 //  SidebarView.swift
 //  MainWindowFeature
 //
-//  Header ("+" and a rounded search field), a fixed "All agents" filter menu row, the Running /
-//  Today / Earlier list (whole trees and parallel groups, settled plan D10), and a connection
-//  footer. Search is trimmed, lowercased and case-insensitive over title/ID/repo; the backend
-//  filter composes with lineage retention. `SettingsLink` stays.
+//  The redesigned sidebar (Monitor redesign Phase 1, SPEC §6.1): a fixed New session button (the
+//  old toolbar "+" action) above the search field and the compact backend-dot filter, the Running /
+//  Today / Earlier list (whole trees and parallel groups, settled plan D10), history diagnostics
+//  with a manual Load older control while more pages exist, and a connection footer. Search is
+//  trimmed, lowercased and case-insensitive over title/ID/repo; the backend filter composes with
+//  lineage retention. `SettingsLink` stays.
 //
 
 import MonitorCore
@@ -117,25 +119,13 @@ struct SidebarView<VM: SidebarViewModel>: View {
         list
             // Let the native sidebar List own the titlebar safe area. A surrounding VStack
             // can be extended underneath the unified toolbar when leaving full screen.
-            .safeAreaInset(edge: .top, spacing: 0) {
-                VStack(spacing: 0) {
-                    header
-                    filterRow
-                }
-                .background(.bar)
+            .safeAreaInset(edge: .top, spacing: PbRadius.Metrics.zero) {
+                header.background(.bar)
             }
-            .safeAreaInset(edge: .bottom, spacing: 0) { footer.background(.bar) }
-        // New session lives in the sidebar column's toolbar, beside the show/hide-sidebar button.
-        .toolbar {
-            ToolbarItem(placement: .automatic) {
-                Button {
-                    viewModel.didTapNewSession()
-                } label: {
-                    Label("New session", systemImage: "plus")
-                }
-                .help("New session")
-            }
-        }
+            .safeAreaInset(edge: .bottom, spacing: PbRadius.Metrics.zero) { footer.background(.bar) }
+        // New session moved from the toolbar into the column itself (SPEC §6.1): the same
+        // `didTapNewSession` action, now a fixed full-width button above the search field — never
+        // a scrollable List row. The window controls and the sidebar toggle stay system-owned.
         .onAppear { viewModel.didAppear() }
         .onDisappear { viewModel.didDisappear() }
         .publishViewEvent(from: viewModel, to: viewEvent)
@@ -143,56 +133,96 @@ struct SidebarView<VM: SidebarViewModel>: View {
 
     // MARK: - Private Views
 
+    /// The fixed controls above the list: the full-width New session button, then the search field
+    /// beside the compact backend-dot filter, then the degraded-catalog note when there is one.
     private var header: some View {
-        HStack(spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass").foregroundStyle(Color.secondaryText)
-                TextField("Search loaded history", text: Binding(get: { viewModel.searchQuery }, set: { viewModel.didChangeSearchQuery($0) }))
-                    .textFieldStyle(.plain)
+        VStack(spacing: PbRadius.Metrics.spacing8) {
+            newSessionButton
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: PbRadius.Metrics.spacing6) {
+                    searchField.frame(minWidth: PbRadius.Metrics.sidebarSearchMinimumWidth)
+                    backendFilterMenu.fixedSize()
+                }
+                VStack(alignment: .leading, spacing: PbRadius.Metrics.spacing6) {
+                    searchField
+                    backendFilterMenu
+                }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: PbRadius.row).fill(Color.pillFill))
+            if let note = viewModel.catalogUnavailableNote {
+                Text(note)
+                    .font(.pb(.caption))
+                    .foregroundStyle(Color.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
-        .padding(.bottom, 8)
+        .padding(.horizontal, PbRadius.Metrics.spacing16)
+        .padding(.top, PbRadius.Metrics.spacing12)
+        .padding(.bottom, PbRadius.Metrics.spacing8)
     }
 
-    /// The backend filter: always visible, even while the list below is empty.
-    private var filterRow: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Menu {
-                ForEach(viewModel.backendTabs) { tab in
-                    Button {
-                        viewModel.didSelectBackendFilter(tab.id)
-                    } label: {
-                        if tab.id == viewModel.selectedBackend {
-                            Label(menuTitle(for: tab), systemImage: "checkmark")
-                        } else {
-                            Text(menuTitle(for: tab))
-                        }
+    /// The sidebar's New session control: the existing action today's toolbar "+" performs, with the
+    /// app-owned ⌘N shortcut shown as a display-only hint — no new `keyboardShortcut` is attached
+    /// here, because the shortcut already belongs to the app's command handling. VoiceOver hears
+    /// the plain "New session" label; the hint is hidden from it.
+    private var newSessionButton: some View {
+        Button(action: { viewModel.didTapNewSession() }) {
+            HStack(spacing: PbRadius.Metrics.spacing8) {
+                Image(systemName: "plus")
+                    .font(.pb(.body, weight: .semibold))
+                    .foregroundStyle(Color.accentLink)
+                Text("New session")
+                Spacer(minLength: PbRadius.Metrics.spacing4)
+                Text("⌘N")
+                    .font(.pb(.caption))
+                    .foregroundStyle(Color.tertiaryText)
+                    .accessibilityHidden(true)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(MonitorButtonStyle(.glass))
+        .help("New session")
+        .accessibilityLabel("New session")
+    }
+
+    private var searchField: some View {
+        HStack(spacing: PbRadius.Metrics.spacing6) {
+            Image(systemName: "magnifyingglass").foregroundStyle(Color.secondaryText)
+            TextField("Search loaded history", text: Binding(get: { viewModel.searchQuery }, set: { viewModel.didChangeSearchQuery($0) }))
+                .textFieldStyle(.plain)
+        }
+        .padding(.horizontal, PbRadius.Metrics.spacing10)
+        .padding(.vertical, PbRadius.Metrics.spacing6)
+        .background(RoundedRectangle(cornerRadius: PbRadius.row).fill(Color.pillFill))
+    }
+
+    /// The backend filter as a compact control beside the search field: one dot per catalog entry
+    /// besides "all" (unknown and history-only backends included), the selected name, and a
+    /// chevron. The menu's choices, not-found titles, accessibility value and the degraded-catalog
+    /// note are exactly today's.
+    private var backendFilterMenu: some View {
+        Menu {
+            ForEach(viewModel.backendTabs) { tab in
+                Button {
+                    viewModel.didSelectBackendFilter(tab.id)
+                } label: {
+                    if tab.id == viewModel.selectedBackend {
+                        Label(menuTitle(for: tab), systemImage: "checkmark")
+                    } else {
+                        Text(menuTitle(for: tab))
                     }
                 }
-            } label: {
-                HStack(spacing: 3) {
-                    Text(selectedTitle).font(.pb(.secondary, weight: .medium))
-                    Image(systemName: "chevron.down").font(.pb(.caption, weight: .semibold))
-                }
-                .foregroundStyle(Color.secondaryText)
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .accessibilityLabel("Backend filter")
-            .accessibilityValue(selectedTitle)
-            if let note = viewModel.catalogUnavailableNote {
-                Text(note).font(.pb(.caption)).foregroundStyle(Color.secondaryText)
-            }
+        } label: {
+            SidebarBackendFilterLabel(
+                backendIDs: viewModel.backendTabs.filter { $0.id != "all" }.map(\.id),
+                selectedTitle: viewModel.selectedBackend == "all" ? nil : selectedTitle
+            )
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 16)
-        .padding(.bottom, 6)
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityLabel("Backend filter")
+        .accessibilityValue(selectedTitle)
     }
 
     private var selectedTitle: String {
@@ -205,20 +235,24 @@ struct SidebarView<VM: SidebarViewModel>: View {
         return tab.isNotFound ? "\(name) (not found on PATH)" : name
     }
 
+    /// One source's history surface (SPEC §4): the blocked/partial-history diagnostics, the
+    /// loading indicator, the error with its retry, and — only while more history actually exists
+    /// — the manual "Load older" control. The exhausted end-of-history row is gone: history that
+    /// has nothing left to show or retry renders nothing at all.
     private func historyControl(_ source: String, state: HistoryLoadingState, action: @escaping () -> Void) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: PbRadius.Metrics.spacing4) {
             if state.catalogState.status == .blocked {
                 Text(state.catalogState.reason ?? "History indexing is blocked. Resolve the reported record issue, then retry.")
                     .font(.pb(.caption))
-.foregroundStyle(Color.warningFG)
+                    .foregroundStyle(Color.warningFG)
             } else if state.authorityIncomplete {
                 Text("History is blocked by a large legacy record. Inspect a known task directly to restore access.")
                     .font(.pb(.caption))
-.foregroundStyle(Color.secondaryText)
+                    .foregroundStyle(Color.secondaryText)
             } else if state.historyIncomplete {
                 Text("Some large legacy records need direct inspection; history ordering is incomplete.")
                     .font(.pb(.caption))
-.foregroundStyle(Color.secondaryText)
+                    .foregroundStyle(Color.secondaryText)
             }
             if state.isLoading {
                 LoadingLabel("Loading \(source.lowercased())…")
@@ -231,11 +265,16 @@ struct SidebarView<VM: SidebarViewModel>: View {
                 Text("Preparing \(source.lowercased()) history…").font(.pb(.caption))
                 Button("Retry \(source.lowercased())", action: action)
             } else if state.hasMore {
-                Text("Scroll to load more \(source.lowercased())").font(.pb(.caption)).foregroundStyle(Color.secondaryText)
-            } else {
-                Text("End of loaded \(source.lowercased()) history").font(.pb(.caption)).foregroundStyle(Color.secondaryText)
+                Button("Load older \(source.lowercased())", action: action)
             }
-        }.frame(minHeight: max(20, minimumRowHeight), alignment: .leading)
+        }.frame(minHeight: max(PbRadius.Metrics.sidebarHistoryMinimumHeight, minimumRowHeight), alignment: .leading)
+    }
+
+    /// Whether a source still owes the person anything: a diagnostic, a retry, a load in flight, or
+    /// a further page. Settled, exhausted history renders no rows and no header at all.
+    private func needsPresentation(_ state: HistoryLoadingState) -> Bool {
+        state.catalogState.status == .blocked || state.authorityIncomplete || state.historyIncomplete
+            || state.isLoading || state.error != nil || state.bootstrapPending || state.hasMore
     }
 
     private var list: some View {
@@ -270,26 +309,37 @@ struct SidebarView<VM: SidebarViewModel>: View {
                                 .allowsHitTesting(!fadingRowIDs.contains(item.id))
                                 .accessibilityHidden(fadingRowIDs.contains(item.id))
                                 .onAppear { seenRowIDs.insert(item.id) }
-                                .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
+                                .listRowInsets(EdgeInsets(
+                                    top: PbRadius.Metrics.zero, leading: PbRadius.Metrics.sidebarRowInsetHorizontal,
+                                    bottom: PbRadius.Metrics.zero, trailing: PbRadius.Metrics.sidebarRowInsetHorizontal
+                                ))
                         }
                     } header: {
-                        SectionLabel(text: section.title)
+                        SidebarSectionHeading(text: section.title)
                     }
                 }
-                Section("History") {
-                    historyControl("Tasks", state: viewModel.taskHistoryState, action: viewModel.didTapLoadMoreTasks)
-                    historyControl("Workflows", state: viewModel.workflowHistoryState, action: viewModel.didTapLoadMoreWorkflows)
+                if needsPresentation(viewModel.taskHistoryState) || needsPresentation(viewModel.workflowHistoryState) {
+                    Section {
+                        if needsPresentation(viewModel.taskHistoryState) {
+                            historyControl("Tasks", state: viewModel.taskHistoryState, action: viewModel.didTapLoadMoreTasks)
+                        }
+                        if needsPresentation(viewModel.workflowHistoryState) {
+                            historyControl("Workflows", state: viewModel.workflowHistoryState, action: viewModel.didTapLoadMoreWorkflows)
+                        }
+                    } header: {
+                        SidebarSectionHeading(text: "History")
+                    }
                 }
                 if let message = viewModel.emptyStateMessage {
                     Text(message)
                         .font(.pb(.body))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.secondaryText)
                         .lineLimit(nil)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 Color.clear
-.frame(height: 1)
+.frame(height: PbRadius.Metrics.hairlineStroke)
                     .background(GeometryReader { geometry in
                         Color.clear.preference(key: SidebarHistoryViewportKey.self,
                             value: SidebarHistoryViewport(bottom: geometry.frame(in: .global),
@@ -309,7 +359,7 @@ struct SidebarView<VM: SidebarViewModel>: View {
         .listStyle(.sidebar)
         // The first section header ("Running" whenever anything runs) otherwise sits flush against
         // the list's top edge and is clipped under the filter row.
-        .padding(.top, 8)
+        .padding(.top, PbRadius.Metrics.spacing8)
         // Native List otherwise keeps closed rows at its minimum height until deletion.
         .environment(\.defaultMinListRowHeight, 0)
         .animation(PbMotion.disclosure(reduceMotion: reduceMotion), value: expansionToken)
@@ -340,19 +390,19 @@ struct SidebarView<VM: SidebarViewModel>: View {
     private func itemView(_ item: SidebarItem) -> some View {
         switch item {
         case .task(let row):
-            TaskRow(model: row, onToggleExpansion: row.hasChildren ? { toggleExpansion(row.id) } : nil)
+            TaskRow(model: row, onToggleExpansion: row.hasChildren ? { toggleExpansion(row.id) } : nil, sidebarAppearance: SidebarRowAppearance())
                 .tag(MonitorDestination.task(row.id))
         case .group(let group):
-            HStack(spacing: 8) {
-                GroupRow(group: group.group, conversations: group.conversations)
+            HStack(spacing: PbRadius.Metrics.rowItemSpacing) {
+                GroupRow(group: group.group, conversations: group.conversations, sidebarAppearance: SidebarRowAppearance())
                 if group.conversations.count > 1 {
                     Button { toggleExpansion(group.id) } label: {
                         Image(systemName: "chevron.right")
                             .rotationEffect(.degrees(group.isExpanded ? 90 : 0))
                             .animation(PbMotion.disclosure(reduceMotion: reduceMotion), value: group.isExpanded)
                             .font(.pb(.caption, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 16, height: 16)
+                            .foregroundStyle(Color.secondaryText)
+                            .frame(width: PbRadius.Metrics.rowChevronFrame, height: PbRadius.Metrics.rowChevronFrame)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.borderless)
@@ -361,13 +411,22 @@ struct SidebarView<VM: SidebarViewModel>: View {
                 }
             }.tag(MonitorDestination.group(group.name))
         case .workflow(let row):
-            TaskRow(model: row, onToggleExpansion: row.hasChildren ? { toggleExpansion("workflow:\(row.id)") } : nil)
+            // A workflow run's duplicate alias fill: `selectedRow` where the old accent tint was,
+            // still painted below the native selection NSOutlineView draws above it. The row's
+            // timestamps render secondary there — tertiary misses 4.5:1 on this fill in dark.
+            TaskRow(
+                model: row,
+                onToggleExpansion: row.hasChildren ? { toggleExpansion("workflow:\(row.id)") } : nil,
+                sidebarAppearance: SidebarRowAppearance(isSelectedFill: item.isSelected(viewModel.selection))
+            )
                 .tag(item.destination)
-                .listRowBackground(item.isSelected(viewModel.selection) ? Color.accentColor.opacity(0.18) : Color.clear)
+                .listRowBackground(RoundedRectangle(cornerRadius: PbRadius.row)
+                    .fill(item.isSelected(viewModel.selection) ? Color.selectedRow : Color.clear))
         case .workflowShortcut(let row, _):
-            TaskRow(model: row)
+            TaskRow(model: row, sidebarAppearance: SidebarRowAppearance(isSelectedFill: item.isSelected(viewModel.selection)))
                 .tag(item.destination)
-                .listRowBackground(item.isSelected(viewModel.selection) ? Color.accentColor.opacity(0.18) : Color.clear)
+                .listRowBackground(RoundedRectangle(cornerRadius: PbRadius.row)
+                    .fill(item.isSelected(viewModel.selection) ? Color.selectedRow : Color.clear))
         }
     }
 
@@ -410,23 +469,23 @@ struct SidebarView<VM: SidebarViewModel>: View {
         Section(isExpanded: $workflowsExpanded.animation(PbMotion.disclosure(reduceMotion: reduceMotion))) {
                 ForEach(viewModel.savedWorkflows) { workflow in
                     Label(workflow.id, systemImage: "point.3.connected.trianglepath.dotted")
-                        .font(.pb(.body))
+                        .font(.pb(.body, weight: .medium))
                         .frame(minHeight: minimumRowHeight)
                         .tag(MonitorDestination.workflow(workflow.id))
                         .pbFadeIn()
                 }
 
         } header: {
-            HStack(spacing: 8) {
+            HStack(spacing: PbRadius.Metrics.spacing8) {
                 Button { withAnimation(PbMotion.disclosure(reduceMotion: reduceMotion)) { workflowsExpanded.toggle() } } label: {
-                    SectionLabel(text: "Workflows")
+                    SidebarSectionHeading(text: "Workflows")
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(workflowsExpanded ? "Collapse workflows" : "Expand workflows")
                 Button { viewModel.didTapNewWorkflow() } label: { Image(systemName: "plus") }
                     .buttonStyle(.plain)
                     .font(.pb(.caption, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.secondaryText)
                     .accessibilityLabel("New workflow")
                 Spacer()
             }
@@ -434,10 +493,12 @@ struct SidebarView<VM: SidebarViewModel>: View {
     }
 
     private var footer: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: PbRadius.Metrics.zero) {
             Divider()
-            HStack(spacing: 6) {
-                Circle().fill(viewModel.isConnected ? Color.doneGreen : Color.failedRed).frame(width: 7, height: 7)
+            HStack(spacing: PbRadius.Metrics.spacing6) {
+                Circle()
+                    .fill(viewModel.isConnected ? Color.doneGreen : Color.failedRed)
+                    .frame(width: PbRadius.Metrics.sidebarConnectionDotSize, height: PbRadius.Metrics.sidebarConnectionDotSize)
                 Text(viewModel.isConnected ? "Connected" : "Disconnected")
                     .font(.pb(.secondary))
                     .foregroundStyle(Color.secondaryText)
@@ -448,110 +509,33 @@ struct SidebarView<VM: SidebarViewModel>: View {
                     .buttonStyle(.borderless)
                     .accessibilityLabel("Settings")
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.horizontal, PbRadius.Metrics.spacing16)
+            .padding(.vertical, PbRadius.Metrics.spacing12)
         }
     }
 }
 
+// MARK: - SidebarSectionHeading
+
+/// The sidebar's own section heading (§6.1): caption-semibold `tertiaryText`, sentence case. Local
+/// on purpose — the shared `SectionLabel` keeps its many later-phase consumers untouched.
+private struct SidebarSectionHeading: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.pb(.caption, weight: .semibold))
+            .foregroundStyle(Color.tertiaryText)
+    }
+}
+
 #if DEBUG
-#Preview("Default - light") {
-    SidebarView(SidebarViewModelMock()).frame(width: 272, height: 600).preferredColorScheme(.light)
+#Preview("Sidebar section heading - light") {
+    SidebarSectionHeading(text: "Running").padding(PbRadius.Metrics.spacing8).preferredColorScheme(.light)
 }
 
-#Preview("Default - dark") {
-    SidebarView(SidebarViewModelMock()).frame(width: 272, height: 600).preferredColorScheme(.dark)
-}
-
-#Preview("Install banner - light") {
-    SidebarView(SidebarViewModelMock(installBannerModel: installBannerPreviewModel())).frame(width: 272, height: 600).preferredColorScheme(.light)
-}
-
-#Preview("Install banner - dark") {
-    SidebarView(SidebarViewModelMock(installBannerModel: installBannerPreviewModel())).frame(width: 272, height: 600).preferredColorScheme(.dark)
-}
-
-#Preview("Loading - light") {
-    SidebarView(SidebarViewModelMock(sections: [], showsLoadingSkeleton: true)).frame(width: 272, height: 600).preferredColorScheme(.light)
-}
-
-#Preview("Loading - dark") {
-    SidebarView(SidebarViewModelMock(sections: [], showsLoadingSkeleton: true)).frame(width: 272, height: 600).preferredColorScheme(.dark)
-}
-
-#Preview("Empty, disconnected - light") {
-    SidebarView(SidebarViewModelMock(
-        sections: [], emptyStateMessage: "No claude tasks yet.", isConnected: false, selectedBackend: "claude"
-    ))
-    .frame(width: 272, height: 400)
-    .preferredColorScheme(.light)
-}
-
-#Preview("Empty, disconnected - dark") {
-    SidebarView(SidebarViewModelMock(
-        sections: [], emptyStateMessage: "No claude tasks yet.", isConnected: false, selectedBackend: "claude"
-    ))
-    .frame(width: 272, height: 400)
-    .preferredColorScheme(.dark)
-}
-
-/// A three-level tree, expanded — Monitor piece 4.
-#Preview("Tree - expanded - light") {
-    SidebarView(SidebarViewModelMock(sections: [SidebarSection(bucket: .earlier, items: threeLevelTreeRows(collapsed: false))]))
-        .frame(width: 272, height: 600)
-        .preferredColorScheme(.light)
-}
-
-#Preview("Tree - expanded - dark") {
-    SidebarView(SidebarViewModelMock(sections: [SidebarSection(bucket: .earlier, items: threeLevelTreeRows(collapsed: false))]))
-        .frame(width: 272, height: 600)
-        .preferredColorScheme(.dark)
-}
-
-/// The same tree with the root collapsed: descendants hidden, meta line shows the subtree summary.
-#Preview("Tree - collapsed - light") {
-    SidebarView(SidebarViewModelMock(sections: [SidebarSection(bucket: .earlier, items: threeLevelTreeRows(collapsed: true))]))
-        .frame(width: 272, height: 600)
-        .preferredColorScheme(.light)
-}
-
-#Preview("Tree - collapsed - dark") {
-    SidebarView(SidebarViewModelMock(sections: [SidebarSection(bucket: .earlier, items: threeLevelTreeRows(collapsed: true))]))
-        .frame(width: 272, height: 600)
-        .preferredColorScheme(.dark)
-}
-
-private func installBannerPreviewModel() -> InstallBanner.Model {
-    InstallBanner.Model(
-        title: "polybridge isn't installed",
-        detail: "polybridge-ctl wasn't found in ~/.local/bin, /opt/homebrew/bin, /usr/local/bin.",
-        primaryTitle: "Install polybridge"
-    )
-}
-
-private func threeLevelTreeRows(collapsed: Bool) -> [SidebarItem] {
-    let root = TaskRowModel(
-        id: "root", backend: "claude", title: "Ship the release", status: .completed, repoName: "repo", ageText: "1h",
-        indent: 0, subTaskSummary: collapsed ? "3 sub-tasks, 1 running" : "3 sub-tasks", startedAt: nil,
-        hasChildren: true, isExpanded: !collapsed, guides: []
-    )
-    guard !collapsed else { return [.task(root)] }
-    return [
-        .task(root),
-        .task(TaskRowModel(
-            id: "childA", backend: "codex", title: "Draft the changelog", status: .running, repoName: "repo", ageText: "",
-            indent: 1, subTaskSummary: "1 sub-task", startedAt: .now.addingTimeInterval(-30),
-            hasChildren: true, isExpanded: true, guides: [.branch]
-        )),
-        .task(TaskRowModel(
-            id: "grandchild", backend: "vibe", title: "Proofread", status: .completed, repoName: "repo", ageText: "2m",
-            indent: 2, startedAt: nil, hasChildren: false, isExpanded: true, guides: [.continuation, .last]
-        )),
-        .task(TaskRowModel(
-            id: "childB", backend: "opencode", title: "Tag the build", status: .completed, repoName: "repo", ageText: "5m",
-            indent: 1, startedAt: nil, hasChildren: false, isExpanded: true, guides: [.last]
-        ))
-    ]
+#Preview("Sidebar section heading - dark") {
+    SidebarSectionHeading(text: "Running").padding(PbRadius.Metrics.spacing8).preferredColorScheme(.dark)
 }
 #endif
 

@@ -80,5 +80,31 @@ public enum PbRadius {
         public static let backendDotStackSize: CGFloat = 10
         public static let backendDotStackOverlap: CGFloat = 0.3
         public static let backendDotStackStroke: CGFloat = 1.5
+        /// The shared row's own geometry (§6.1's consumers keep it as their default): the
+        /// vertical padding, the title-to-meta gap, the item gap, the chevron's square frame and
+        /// the tree gutter's default column.
+        public static let rowPaddingVertical: CGFloat = 6
+        public static let rowLineSpacing: CGFloat = 3
+        public static let rowItemSpacing: CGFloat = 8
+        public static let rowChevronFrame: CGFloat = 16
+        public static let treeGutterColumnWidth: CGFloat = 16
+        /// The sidebar's own row treatment (§6.1): the 15 pt status glyph frame, the 7 pt row
+        /// padding over the 8 pt row insets, the 20 pt child-guide column, the filter's compact
+        /// dots, the group's 3 pt progress strip and the footer's connection dot.
+        public static let sidebarStatusIconSize: CGFloat = 15
+        public static let sidebarRowPaddingVertical: CGFloat = 7
+        public static let sidebarRowInsetHorizontal: CGFloat = 8
+        public static let sidebarChildGuideWidth: CGFloat = 20
+        public static let sidebarFilterDotSize: CGFloat = 7
+        public static let sidebarProgressHeight: CGFloat = 3
+        public static let sidebarConnectionDotSize: CGFloat = 7
+        /// Sidebar control adaptation and preview canvases.
+        public static let sidebarSearchMinimumWidth: CGFloat = 120
+        public static let sidebarPreviewWidth: CGFloat = 272
+        public static let sidebarPreviewHeight: CGFloat = 600
+        public static let sidebarCompactPreviewHeight: CGFloat = 400
+        public static let sidebarHistoryMinimumHeight: CGFloat = 20
+        public static let groupPreviewWidth: CGFloat = 280
+        public static let sidebarTallFixtureHeight: CGFloat = 800
     }
 }
