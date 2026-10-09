@@ -922,3 +922,8 @@ offset assertions remain intact. The final affected feed run passed 15 tests (57
 the release bundle rebuilt successfully, and read-only follow-up review found no actionable
 issue. Actual-app verification after this fix awaits an unlocked Mac; previous six successful
 openings describe the pre-review-fix candidate.
+
+The next GitHub review found that the package AGENTS.md still described the superseded neighbor
+prefetch/heavy-eviction policy. Its scoped contract now matches the later user-approved visible-only
+leases and retained visited snapshots. This follow-up changes documentation only; runtime source
+and the post-restoration-fix release binary remain unchanged.

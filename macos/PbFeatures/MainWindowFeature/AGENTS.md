@@ -98,16 +98,20 @@ no embedded terminal anywhere in this package (piece 1 of the Monitor architectu
   new selection event), and `migrateCollapsedIDsForRetention()` carries a collapsed entry from an
   old id to its conversation's new one.
 - Parallel keeps complete group membership for summaries and actions, but acquires activity leases
-  only for members of viewport-resident conversations (visible columns plus one neighbor each side).
+  only for members of viewport-intersecting conversations; do not prefetch neighboring columns.
   The standalone group and workflow activity pane share the measured viewport surface. Lazy view
-  appearance is not visibility evidence. Eviction releases only this VM's leases and heavy models;
-  teardown releases all remaining work. Preserve lightweight per-conversation scroll, disclosure and
-  live-follow state while the group remains open. Build immutable presentation values off the main
+  appearance is not visibility evidence. Never-visited conversations keep lightweight descriptors.
+  Leaving the viewport releases only this VM's leases and subscriptions and stops activity updates,
+  while retaining the visited conversation's loaded presentation, history boundaries, scroll anchor,
+  disclosure and live-follow state until removal or full teardown. Reentry displays the snapshot
+  immediately and refreshes it in the background. Memory grows with visited conversations and
+  requested history; only active lease/update work is bounded by the visible viewport. Teardown
+  clears retained snapshots and all remaining work. Build immutable presentation values off the main
   actor and publish only complete values that changed.
 - Task-detail and both Parallel activity surfaces share automatic older-history pagination.
   Initialize at latest activity; load near the oldest visible edge only after positioning settles.
   Reveal retained rows in batches of 100 before reading another bounded event page. Only visible
-  Parallel columns initiate pagination; neighbors may hold leases. Preserve logical reading anchors
+  Parallel columns initiate pagination and hold activity leases. Preserve logical reading anchors
   through prepends and regrouping, and keep live-follow paused while reading or restoring.
   Bound automatic short-feed filling so collapsed groups cannot drain history on mount; renewed
   upward scrolling or disclosure interaction permits more. Monitor scroll intent only for visible feeds.
