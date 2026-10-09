@@ -118,7 +118,9 @@ Parallel launches use one control turn for a bounded batch of compatible sibling
 child configurations or timeout policies serialize as separate batches. Aggregate parent
 permission denials remain control-turn evidence; child results contain only correlated denials. The root tree's worker budget and adapter
 batch limits apply even when a nested workflow requests a larger local limit. Control turns
-sharing a session serialize; native workers cannot delegate further. A batch with unresolved
+sharing a session serialize; native workers cannot delegate further. Native control turns
+accept only their expected delegation and wait calls; unexpected parent tools require
+reconciliation. A batch with unresolved
 child ownership cannot advance siblings or retry as Headless.
 
 Certification uses real executables against isolated localhost fake APIs, without paid model calls:

@@ -144,6 +144,8 @@ def native_rollouts(tmp_path, monkeypatch, nonce="nonce", assignment="assignment
         records[1]["payload"]["sandbox_policy"] = {"type": "danger-full-access"}
     elif mutation == "unexpected_collaboration":
         records[5]["payload"]["name"] = "followup_task"
+    elif mutation in {"parent_shell", "parent_patch"}:
+        records.insert(3, record("response_item", type="function_call" if mutation == "parent_shell" else "custom_tool_call", namespace="functions", name="exec_command" if mutation == "parent_shell" else "apply_patch", call_id="untracked", arguments="{}", internal_chat_message_metadata_passthrough={"turn_id": turn}))
     parent_file = child_file.with_name(f"rollout-parent-{PARENT}.jsonl")
     parent_file.write_text("\n".join(json.dumps(r) for r in records) + "\n")
 
@@ -169,7 +171,7 @@ def test_stream_requires_correlated_rollout_terminal_and_parent_ack(tmp_path, mo
     assert adapter.finalize("nonce", state) == []
 
 
-@pytest.mark.parametrize("mutation", ["nonce", "foreign", "extra_spawn", "missing_terminal", "early_ack", "wrong_output", "missing_child_complete", "effort", "provider", "parent_access", "unexpected_collaboration"])
+@pytest.mark.parametrize("mutation", ["nonce", "foreign", "extra_spawn", "missing_terminal", "early_ack", "wrong_output", "missing_child_complete", "effort", "provider", "parent_access", "unexpected_collaboration", "parent_shell", "parent_patch"])
 def test_native_lifecycle_rejects_uncorrelated_or_incomplete_evidence(tmp_path, monkeypatch, mutation):
     native_rollouts(tmp_path, monkeypatch, mutation=mutation)
     state = {"owner_session_id": PARENT, "assignment": "assignment", "expected_repo": str(tmp_path)}

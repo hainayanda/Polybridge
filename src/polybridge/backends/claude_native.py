@@ -91,8 +91,11 @@ class ClaudeNativeAdapter:
                 raise ValueError(state["invalid"])
         if event.get("type") == "assistant" and not parent_tool:
             for block in event.get("message", {}).get("content", []):
-                if block.get("type") != "tool_use" or block.get("name") not in {"Agent", "Task"}:
+                if block.get("type") != "tool_use":
                     continue
+                if block.get("name") not in {"Agent", "Task"}:
+                    state["invalid"] = "Unexpected parent tool during native control turn"
+                    raise ValueError(state["invalid"])
                 args = block.get("input", {})
                 expected = {"description": nonce, "prompt": state["assignment"], "subagent_type": PROFILE_NAME, "run_in_background": False}
                 batch_expected = [{"description": e["nonce"], "prompt": e["assignment"], "subagent_type": PROFILE_NAME, "run_in_background": False} for e in state.get("batch_entries", [])]

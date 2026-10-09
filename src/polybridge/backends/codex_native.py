@@ -218,7 +218,9 @@ class CodexNativeAdapter:
         call_id = spawn.get("call_id")
         if not turn or not call_id:
             _fail(state, "Native assignment lacks owning turn and tool identities")
-        calls = [r["payload"] for r in records if r.get("type") == "response_item" and r["payload"].get("type") == "function_call" and r["payload"].get("internal_chat_message_metadata_passthrough", {}).get("turn_id") == turn and r["payload"].get("namespace") == "collaboration"]
+        calls = [r["payload"] for r in records if r.get("type") == "response_item" and r["payload"].get("type") in {"function_call", "custom_tool_call"} and r["payload"].get("internal_chat_message_metadata_passthrough", {}).get("turn_id") == turn]
+        if any(c.get("type") != "function_call" or c.get("namespace") != "collaboration" for c in calls):
+            _fail(state, "Unexpected parent tool during native control turn")
         entries = state.get("batch_entries") or [{"assignment": state["assignment"], "nonce": nonce, "settings": state.get("native_settings")}]
         expected_calls = [self.spawn_arguments(e["assignment"], e["nonce"], e.get("settings")) for e in entries]
         actual_calls = [json.loads(c.get("arguments", "{}")) for c in calls if c.get("name") == "spawn_agent"]
