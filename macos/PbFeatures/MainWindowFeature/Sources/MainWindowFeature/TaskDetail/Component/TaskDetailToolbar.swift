@@ -22,8 +22,10 @@ struct TaskDetailToolbarSnapshot: Equatable, Sendable {
     @MainActor init(_ viewModel: any TaskDetailViewModel, task: TaskInfo, showsInspector: Bool) {
         self.ownerID = ObjectIdentifier(viewModel)
         self.conversationID = viewModel.taskID
-        // TaskStatusLabel reads exactly these fields; usage, summary and event metadata stay outside.
-        let statusKeys: Set = ["task_id", "status", "started_at", "duration_seconds", "taken_over"]
+        // TaskStatusLabel reads exactly these fields (the settled branch reads the recorded
+        // duration and the observed exit through `TaskSettledDuration`); usage, summary and event
+        // metadata stay outside.
+        let statusKeys: Set = ["task_id", "status", "started_at", "duration_seconds", "exit_code", "taken_over"]
         self.statusTask = TaskInfo(.object(task.raw.filter { statusKeys.contains($0.key) })) ?? task
         self.isBusy = viewModel.isBusy
         self.allowsTerminal = WorkflowNodePresentation.allowsTerminal(viewModel.task)
@@ -62,27 +64,30 @@ struct TaskDetailToolbar: View, Equatable {
     var body: some View {
         _ = onEvaluation?()
         return Color.clear
-.frame(width: 0, height: 0)
+.frame(width: PbRadius.Metrics.zero, height: PbRadius.Metrics.zero)
             .toolbar { toolbarContent }
     }
 
+    /// One SDK glass capsule behind takeover/more/inspector (§3 Liquid Glass), with the status
+    /// badge kept visually separate: its own item with the shared background hidden and a fixed
+    /// spacer ahead of the group. All four `ToolbarItem` ids are unchanged; when the task is not
+    /// terminal-eligible the takeover item renders nothing, so the group is more+inspector only.
     @ToolbarContentBuilder private var toolbarContent: some ToolbarContent {
         ToolbarSpacer(.flexible)
         ToolbarItem(id: "task-detail.status", placement: .primaryAction) { statusLabel }
             .sharedBackgroundVisibility(.hidden)
+        ToolbarSpacer(.fixed)
         ToolbarItem(id: "task-detail.takeover", placement: .primaryAction) { takeoverButton }
-            .sharedBackgroundVisibility(.hidden)
         ToolbarItem(id: "task-detail.more", placement: .primaryAction) {
             Menu { menuItems } label: { Label("More actions", systemImage: "ellipsis") }
                 .menuIndicator(.hidden)
 .help("More actions")
-        }.sharedBackgroundVisibility(.hidden)
+        }
         ToolbarItem(id: "task-detail.inspector", placement: .primaryAction) { inspectorToggle }
-            .sharedBackgroundVisibility(.hidden)
     }
 
     private var statusLabel: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: PbRadius.Metrics.spacing8) {
             TaskStatusLabel(task: snapshot.statusTask).fixedSize()
             if snapshot.isBusy { ProgressView().controlSize(.small) }
         }
@@ -134,11 +139,32 @@ private func toolbarPreview(viewModel: TaskDetailViewModelMock, showsInspector: 
     .frame(width: PbRadius.Metrics.toolbarPreviewWidth, height: PbRadius.Metrics.toolbarPreviewHeight)
 }
 
-#Preview("Toolbar, running") {
-    toolbarPreview(viewModel: TaskDetailViewModelMock())
+#Preview("Toolbar, running - light") {
+    toolbarPreview(viewModel: TaskDetailViewModelMock()).preferredColorScheme(.light)
 }
 
-#Preview("Toolbar, finished with inspector shown") {
-    toolbarPreview(viewModel: TaskDetailViewModelMock.finished(), showsInspector: true)
+#Preview("Toolbar, running - dark") {
+    toolbarPreview(viewModel: TaskDetailViewModelMock()).preferredColorScheme(.dark)
 }
+
+#Preview("Toolbar, finished with inspector shown - light") {
+    toolbarPreview(viewModel: TaskDetailViewModelMock.finished(), showsInspector: true).preferredColorScheme(.light)
+}
+
+#Preview("Toolbar, finished with inspector shown - dark") {
+    toolbarPreview(viewModel: TaskDetailViewModelMock.finished(), showsInspector: true).preferredColorScheme(.dark)
+}
+
+@MainActor
+private func noTerminalPreview() -> some View {
+    let mock = TaskDetailViewModelMock()
+    var raw = mock.task!.raw
+    raw["execution_kind"] = .string("native_subagent")
+    mock.task = TaskInfo(.object(raw))
+    mock.canTakeover = false
+    return toolbarPreview(viewModel: mock)
+}
+
+#Preview("Toolbar, terminal unavailable - light") { noTerminalPreview().preferredColorScheme(.light) }
+#Preview("Toolbar, terminal unavailable - dark") { noTerminalPreview().preferredColorScheme(.dark) }
 #endif

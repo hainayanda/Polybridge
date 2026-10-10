@@ -64,7 +64,7 @@ Limited activity is labeled explicitly. Parent process liveness and a quiet acti
 prove whether a child is running; the runner uses correlated harness lifecycle evidence.
 A node advances only after confirmed child settlement and a valid structured worker result.
 
-A subagent has no independent **Take over** action. Stop and Resume are available only when the
+A subagent has no independent **Take over in terminal** action. Stop and Resume are available only when the
 adapter supports those operations on that individual child. Parent takeover is refused while
 children remain unresolved. Cancellation and timeout must settle the child before retry or fallback;
 an unresolved child continues to protect its checkout even after its supervisor exits.

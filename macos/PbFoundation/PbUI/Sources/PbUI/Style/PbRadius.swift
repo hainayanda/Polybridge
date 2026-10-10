@@ -42,6 +42,8 @@ public enum PbRadius {
         public static let spacing14: CGFloat = 14
         public static let spacing16: CGFloat = 16
         public static let spacing20: CGFloat = 20
+        public static let spacing24: CGFloat = 24
+        public static let spacing28: CGFloat = 28
         /// Compact native form-control button target and value width.
         public static let compactControlHeight: CGFloat = 24
         public static let compactValueWidth: CGFloat = 28
@@ -106,5 +108,57 @@ public enum PbRadius {
         public static let sidebarHistoryMinimumHeight: CGFloat = 20
         public static let groupPreviewWidth: CGFloat = 280
         public static let sidebarTallFixtureHeight: CGFloat = 800
+        /// Task detail (§6.2): the content column's max width, which already includes the 24 pt
+        /// inner padding on each side (712 pt usable), and the screen's preview canvases.
+        public static let taskColumnMaxWidth: CGFloat = 760
+        public static let taskDetailPreviewWidth: CGFloat = 1000
+        public static let taskDetailPreviewHeight: CGFloat = 620
+        public static let taskDetailNarrowPreviewWidth: CGFloat = 480
+        public static let taskDetailNarrowPreviewHeight: CGFloat = 700
+        /// Production task inspector width, independent of sidebar previews.
+        public static let taskInspectorWidth: CGFloat = 280
+        /// The message composer's glass capsule (§6.2) and its circular send button.
+        public static let composerCornerRadius: CGFloat = 18
+        public static let composerSendButtonSize: CGFloat = 32
+        /// The prompt bubble (§6.2): 14 pt corners with the tail-side corner at 4 pt.
+        public static let promptBubbleCornerRadius: CGFloat = 14
+        public static let promptBubbleTailCornerRadius: CGFloat = 4
+        /// Summary stat tiles (§6.2): the tile's fixed width and the row's gap.
+        public static let summaryTileWidth: CGFloat = 160
+        public static let summaryTileSpacing: CGFloat = 10
+        /// Prompt alignment and Summary status icon emphasis.
+        public static let promptBubbleLeadingSpace: CGFloat = 48
+        public static let summaryStatusIconScale: CGFloat = 1.6
+        /// Loading activity's representative file-pill widths, independent of real task data.
+        public static let taskSkeletonPillWidths: [CGFloat] = [96, 140, 118, 80]
+        /// Task activity, Summary and loading presentation dimensions, retained from their views.
+        public static let taskSkeletonLineSpacing: CGFloat = 9
+        public static let taskSkeletonCaptionHeight: CGFloat = 11
+        public static let taskSkeletonBodyHeight: CGFloat = 13
+        public static let taskSkeletonPillHeight: CGFloat = 22
+        public static let taskSkeletonDetailInset: CGFloat = 26
+        public static let taskSkeletonResultWidth: CGFloat = 72
+        public static let taskSkeletonActionWidth: CGFloat = 84
+        public static let taskSkeletonShortLineWidth: CGFloat = 90
+        public static let taskSkeletonStatusWidth: CGFloat = 110
+        public static let taskSkeletonTitleWidth: CGFloat = 140
+        public static let taskSkeletonLongTitleWidth: CGFloat = 170
+        public static let taskSkeletonHeadingWidth: CGFloat = 220
+        public static let taskSkeletonComposerWidth: CGFloat = 240
+        public static let taskSkeletonStartWidth: CGFloat = 260
+        public static let toolRowPreviewWidth: CGFloat = 420
+        public static let timelineRowPreviewWidth: CGFloat = 440
+        public static let taskSkeletonPromptWidth: CGFloat = 460
+        public static let summaryPreviewWidth: CGFloat = 520
+        /// Summary preview canvas height, independent of component preview widths.
+        public static let summaryPreviewHeight: CGFloat = 560
+        /// Loading task geometry: heading height, feed rhythm, expanded title bar and toolbar blocks.
+        public static let taskSkeletonHeadingHeight: CGFloat = 18
+        public static let taskSkeletonFeedSpacing: CGFloat = 18
+        public static let taskSkeletonExpandedTitleWidth: CGFloat = 120
+        public static let taskSkeletonToolbarButtonWidth: CGFloat = 30
+        public static let taskSkeletonToolbarBlockRadius: CGFloat = 7
+        public static let taskComponentPreviewWidth: CGFloat = 560
+        public static let timelinePanePreviewWidth: CGFloat = 640
     }
 }
