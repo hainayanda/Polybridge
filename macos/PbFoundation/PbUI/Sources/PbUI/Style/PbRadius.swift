@@ -228,6 +228,20 @@ public enum PbRadius {
         public static let recoveryBannerPadding: CGFloat = 14
         public static let recoveryEditorMinimumHeight: CGFloat = 56
         public static let recoveryEditorMaximumHeight: CGFloat = 100
+        /// The non-blocking floating recovery panel (user amendment over §6.4): its adaptive
+        /// ideal width and pane-edge insets, the close control's square target, and the
+        /// floating elevation's shadow radius, offset and ink strength.
+        public static let recoveryPanelIdealWidth: CGFloat = 400
+        /// Initial measurement bound before the floating recovery form's first layout.
+        public static let recoveryPanelInitialHeight: CGFloat = 320
+        /// Inset from the pane's top and trailing edges.
+        public static let recoveryPanelInset: CGFloat = 12
+        /// Square target of the recovery panel's explicit close control.
+        public static let recoveryCloseTarget: CGFloat = 24
+        /// Recovery panel elevation blur radius.
+        public static let recoveryPanelShadowRadius: CGFloat = 16
+        /// Recovery panel elevation's vertical offset.
+        public static let recoveryPanelShadowOffsetY: CGFloat = 6
         /// Workflow preview canvases.
         public static let workflowPreviewWidth: CGFloat = 1200
         public static let workflowPreviewHeight: CGFloat = 700

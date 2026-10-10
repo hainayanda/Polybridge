@@ -80,6 +80,10 @@ public extension Color {
     static let shadow = Palette.shadow.color
     /// The pulsing dot beside a live step.
     static let liveDot = Palette.liveDot.color
+    /// The recovery panel's floating border: the existing warning ink at its 30% border tone.
+    static let recoveryBorder = Palette.recoveryBorder.color
+    /// Floating recovery panel elevation, preserving the black shadow's 12% opacity.
+    static let recoveryShadow = Palette.recoveryShadow.color
 }
 
 // MARK: - Palette
@@ -137,6 +141,11 @@ enum Palette {
     static let primaryText = Entry("primaryText", light: 0x1C1C1F, dark: 0xF2F2F4)
     static let onAccent = Entry("onAccent", light: 0xFFFFFF, dark: 0xFFFFFF)
     static let shadow = Entry("shadow", light: 0x000000, dark: 0x000000)
+    /// The recovery panel's border: the existing warning foreground at its 30% border tone,
+    /// derived centrally so no view derives it locally and no RGB value changes.
+    static let recoveryBorder = Entry("recoveryBorder", deriving: warningFG, opacity: 0.3)
+    /// Opaque warning panel elevation ink, derived without changing the existing black RGB.
+    static let recoveryShadow = Entry("recoveryShadow", deriving: shadow, opacity: 0.12)
     static let codeFill = Entry("codeFill", light: 0xECECEF, dark: 0x2A2A2E)
     static let editPreviewFill = Entry("editPreviewFill", light: 0xF8F8FA, dark: 0x262628)
     static let inspectorFill = Entry("inspectorFill", light: 0xF8F8FA, dark: 0x1A1A1D)
@@ -174,7 +183,8 @@ enum Palette {
     static let all: [Entry] = [
         hairline, accentLink, workflowMarqueeFill, accentFill, selectedRow, runningBG, runningFG, liveDot, doneGreen,
         doneBG, warningFG, warningBG, failedRed, dangerFG, dangerBG, cancelledGray, neutralFill,
-        neutralText, secondaryText, accessRadioBorder, tertiaryText, primaryText, onAccent, shadow, codeFill,
+        neutralText, secondaryText, accessRadioBorder, tertiaryText, primaryText, onAccent, shadow,
+        recoveryBorder, recoveryShadow, codeFill,
         editPreviewFill, inspectorFill, diffHunkFill, diffAddedFill, diffRemovedFill, claudeBG,
         claudeFG, codexBG, codexFG, opencodeBG, opencodeFG, vibeBG, vibeFG, antigravityBG,
         antigravityFG, otherBackendBG, otherBackendFG,

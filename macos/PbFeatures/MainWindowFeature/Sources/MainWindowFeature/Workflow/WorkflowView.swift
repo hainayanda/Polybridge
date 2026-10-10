@@ -10,6 +10,10 @@ struct WorkflowView<VM: WorkflowViewModel>: View {
     @State var viewModel: VM
     private let builderTaskView: ((String, String) -> AnyView)?
     @AppStorage("workflowViewMode") private var viewMode = "Graph"
+    /// Local presentation state for the non-blocking recovery overlay; never VM state.
+    @State private var recoveryOverlay = WorkflowRecoveryOverlayPresentation()
+    /// Focus return to the eligible badge after an explicit dismissal only (best effort).
+    @FocusState private var recoveryBadgeFocused: Bool
 
     init(_ viewModel: VM, builderTaskView: ((String, String) -> AnyView)? = nil) {
         _viewModel = State(initialValue: viewModel)
@@ -23,6 +27,7 @@ struct WorkflowView<VM: WorkflowViewModel>: View {
             screenContent
         }
         .background(Color.windowBG)
+        .modifier(WorkflowRecoveryOverlayLifecycle(presentation: $recoveryOverlay, eligibleRunID: recoveryEligibleRunID))
         .sheet(isPresented: Binding(get: { viewModel.showsRunSheet }, set: { viewModel.showsRunSheet = $0 })) {
             WorkflowLaunchSheet(viewModel: viewModel, isGenerating: false)
         }
@@ -106,10 +111,8 @@ struct WorkflowView<VM: WorkflowViewModel>: View {
                             .font(.pb(.title, weight: .semibold))
                     }
                     if let run = viewModel.selectedRun {
-                        StatusBadge(
-                            status: .other(run.status),
-                            presentationOverride: WorkflowRunStatusBadge.presentation(status: run.status, isSettling: run.isSettling)
-                        )
+                        WorkflowRecoveryBadge(run: run, isEligible: recoveryEligibleRunID != nil,
+                                              focus: $recoveryBadgeFocused, onOpen: { recoveryOverlay.openFromBadge() })
                     }
                     }
                     stateLine
@@ -446,34 +449,6 @@ struct WorkflowView<VM: WorkflowViewModel>: View {
         }
     }
 
-    private var runContent: some View {
-        let isLoading = viewModel.initialLoadingKind == "run"
-        return GeometryReader { viewport in
-            VStack(spacing: PbRadius.Metrics.zero) {
-            if isLoading {
-                HStack { SkeletonBlock(height: PbRadius.Metrics.spacing14); Spacer(minLength: PbRadius.Metrics.workflowLoadingSpacer) }
-                    .frame(height: PbRadius.Metrics.workflowLoadingStatusHeight)
-                    .padding(.horizontal, PbRadius.Metrics.spacing16)
-                    .padding(.vertical, PbRadius.Metrics.spacing10)
-            } else {
-                WorkflowDiagnosticsViewport(maximumHeight: min(PbRadius.Metrics.workflowDiagnosticsMaximumHeight, viewport.size.height * 0.3)) {
-                    WorkflowRunStatus(viewModel: viewModel)
-                }
-                .accessibilityIdentifier("workflow-run-diagnostics")
-                .pbFadeIn()
-            }
-            Divider()
-            WorkflowRunPanes(isGraph: viewMode == "Graph", isLoading: isLoading) {
-                if isLoading { WorkflowLoadingCanvas() } else { canvas.pbFadeIn() }
-            } inspector: {
-                if isLoading { WorkflowLoadingInspector(isRun: true) } else { runSidebar.pbFadeIn() }
-            } activity: {
-                if isLoading { WorkflowLoadingActivity() } else { activity.pbFadeIn() }
-            }
-            }
-        }
-    }
-
     @ViewBuilder private var runSidebar: some View {
         if let run = viewModel.selectedRun {
             ScrollView {
@@ -552,6 +527,45 @@ struct WorkflowView<VM: WorkflowViewModel>: View {
 // MARK: - Workflow activity selection
 
 private extension WorkflowView {
+    var runContent: some View {
+        let isLoading = viewModel.initialLoadingKind == "run"
+        let recoveryRunID = recoveryEligibleRunID
+        return GeometryReader { viewport in
+            VStack(spacing: PbRadius.Metrics.zero) {
+            if isLoading {
+                HStack { SkeletonBlock(height: PbRadius.Metrics.spacing14); Spacer(minLength: PbRadius.Metrics.workflowLoadingSpacer) }
+                    .frame(height: PbRadius.Metrics.workflowLoadingStatusHeight)
+                    .padding(.horizontal, PbRadius.Metrics.spacing16)
+                    .padding(.vertical, PbRadius.Metrics.spacing10)
+            } else {
+                WorkflowDiagnosticsViewport(maximumHeight: min(PbRadius.Metrics.workflowDiagnosticsMaximumHeight, viewport.size.height * 0.3)) {
+                    WorkflowRunStatus(
+                        viewModel: viewModel,
+                        isRecoveryPanelVisible: recoveryOverlay.isVisible(runID: recoveryRunID)
+                    )
+                }
+                .accessibilityIdentifier("workflow-run-diagnostics")
+                .pbFadeIn()
+            }
+            Divider()
+            WorkflowRunPanes(isGraph: viewMode == "Graph", isLoading: isLoading) {
+                if isLoading { WorkflowLoadingCanvas() } else { canvas.pbFadeIn() }
+            } inspector: {
+                if isLoading { WorkflowLoadingInspector(isRun: true) } else { runSidebar.pbFadeIn() }
+            } activity: {
+                if isLoading { WorkflowLoadingActivity() } else { activity.pbFadeIn() }
+            }
+            .overlay(alignment: .topTrailing) {
+                WorkflowRecoveryOverlayHost(
+                    viewModel: viewModel,
+                    presentation: $recoveryOverlay,
+                    onExplicitClose: { recoveryBadgeFocused = true }
+                )
+            }
+            }
+        }
+    }
+
     var selectedTaskID: String? {
         guard let nodeID = viewModel.selectedNodeID else {
             return nil
@@ -562,6 +576,15 @@ private extension WorkflowView {
 .arrayValue?
             .last?["task_id"]?
 .stringValue
+    }
+
+    /// The shared recovery-overlay eligibility of the current selected run: the loaded
+    /// non-builder surface plus the unchanged `WorkflowRecoveryPresentation.showsRecovery`.
+    var recoveryEligibleRunID: String? {
+        WorkflowRecoveryOverlayPresentation.eligibleRunID(
+            run: viewModel.selectedRun,
+            initialLoadingKind: viewModel.initialLoadingKind,
+            initialLoadFailed: viewModel.initialLoadFailed)
     }
 }
 

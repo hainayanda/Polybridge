@@ -955,6 +955,15 @@ workflow records `needs_attention` rather than reporting cancellation complete.
 Monitor terminal continuation is offered only after the workflow
 has completed its valid End traversal, never while a node is still participating in execution.
 
+In the Monitor, the eligible recovery options for a Monitor-owned, non-builder run first open in a
+nonblocking floating panel over the run panes; the underlying workflow stays interactive and its
+layout is unchanged whether the panel is open, dismissed or reopened. Closing the panel keeps any
+typed instructions and the extra-attempts selection, and the honest eligible status badge in the run
+header reopens it. Automatic opening happens once per run during that screen's lifetime; later
+attention checkpoints on the same run use the badge to reopen. Recovery commands, decisions, and
+ownership semantics are unchanged. Caller-owned, child, and builder surfaces retain their existing
+status and diagnostics without exposing these recovery controls.
+
 Resume of `needs_input` includes the exact published `input_decision_id` as `decision_id` (CLI
 `--decision-id`) and the answer in `instructions`, preventing stale answers from being applied to a
 later question. Monitor CLI controls also include `--monitor`. The caller's original request

@@ -4,14 +4,22 @@ import SwiftUI
 // MARK: - WorkflowRecoveryEditor
 
 /// Keeps the existing native multiline editor and scrolling, growing from the compact minimum
-/// to the existing maximum as the actual wrapped instructions grow.
+/// to the existing maximum as the actual wrapped instructions grow. The defaulted focus input
+/// is purely presentational: an explicit open may request native focus through the public
+/// `FocusState` API, and the editor contract, bindings, sizing and keyboard handling are
+/// unchanged — an automatic panel presentation never sets it.
 struct WorkflowRecoveryEditor: View {
     @Binding var text: String
+    /// A purely presentational explicit-open focus request; `false` keeps the editor exactly
+    /// as before, including on first load.
+    var isFocusRequested = false
     @State private var measuredHeight = PbRadius.Metrics.recoveryEditorMinimumHeight
+    @FocusState private var isFocused: Bool
 
     var body: some View {
         TextEditor(text: $text)
             .font(.pb(.body))
+            .focused($isFocused)
             .frame(height: min(PbRadius.Metrics.recoveryEditorMaximumHeight,
                                max(PbRadius.Metrics.recoveryEditorMinimumHeight, measuredHeight)))
             .background(alignment: .topLeading) {
@@ -30,6 +38,13 @@ struct WorkflowRecoveryEditor: View {
             }
             .overlay(RoundedRectangle(cornerRadius: PbRadius.row).stroke(Color.cardBorder))
             .accessibilityLabel("Additional instructions")
+            .onAppear { applyFocusRequest() }
+            .onChange(of: isFocusRequested) { applyFocusRequest() }
+    }
+
+    /// Best-effort native focus: the focus system stays free to decline the request.
+    private func applyFocusRequest() {
+        if isFocusRequested { isFocused = true }
     }
 }
 

@@ -39,6 +39,12 @@ enum WorkflowRecoveryPresentation {
 
 struct WorkflowRunStatus<VM: WorkflowViewModel>: View {
     var viewModel: VM
+    /// Purely presentational: whether the non-blocking recovery panel is actually showing the
+    /// recovery question right now. Direct callers and previews keep the default `false`, which
+    /// renders exactly the pre-amendment strip. It never changes eligibility, fallback logic or
+    /// any action — it only hides the painting and accessibility of a duplicate reason-only
+    /// row while the panel shows the same question.
+    var isRecoveryPanelVisible = false
     @State private var showsDecision = false
 
     var body: some View {
@@ -46,9 +52,6 @@ struct WorkflowRunStatus<VM: WorkflowViewModel>: View {
             VStack(alignment: .leading, spacing: PbRadius.Metrics.spacing12) {
                 decision(run)
                 WorkflowRunDiagnostics(run: run)
-                if WorkflowRecoveryPresentation.showsRecovery(run) {
-                    recovery(run)
-                }
                 if run.raw["kind"]?.stringValue == "builder", run.status == "completed" {
                     if run.isBuilderProposal {
                         Button("Apply proposal") { viewModel.applyAgentProposal() }.buttonStyle(MonitorButtonStyle(.glass))
@@ -74,14 +77,27 @@ struct WorkflowRunStatus<VM: WorkflowViewModel>: View {
         let deciding = run.activations.contains { $0["role"]?.stringValue == "orchestrator" && $0["status"]?.stringValue == "running" }
         // Only proven-prestart logic decides whether the waiting line is honest: a worker step
         // that has started, an attention/error state, or a reported reason each withdraw it.
+        // The fallback is computed independently of the recovery panel's visibility, so the
+        // row keeps its measured layout in every panel state; the open panel hides only the
+        // painting of a duplicate question (below).
         let fallback = WorkflowDecisionFallback.text(
             status: run.status,
             reason: run.reason,
-            hasWorkerStep: !WorkflowExecutionPresentation.showsPrestartPlaceholder(activations: run.activations),
-            recoveryQuestion: WorkflowRecoveryPresentation.showsRecovery(run) ? run.question : nil
+            hasWorkerStep: !WorkflowExecutionPresentation.showsPrestartPlaceholder(activations: run.activations)
         )
         let lastReason = last?["reason"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 }
         let lineText = deciding ? "Orchestrator is choosing the next step…" : (lastReason ?? fallback)
+        // Duplicate suppression is painting-only: while the panel actually shows the recovery
+        // question, a reason-only line that repeats it stays in layout but is not painted or
+        // spoken — closing the panel reveals it without inserting a row or shifting the panes.
+        // Durable decision history and its "Show more" are never hidden.
+        let trimmedQuestion = run.question.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hidesDuplicateQuestion = !deciding
+            && lastReason == nil
+            && lineText != nil
+            && isRecoveryPanelVisible
+            && !trimmedQuestion.isEmpty
+            && lineText?.trimmingCharacters(in: .whitespacesAndNewlines) == trimmedQuestion
         if deciding || lineText != nil {
         HStack(spacing: PbRadius.Metrics.spacing8) {
             if deciding {
@@ -112,79 +128,10 @@ struct WorkflowRunStatus<VM: WorkflowViewModel>: View {
                     }
             }
         }
+        .opacity(hidesDuplicateQuestion ? 0 : 1)
+        .accessibilityHidden(hidesDuplicateQuestion)
     }
         }
-
-    /// The needs-attention recovery (SPEC §6.4): the banner carries the existing question (or
-    /// the existing "Scheduling is paused." fallback) and the existing settling line — nothing
-    /// invented. Every existing control stays: the compact growing multiline editor, the
-    /// 0…100 extra-attempts stepper, one-more-retry, optional reviewer consent, and the
-    /// Resume/Recover primary with its busy/settling/requires-answer guards. On a narrow pane
-    /// the controls wrap vertically instead of hiding.
-    private func recovery(_ run: WorkflowRunModel) -> some View {
-        let missingAnswer = run.requiresAnswer && viewModel.instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        return VStack(alignment: .leading, spacing: PbRadius.Metrics.spacing8) {
-            HStack(alignment: .top, spacing: PbRadius.Metrics.spacing10) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(Color.warningFG)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: PbRadius.Metrics.spacing2) {
-                    Text(run.question.isEmpty ? "Scheduling is paused." : run.question)
-                        .font(.pb(.secondary, weight: .semibold))
-.foregroundStyle(Color.warningFG)
-.textSelection(.enabled)
-                    if run.isSettling {
-                        Text("Waiting for running branches to finish…")
-                            .font(.pb(.secondary))
-                            .foregroundStyle(Color.secondaryText)
-                            .textSelection(.enabled)
-                    }
-                }
-            }
-            Text("Additional instructions")
-                .font(.pb(.secondary))
-                .foregroundStyle(Color.secondaryText)
-            WorkflowRecoveryEditor(text: Binding(get: { viewModel.instructions }, set: { viewModel.instructions = $0 }))
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .center, spacing: PbRadius.Metrics.spacing8) {
-                    recoveryControls(run: run, missingAnswer: missingAnswer)
-                }
-                VStack(alignment: .leading, spacing: PbRadius.Metrics.spacing8) {
-                    recoveryControls(run: run, missingAnswer: missingAnswer)
-                }
-            }.font(.pb(.body))
-        }
-        .padding(PbRadius.Metrics.recoveryBannerPadding)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: PbRadius.Metrics.recoveryBannerCornerRadius).fill(Color.warningBG))
-        .overlay(RoundedRectangle(cornerRadius: PbRadius.Metrics.recoveryBannerCornerRadius)
-            .stroke(Color.warningFG.opacity(0.3), lineWidth: PbRadius.Metrics.hairlineStroke))
-    }
-
-    @ViewBuilder
-    private func recoveryControls(run: WorkflowRunModel, missingAnswer: Bool) -> some View {
-        Stepper(
-            "Extra attempts: \(viewModel.additionalAttempts)",
-            value: Binding(get: { viewModel.additionalAttempts }, set: { viewModel.additionalAttempts = $0 }),
-            in: 0 ... 100
-        )
-            .fixedSize()
-        if run.raw["exhausted_retry_edges"]?.arrayValue?.isEmpty == false {
-            Button("Continue with one more retry") { viewModel.continueWithOneMoreRetry() }
-                .buttonStyle(MonitorButtonStyle(.glass))
-                .disabled(viewModel.isBusy || run.isSettling || missingAnswer)
-        }
-        if run.canSkipOptionalReview {
-            Button("Proceed without optional reviewer") {
-                viewModel.control("resume", allowOptionalReviewSkip: true)
-            }
-            .buttonStyle(MonitorButtonStyle(.glass))
-            .disabled(viewModel.isBusy || run.isSettling || missingAnswer)
-        }
-        Button(run.status == "failed" ? "Recover" : "Resume") { viewModel.control(run.status == "failed" ? "recover" : "resume") }
-            .buttonStyle(MonitorButtonStyle(.primary))
-            .disabled(viewModel.isBusy || run.isSettling || missingAnswer)
-    }
 }
 
 #if DEBUG
@@ -198,5 +145,15 @@ struct WorkflowRunStatus<VM: WorkflowViewModel>: View {
 
 #Preview("Workflow decisions and checklist - narrow, long question") {
     WorkflowRunStatus(viewModel: WorkflowPreview.makeLongQuestionRun()).frame(width: PbRadius.Metrics.toolRowPreviewWidth)
+}
+
+#Preview("Workflow decisions - duplicate reason hidden only while the panel is open") {
+    HStack(spacing: PbRadius.Metrics.zero) {
+        WorkflowRunStatus(viewModel: WorkflowPreview.make(run: true))
+            .frame(width: PbRadius.Metrics.toolRowPreviewWidth)
+        Divider()
+        WorkflowRunStatus(viewModel: WorkflowPreview.make(run: true), isRecoveryPanelVisible: true)
+            .frame(width: PbRadius.Metrics.toolRowPreviewWidth)
+    }
 }
 #endif

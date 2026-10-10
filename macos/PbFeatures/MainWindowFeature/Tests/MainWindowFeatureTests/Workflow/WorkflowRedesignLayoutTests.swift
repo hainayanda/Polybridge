@@ -20,10 +20,8 @@ import Testing
                                                "attention_reason": .string(question), "input_question": .string(question)])
         vm.instructions = answer
         let fixture = RedesignHost(
-            VStack(spacing: PbRadius.Metrics.zero) {
-                WorkflowDiagnosticsViewport(maximumHeight: PbRadius.Metrics.workflowDiagnosticsMaximumHeight) { WorkflowRunStatus(viewModel: vm) }
-                Color.cardFill.opacity(0).frame(maxHeight: .infinity)
-            }.preferredColorScheme(appearance), size: CGSize(width: 900, height: 700)
+            RecoveryOverlayTestHarness(viewModel: vm)
+                .preferredColorScheme(appearance), size: CGSize(width: 900, height: 700)
         )
         defer { vm.didDisappear(); fixture.close() }
         await fixture.settle { fixture.element("Resume") != nil && fixture.recoveryTextView != nil }
@@ -33,7 +31,7 @@ import Testing
         let editorScroll = try #require(editor.enclosingScrollView)
         let outer = fixture.descendants.compactMap { $0 as? NSScrollView }.first { $0 !== editorScroll }
         let viewport = outer.map { $0.contentView.convert($0.contentView.bounds, to: nil) }
-            ?? CGRect(x: 0, y: fixture.window.contentLayoutRect.height - 180, width: 900, height: 180)
+            ?? fixture.host.convert(fixture.host.bounds, to: nil)
 
         // then
         if let outer { #expect(abs(outer.contentView.bounds.origin.y) < 1) }
@@ -166,26 +164,24 @@ import Testing
         vm.selectedRun = WorkflowRunModel(raw: raw)
         vm.instructions = String(repeating: "Restore the original interface.\nKeep existing callers compatible.\n", count: 12)
         vm.additionalAttempts = 3
-        let cap = min(180, size.height * 0.3)
         let fixture = RedesignHost(
-            VStack(spacing: PbRadius.Metrics.zero) {
-                WorkflowDiagnosticsViewport(maximumHeight: cap) { WorkflowRunStatus(viewModel: vm) }
-                Color.cardFill.opacity(0).frame(maxHeight: .infinity)
-            }.preferredColorScheme(appearance), size: size
+            RecoveryOverlayTestHarness(viewModel: vm).preferredColorScheme(appearance), size: size
         )
         defer { vm.didDisappear(); fixture.close() }
         await fixture.settle { fixture.element("Resume") != nil }
 
         // when
         let editor = try #require(fixture.descendants.compactMap { $0 as? NSTextView }.first { $0.isEditable })
+        let panel = try #require(fixture.descendants.compactMap { $0 as? WorkflowRecoveryPanelRootView }.first)
         let outer = try #require(fixture.descendants.compactMap { $0 as? NSScrollView }.first {
-            $0 !== editor.enclosingScrollView && ($0.documentView?.bounds.height ?? 0) > $0.contentView.bounds.height + 20
+            $0 !== editor.enclosingScrollView && $0.isDescendant(of: panel)
         })
         let document = try #require(outer.documentView)
         let viewport = outer.contentView.convert(outer.contentView.bounds, to: nil)
 
         // then
-        #expect(outer.bounds.height <= cap + 1)
+        let panelMaximumHeight = size.height - 2 * PbRadius.Metrics.recoveryPanelInset
+        #expect(outer.bounds.height <= panelMaximumHeight + 1)
         #expect(editor.string == vm.instructions, "Long multiline answers retain their complete content")
         let editorScroll = try #require(editor.enclosingScrollView)
         #expect(editorScroll.bounds.height >= PbRadius.Metrics.recoveryEditorMinimumHeight - 1)
@@ -206,6 +202,16 @@ import Testing
             #expect(visible.insetBy(dx: -1, dy: -1).contains(reached), "Recovery control must be reachable by native scrolling: \(label)")
         }
         #expect(fixture.element("Waiting for the first step") == nil)
+    }
+}
+
+private struct RecoveryOverlayTestHarness<VM: WorkflowViewModel>: View {
+    let viewModel: VM
+    @State private var presentation = WorkflowRecoveryOverlayPresentation()
+
+    var body: some View {
+        WorkflowRecoveryOverlayHost(viewModel: viewModel, presentation: $presentation, onExplicitClose: {})
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

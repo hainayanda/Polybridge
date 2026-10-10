@@ -26,6 +26,8 @@ import Testing
         ("doneBG", 0xE2F0E7, 0x1D3326),
         ("warningFG", 0x924D00, 0xF2A93B),
         ("warningBG", 0xF6EBDD, 0x3A2C16),
+        ("recoveryBorder", 0x924D00, 0xF2A93B),
+        ("recoveryShadow", 0x000000, 0x000000),
         ("failedRed", 0xBE2F29, 0xFF6F66),
         ("dangerFG", 0xBE2F29, 0xFF6F66),
         ("dangerBG", 0xF8E5E4, 0x3D2120),
@@ -74,7 +76,7 @@ import Testing
 
     /// Entries whose role fixes one value in both appearances (`onAccent`, `shadow`); every other
     /// entry must resolve differently per appearance.
-    private static let fixedInBothModes: Set<String> = ["onAccent", "shadow"]
+    private static let fixedInBothModes: Set<String> = ["onAccent", "shadow", "recoveryShadow"]
 
     @Test func givenEachPaletteEntry_whenResolvedInEachAppearance_thenItMatchesItsSpecifiedValue() throws {
         for expected in Self.expected {
@@ -140,6 +142,40 @@ import Testing
         let expectedRGB = appearance == .darkAqua ? Palette.accentLink.dark : Palette.accentLink.light
         #expect(Resolved.hex(Palette.workflowMarqueeFill.color, in: appearance) == expectedRGB)
         #expect(abs(color.alphaComponent - 0.08) < 0.01)
+    }
+
+    @Test(arguments: [NSAppearance.Name.aqua, .darkAqua])
+    func givenTheDerivedRecoveryBorder_whenResolved_thenItPreservesWarningRGBAndUsesThirtyPercentAlpha(appearance: NSAppearance.Name) {
+        var resolved: NSColor?
+        NSAppearance(named: appearance)!.performAsCurrentDrawingAppearance {
+            resolved = NSColor(Palette.recoveryBorder.color).usingColorSpace(.sRGB)
+        }
+        let color = resolved!
+        let expectedRGB = appearance == .darkAqua ? Palette.warningFG.dark : Palette.warningFG.light
+        #expect(Resolved.hex(Palette.recoveryBorder.color, in: appearance) == expectedRGB)
+        #expect(abs(color.alphaComponent - 0.3) < 0.01)
+    }
+
+    @Test(arguments: [NSAppearance.Name.aqua, .darkAqua])
+    func givenTheDerivedRecoveryShadow_whenResolved_thenItPreservesBlackRGBAndUsesTwelvePercentAlpha(appearance: NSAppearance.Name) {
+        var resolved: NSColor?
+        NSAppearance(named: appearance)!.performAsCurrentDrawingAppearance {
+            resolved = NSColor(Palette.recoveryShadow.color).usingColorSpace(.sRGB)
+        }
+        let color = resolved!
+        #expect(Resolved.hex(Palette.recoveryShadow.color, in: appearance) == 0)
+        #expect(abs(color.alphaComponent - 0.12) < 0.01)
+    }
+
+    @Test(arguments: [NSAppearance.Name.aqua, .darkAqua])
+    func givenRecoveryTextOnWarningBackground_whenResolved_thenMeetsReadableContrast(appearance: NSAppearance.Name) {
+        // The recovery panel uses these existing semantic foreground tokens on opaque warningBG.
+        let background = Resolved.hex(Color.warningBG, in: appearance)
+        for (name, foreground) in [("primary", Color.primaryText), ("secondary", Color.secondaryText),
+                                   ("warning", Color.warningFG)] {
+            let ratio = Contrast.ratio(Resolved.hex(foreground, in: appearance), background)
+            #expect(ratio >= 4.5, "\(name) on warningBG in \(appearance.rawValue): \(ratio)")
+        }
     }
 
     @Test(arguments: [NSAppearance.Name.aqua, .darkAqua])
