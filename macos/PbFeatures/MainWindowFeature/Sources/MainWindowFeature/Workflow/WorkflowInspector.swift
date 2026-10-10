@@ -17,6 +17,9 @@ struct WorkflowInspector<VM: WorkflowViewModel>: View {
                 content
             }
         }
+        // The flush-pane amendment (user override of SPEC §6.3): a plain cardFill panel
+        // edge-to-edge, as before the redesign — no rounded surround or border.
+        .background(Color.cardFill)
     }
 
     private var content: some View {
@@ -45,9 +48,6 @@ struct WorkflowInspector<VM: WorkflowViewModel>: View {
                     workflowEditor.disabled(viewModel.selectedRun != nil)
                 }
             }
-            .padding(PbRadius.Metrics.spacing16)
-            .background(Color.cardFill, in: RoundedRectangle(cornerRadius: PbRadius.panel))
-            .overlay(RoundedRectangle(cornerRadius: PbRadius.panel).stroke(Color.cardBorder))
             .padding(PbRadius.Metrics.spacing16)
     }
 

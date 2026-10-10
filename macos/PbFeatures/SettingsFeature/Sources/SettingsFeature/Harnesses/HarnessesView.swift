@@ -60,7 +60,7 @@ struct HarnessesView<VM: HarnessesViewModel>: View {
     // MARK: - View Body
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: PbRadius.Metrics.spacing10) {
             HStack {
                 Text("Where polybridge is registered as an MCP server").font(.pb(.headline, weight: .semibold))
                 Spacer()
@@ -68,7 +68,10 @@ struct HarnessesView<VM: HarnessesViewModel>: View {
                 Button("Refresh") { viewModel.didTapRefresh() }.disabled(viewModel.isRefreshDisabled)
             }
             if let serverPath = viewModel.serverPath {
-                Text("Server: \(serverPath)").font(.pb(.secondary)).foregroundStyle(.secondary)
+                Text("Server: \(serverPath)")
+                    .font(.pb(.secondary, design: .monospaced))
+                    .foregroundStyle(Color.secondaryText)
+                    .textSelection(.enabled)
             }
             if let bannerModel = viewModel.installBannerModel {
                 InstallBanner(
@@ -91,7 +94,7 @@ struct HarnessesView<VM: HarnessesViewModel>: View {
                 )
             }
         }
-        .padding(16)
+        .padding(PbRadius.Metrics.spacing16)
         .sheet(item: $allowlistRow) { row in
             buildAllowlist(row)
         }
@@ -102,15 +105,38 @@ struct HarnessesView<VM: HarnessesViewModel>: View {
 }
 
 #if DEBUG
-#Preview {
-    HarnessesView(HarnessesViewModelMock())
+#Preview("Harnesses - light") {
+    HarnessesView(HarnessesViewModelMock()).preferredColorScheme(.light)
 }
 
-#Preview("install banner") {
+#Preview("Harnesses - dark") {
+    HarnessesView(HarnessesViewModelMock()).preferredColorScheme(.dark)
+}
+
+#Preview("Harnesses, install banner - light") {
     HarnessesView(HarnessesViewModelMock(installBannerModel: .init(
         title: "polybridge isn't installed",
         detail: "polybridge-ctl wasn't found in ~/.local/bin, /opt/homebrew/bin, /usr/local/bin.",
         primaryTitle: "Install polybridge"
-    )))
+    ))).preferredColorScheme(.light)
+}
+
+#Preview("Harnesses, install banner - dark") {
+    HarnessesView(HarnessesViewModelMock(installBannerModel: .init(
+        title: "polybridge isn't installed",
+        detail: "polybridge-ctl wasn't found in ~/.local/bin, /opt/homebrew/bin, /usr/local/bin.",
+        primaryTitle: "Install polybridge"
+    ))).preferredColorScheme(.dark)
+}
+
+/// The dummy load-failure state: the red error line where the banner otherwise shows.
+#Preview("Harnesses, load error - light") {
+    HarnessesView(HarnessesViewModelMock(errorMessage: "polybridge-setup failed: not found on PATH."))
+        .preferredColorScheme(.light)
+}
+
+#Preview("Harnesses, load error - dark") {
+    HarnessesView(HarnessesViewModelMock(errorMessage: "polybridge-setup failed: not found on PATH."))
+        .preferredColorScheme(.dark)
 }
 #endif

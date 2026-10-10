@@ -15,7 +15,10 @@
 //
 
 import AppKit
+import PbUI
 import SwiftUI
+
+// MARK: - MenuBarLabelView
 
 struct MenuBarLabelView<VM: MenuBarViewModel>: View {
 
@@ -41,17 +44,17 @@ struct MenuBarLabelView<VM: MenuBarViewModel>: View {
     // MARK: - View Body
 
     var body: some View {
-        HStack(spacing: 3) {
+        HStack(spacing: PbRadius.Metrics.menuBarItemSpacing) {
             if let icon {
                 Image(nsImage: icon)
             } else {
                 Image(systemName: "point.3.connected.trianglepath.dotted")
             }
             if viewModel.taskCountsLoading || viewModel.workflowCountsLoading { Text("…") }
-            if viewModel.runningCount > 0 { Text("\(viewModel.runningCount)") }
+            if viewModel.runningCount > 0 { Text("\(viewModel.runningCount)").monospacedDigit() }
             if viewModel.workflowActiveCount > 0 {
                 Image(systemName: "arrow.triangle.branch")
-                Text("\(viewModel.workflowActiveCount)")
+                Text("\(viewModel.workflowActiveCount)").monospacedDigit()
             }
             if viewModel.workflowAttentionCount > 0 { Image(systemName: "exclamationmark.circle") }
         }
@@ -70,11 +73,21 @@ struct MenuBarLabelView<VM: MenuBarViewModel>: View {
 }
 
 #if DEBUG
-#Preview("P-bridge icon") {
+#Preview("P-bridge icon - light") {
     MenuBarLabelView(MenuBarViewModelMock(), icon: NSImage(systemSymbolName: "app.fill", accessibilityDescription: nil))
+        .preferredColorScheme(.light)
 }
 
-#Preview("fallback symbol") {
-    MenuBarLabelView(MenuBarViewModelMock())
+#Preview("P-bridge icon - dark") {
+    MenuBarLabelView(MenuBarViewModelMock(), icon: NSImage(systemSymbolName: "app.fill", accessibilityDescription: nil))
+        .preferredColorScheme(.dark)
+}
+
+#Preview("fallback symbol - light") {
+    MenuBarLabelView(MenuBarViewModelMock()).preferredColorScheme(.light)
+}
+
+#Preview("fallback symbol - dark") {
+    MenuBarLabelView(MenuBarViewModelMock()).preferredColorScheme(.dark)
 }
 #endif

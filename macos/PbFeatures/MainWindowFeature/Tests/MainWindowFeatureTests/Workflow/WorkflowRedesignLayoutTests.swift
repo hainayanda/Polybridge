@@ -124,8 +124,7 @@ import Testing
         // then
         #expect(chips.count == 8)
         let nativeScrollInsets = scroll.bounds.width - scroll.contentView.bounds.width
-        let minimumViewport = WorkflowInspectorWidth.canvasMinimumWidth
-            - 2 * PbRadius.Metrics.workflowCanvasInset - nativeScrollInsets
+        let minimumViewport = WorkflowInspectorWidth.canvasMinimumWidth - nativeScrollInsets
         #expect(viewport.width >= minimumViewport,
                 "The canvas retains its 400-point pane minus its tokenized padding and measured native scroll border")
         #expect(trayFrame.maxY <= viewport.minY + 1, "Wrapped chrome must reserve real height below the native scroll region")

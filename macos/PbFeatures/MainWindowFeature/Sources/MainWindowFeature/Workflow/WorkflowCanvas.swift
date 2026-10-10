@@ -123,7 +123,7 @@ struct WorkflowCanvas: View {
                     .onTapGesture { isCanvasFocused = true; onSelectNodes([], nil) }
                 if let marquee {
                     Rectangle()
-.fill(Color.accentLink.opacity(0.08))
+                .fill(Color.workflowMarqueeFill)
                         .overlay(Rectangle().stroke(Color.accentLink, lineWidth: PbRadius.Metrics.hairlineStroke))
                         .frame(width: marquee.width, height: marquee.height)
                         .position(x: marquee.midX, y: marquee.midY)
@@ -262,12 +262,6 @@ struct WorkflowCanvas: View {
             scrollController.stop()
             routeCache.retain(ids: [])
         }
-        // The canvas reads as one rounded panel (SPEC §6.3): a continuous inspectorFill
-        // background with a hairline border, clipped so the native scroll region and its
-        // floating zoom stay inside the frame. Geometry, transforms and hit-testing above are
-        // untouched.
-        .clipShape(RoundedRectangle(cornerRadius: PbRadius.panel))
-        .overlay(RoundedRectangle(cornerRadius: PbRadius.panel).stroke(Color.cardBorder, lineWidth: PbRadius.Metrics.hairlineStroke))
     }
 
     private func updateArrowHover(at point: CGPoint) {

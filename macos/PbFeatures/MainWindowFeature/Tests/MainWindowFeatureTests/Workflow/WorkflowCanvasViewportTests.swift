@@ -106,7 +106,9 @@ import Testing
         let startFrame = host.convert(CGRect(origin: start.position, size: WorkflowCanvasGeometry.size(start)), from: probe)
         // then
         #expect(visibility == .detailOnly ? detail.minX < 1 : detail.minX > 100)
-        let expectedInset = mode == "Editor" ? PbRadius.Metrics.workflowCanvasInset : PbRadius.Metrics.zero
+        // The flush-pane amendment removes only the editor's new outer inset; the canvas remains
+        // edge-to-edge in every workflow mode. Native scroll borders are measured separately.
+        let expectedInset = PbRadius.Metrics.zero
         #expect(abs(viewport.minX - detail.minX - expectedInset) < 1)
         #expect(viewport.contains(startFrame), "Start must be fully visible at logical (50, 50), beside the sidebar")
         #expect(viewport.maxX <= host.bounds.maxX)

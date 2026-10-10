@@ -50,8 +50,7 @@ protocol ParallelRouting: Sendable {
 
 // MARK: - ParallelVM
 
-/// Presents complete conversation membership with bounded resident activity leases.
-/// Immutable value inputs build off-main; complete equality guards UI publication.
+/// Presents complete membership with bounded leases and equality-guarded off-main presentation.
 @Observable
 @MainActor
 final class ParallelVM: ParallelViewModel {
@@ -60,11 +59,16 @@ final class ParallelVM: ParallelViewModel {
     
     let groupName: String
     private(set) var headerSubtitle = ""
+    /// Truthful counts from complete current membership, independent of the static subtitle.
+    private(set) var statusSummary: String?
+    /// Common enforced claims from every current member; empty input produces no pills.
+    private(set) var headerPills: [String] = []
+    /// Remaining common clauses, or the unchanged common/fallback sentence when no pills exist.
+    private(set) var headerClaimCaption = ""
     private(set) var showPrompt = false
     private(set) var canCancelAll = false
     private(set) var isEmpty = false
     private(set) var columns: [ParallelColumnModel] = []
-    private(set) var footerText = ParallelVM.fallbackFooter
     
     // MARK: - Private Properties
     
@@ -290,8 +294,7 @@ final class ParallelVM: ParallelViewModel {
                 recompute()
             }
             .store(in: &cancellables)
-        // Titles load independently of the listing (Codex review finding): a column must refresh
-        // when it changes on its own, not only when an unrelated publisher happens to fire afterward.
+        // Independent title updates refresh the column without waiting for another publisher.
         useCase.titlesPublisher()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
@@ -397,10 +400,17 @@ final class ParallelVM: ParallelViewModel {
         descriptors = Dictionary(uniqueKeysWithValues: orderedConversations.map { ($0.id, basePresentation($0, includePrompt: false)) })
         let inputs = updateResidency()
         publishColumns()
-        let footerTasks = orderedConversations.map { latestSnapshots[$0.current.taskID] ?? $0.current }
-        let footer = EnforcementText.common(footerTasks) ?? Self.fallbackFooter
-        if footerText != footer { footerText = footer }
+        publishHeaderClaims()
         schedule(inputs)
+    }
+
+    /// Apply complete-membership header values without publishing unchanged presentation.
+    private func publishHeaderClaims() {
+        let tasks = orderedConversations.map { latestSnapshots[$0.current.taskID] ?? $0.current }
+        let header = ParallelHeaderPresentation(tasks: tasks, fallback: Self.fallbackFooter)
+        if statusSummary != header.statusSummary { statusSummary = header.statusSummary }
+        if headerPills != header.pills { headerPills = header.pills }
+        if headerClaimCaption != header.caption { headerClaimCaption = header.caption }
     }
 
     private func updateResidency() -> [String: ParallelColumnInput] {
@@ -451,7 +461,6 @@ final class ParallelVM: ParallelViewModel {
 
     private func historyDidChange(_ memberID: String) {
         guard leases[memberID] != nil else { return }
-        // History completion follows repository folding; capture its committed items directly.
         itemsByTask[memberID] = useCase.items(for: memberID)
         availabilityByTask[memberID] = useCase.eventsAvailability(for: memberID)
         refreshActivity(memberID: memberID)
@@ -469,8 +478,7 @@ final class ParallelVM: ParallelViewModel {
 
     private func readyToRefresh(_ conversation: Conversation) -> Bool {
         guard refreshingRetainedIDs.contains(conversation.id) else { return true }
-        // Reacquisition may initially expose an empty tail. Keep the retained snapshot until
-        // the requested history boundary has been reconstructed and the stream is ready.
+        // Preserve retained content until reacquisition reconstructs its history and ready stream.
         let ready = conversation.members.allSatisfy { member in
             leases[member.taskID] != nil
                 && (availabilityByTask[member.taskID] != .loading || !(itemsByTask[member.taskID] ?? []).isEmpty)
@@ -520,21 +528,13 @@ final class ParallelVM: ParallelViewModel {
         let next = orderedConversations.map { conversation in
             let presentation = presentations[conversation.id] ?? descriptors[conversation.id] ?? basePresentation(conversation, includePrompt: false)
             let metadata = descriptors[conversation.id] ?? presentation
-            var column = ParallelColumnModel(id: presentation.id, task: metadata.task, title: metadata.title,
-                subtitle: metadata.subtitle, isBusy: metadata.isBusy, outcomeMessage: metadata.outcomeMessage,
-                showPrompt: metadata.showPrompt, prompt: presentation.prompt, rows: presentation.rows,
-                activityRows: presentation.activityRows, liveStep: presentation.liveStep,
-                pendingMessages: presentation.pendingMessages, isLoading: presentation.isLoading, summary: presentation.summary,
+            var column = ParallelColumnModelBuilder.build(presentation: presentation, metadata: metadata,
                 onTapTakeover: { [weak self] in self?.didTapTakeover(taskID: metadata.task.taskID) },
-                onTapOpenTask: { [weak self] in self?.routing.selectTask(metadata.task.taskID) }, start: presentation.start)
+                onTapOpenTask: { [weak self] in self?.routing.selectTask(metadata.task.taskID) })
             column.animatesArrival = arrivals.contains(column.id)
-            column.emptyText = presentation.emptyText
             column.onDidPresent = { [weak self] in self?.arrivalTracker.didPresent(conversation.id) }
-            column.memberTaskIDs = metadata.memberTaskIDs
             column.isResident = presentations[column.id] != nil || residentIDs.contains(column.id)
             column.isVisible = visibleIDs.contains(column.id)
-            column.history = presentation.history
-            column.paginationRevision = presentation.paginationRevision
             column.onLoadMore = column.isVisible && (column.history.hasMore || column.history.error != nil)
                 ? { [weak self] in self?.loadOlder(conversation.id) ?? false } : nil
             return column

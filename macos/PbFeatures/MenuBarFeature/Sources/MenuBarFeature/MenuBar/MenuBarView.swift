@@ -94,11 +94,11 @@ struct MenuBarView<VM: MenuBarViewModel>: View {
     // MARK: - View Body
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: PbRadius.Metrics.zero) {
             header
             Divider()
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: PbRadius.Metrics.spacing16) {
                     notices
                     workflows
                     ForEach(viewModel.runningRows) { row in
@@ -112,12 +112,12 @@ struct MenuBarView<VM: MenuBarViewModel>: View {
                     }
                     recent
                 }
-                .padding(16)
+                .padding(PbRadius.Metrics.spacing16)
             }
             Divider()
             footer
         }
-        .frame(width: 380, height: 560)
+        .frame(width: PbRadius.Metrics.menuBarPopoverWidth, height: PbRadius.Metrics.menuBarPopoverHeight)
         .background(Color.windowBG)
         .onAppear { viewModel.didAppear() }
         .onDisappear { viewModel.didDisappear() }
@@ -127,30 +127,39 @@ struct MenuBarView<VM: MenuBarViewModel>: View {
     // MARK: - Sections
     
     private var header: some View {
-        HStack(spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(viewModel.taskCountsLoading ? "Counting running agents…" : "\(viewModel.runningCount) running").font(.pb(.headline, weight: .semibold))
+        HStack(spacing: PbRadius.Metrics.spacing8) {
+            VStack(alignment: .leading, spacing: PbRadius.Metrics.spacing2) {
+                Text(viewModel.taskCountsLoading ? "Counting running agents…" : "\(viewModel.runningCount) running")
+                    .font(.pb(.headline, weight: .semibold))
+                    .monospacedDigit()
                 if viewModel.workflowCountsLoading {
                     Text("Counting workflows…").font(.pb(.caption)).foregroundStyle(Color.secondaryText)
                 } else if viewModel.workflowActiveCount > 0 {
                     Text("\(viewModel.workflowActiveCount) workflows · \(viewModel.workflowAttentionCount) need attention")
                         .font(.pb(.caption))
-.foregroundStyle(Color.secondaryText)
+                        .monospacedDigit()
+                        .foregroundStyle(Color.secondaryText)
                 }
-                HStack(spacing: 5) {
-                    Circle().fill(viewModel.isConnected ? Color.doneGreen : Color.failedRed).frame(width: 7, height: 7)
+                HStack(spacing: PbRadius.Metrics.spacing5) {
+                    Circle()
+                        .fill(viewModel.isConnected ? Color.doneGreen : Color.failedRed)
+                        .frame(width: PbRadius.Metrics.sidebarConnectionDotSize, height: PbRadius.Metrics.sidebarConnectionDotSize)
+                        .accessibilityHidden(true)
                     Text(viewModel.headerSubline).font(.pb(.caption)).foregroundStyle(Color.secondaryText).lineLimit(1)
                 }
             }
             Spacer()
             Button { viewModel.didTapNewSession() } label: {
-                Image(systemName: "plus").font(.pb(.body, weight: .semibold)).frame(width: 24, height: 24).contentShape(Rectangle())
+                Image(systemName: "plus")
+                    .font(.pb(.body, weight: .semibold))
+                    .frame(width: PbRadius.Metrics.menuBarIconButtonFrame, height: PbRadius.Metrics.menuBarIconButtonFrame)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
             .help("New session")
             .accessibilityLabel("New session")
         }
-        .padding(16)
+        .padding(PbRadius.Metrics.spacing16)
     }
     
     @ViewBuilder
@@ -170,7 +179,7 @@ struct MenuBarView<VM: MenuBarViewModel>: View {
     @ViewBuilder
     private var recent: some View {
         if !viewModel.recentGroups.isEmpty || !viewModel.recentTasks.isEmpty {
-            SectionLabel(text: "Recent").padding(.top, 6)
+            SectionLabel(text: "Recent").padding(.top, PbRadius.Metrics.spacing6)
             ForEach(viewModel.recentGroups) { group in
                 Button { viewModel.didSelectGroup(group.name) } label: {
                     GroupRow(group: group).contentShape(Rectangle())
@@ -200,7 +209,7 @@ struct MenuBarView<VM: MenuBarViewModel>: View {
     }
     
     private var footer: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: PbRadius.Metrics.spacing8) {
             Button { viewModel.didTapOpenMonitor() } label: {
                 Text("Open Monitor").frame(maxWidth: .infinity)
             }
@@ -211,7 +220,8 @@ struct MenuBarView<VM: MenuBarViewModel>: View {
                 Button("Settings…") { openSettings() }
                 Button("Quit") { NSApp.terminate(nil) }
             } label: {
-                Image(systemName: "gearshape").frame(width: 20, height: 20)
+                Image(systemName: "gearshape")
+                    .frame(width: PbRadius.Metrics.menuBarGearIconFrame, height: PbRadius.Metrics.menuBarGearIconFrame)
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
@@ -219,7 +229,7 @@ struct MenuBarView<VM: MenuBarViewModel>: View {
             .accessibilityLabel("Settings and quit")
         }
         .font(.pb(.body))
-        .padding(16)
+        .padding(PbRadius.Metrics.spacing16)
     }
 }
 

@@ -265,9 +265,10 @@ struct WorkflowView<VM: WorkflowViewModel>: View {
             // chips wrap), so the canvas keeps exactly the viewport it is given; no fixed
             // overlap clearance is ever guessed.
             VStack(spacing: PbRadius.Metrics.zero) {
+                // The flush-pane amendment (user override of SPEC §6.3) drops the canvas's outer
+                // workflowCanvasInset: it sits edge-to-edge as before the redesign. The token
+                // still pads the tray's own horizontal chrome below.
                 canvas
-                    .padding(.horizontal, PbRadius.Metrics.workflowCanvasInset)
-                    .padding(.top, PbRadius.Metrics.workflowCanvasInset)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 stepTray
                     .padding(.horizontal, PbRadius.Metrics.workflowCanvasInset)
@@ -344,7 +345,7 @@ struct WorkflowView<VM: WorkflowViewModel>: View {
                     .help("Drag an output dot to an input, or click the output then the destination. "
                           + "Select a step and press Delete to remove it.")
             }
-            Spacer(minLength: 0)
+            Spacer(minLength: PbRadius.Metrics.zero)
             if viewModel.connectionSourceID != nil {
                 Button("Cancel connection") { viewModel.connectionSourceID = nil }
                     .buttonStyle(MonitorButtonStyle(.glass))
@@ -519,7 +520,7 @@ struct WorkflowView<VM: WorkflowViewModel>: View {
                 if viewModel.selectedNode != nil || viewModel.selectedEdge != nil {
                     WorkflowInspector(viewModel: viewModel, isScrollable: false)
                 } else {
-                    Spacer(minLength: 0)
+                    Spacer(minLength: PbRadius.Metrics.zero)
                 }
             }
             }

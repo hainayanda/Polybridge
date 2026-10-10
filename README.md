@@ -94,6 +94,8 @@ and idle caller-owned workflows; linked child views route cancellation to the ro
 See [workflow interaction and recovery](docs/workflows.md) for eligibility and cancellation outcomes.
 
 The sidebar has a fixed **New session** button (⌘N) above search and the compact backend filter.
+Expand **Advanced** in New session for the existing model, reasoning-effort and turn-limit options
+supported by the selected agent.
 Older sidebar history loads automatically when you scroll to the bottom, and a **Load older**
 control offers the same request manually while more pages remain.
 Initial activity reads and summary scans share a four-job loading limit; large Parallel groups
@@ -104,6 +106,10 @@ New activity panels
 fade into place, and actionable workflow loading errors appear in a dismissible top notification
 with retained details. Long workflow details scroll within the window without displacing its
 header or sidebar. See [Monitor history and notifications](docs/workflows.md#monitor-history-and-notifications).
+
+Settings → General shows resolved command-line tools. Commit a Location override with Return or
+**Apply**; **Detect** clears that override and refreshes resolution. **Environment details** expands
+the full launch-environment explanation.
 
 After updating your checkout, reinstall the CLI with `uv tool install . --force --no-cache` and
 rebuild Monitor, then repeat the copy and open commands above so the installed app and runner stay in sync.

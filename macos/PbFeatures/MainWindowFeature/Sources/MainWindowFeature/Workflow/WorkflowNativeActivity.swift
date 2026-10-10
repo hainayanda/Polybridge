@@ -34,6 +34,12 @@ struct WorkflowNativeActivityView: View {
             }
 .padding(PbRadius.Metrics.spacing16)
 .frame(maxWidth: .infinity, alignment: .leading)
+            // The user-authorized scrollbar amendment: this alternate feed bypasses
+            // ActivityFeedView, so the shared thin, auto-hiding native chrome is attached to
+            // its own enclosing vertical scroll view here — inside the document, exactly as
+            // ActivityFeedView does, with no interaction or accessibility footprint and no
+            // observer, paging or data change.
+.background(ActivityScrollChrome())
         }
     }
 }

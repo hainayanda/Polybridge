@@ -105,8 +105,20 @@ struct ActivityNoticeView: View {
 /// A pulsing dot and the current step. It sits under the feed and owns nothing. The pulse follows
 /// Reduce Motion dynamically — the presentation-only override wins over the system setting, and a
 /// change mid-flight stops or restarts the pulse without waiting for a re-mount.
+///
+/// The `threeDots` indicator is the Parallel lane variant (§6.5): three `liveDot` dots and the step
+/// text in tertiary text, shown only when the lane's existing `LiveStep` says real work is
+/// happening. The default `singleDot` keeps every other consumer's presentation unchanged.
 struct LiveStepLineView: View {
+    enum Indicator: Hashable {
+        /// The shared default: one pulsing `liveDot` dot, secondary text.
+        case singleDot
+        /// The Parallel lane variant: three pulsing `liveDot` dots, tertiary text.
+        case threeDots
+    }
+
     let text: String
+    var indicator: Indicator = .singleDot
     @State private var isDimmed = false
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @Environment(\.pbReduceMotionOverride) private var reduceMotionOverride
@@ -117,14 +129,10 @@ struct LiveStepLineView: View {
 
     var body: some View {
         HStack(spacing: PbRadius.Metrics.spacing8) {
-            Circle()
-                .fill(Color.liveDot)
-                .frame(width: PbRadius.Metrics.spacing8, height: PbRadius.Metrics.spacing8)
-                .opacity(isDimmed ? 0.3 : 1)
-                .accessibilityHidden(true)
+            dots
             Text(text)
                 .font(.pb(.secondary))
-                .foregroundStyle(Color.secondaryText)
+                .foregroundStyle(indicator == .threeDots ? Color.tertiaryText : Color.secondaryText)
                 .lineLimit(1)
                 .truncationMode(.middle)
         }
@@ -132,6 +140,33 @@ struct LiveStepLineView: View {
         .onAppear { updatePulse() }
         .onChange(of: reduceMotion) { _, _ in updatePulse() }
         .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private var dots: some View {
+        switch indicator {
+        case .singleDot:
+            // The shared default keeps its exact 8 pt dot, so TaskDetail's timeline is unchanged.
+            Circle()
+                .fill(Color.liveDot)
+                .frame(width: PbRadius.Metrics.spacing8, height: PbRadius.Metrics.spacing8)
+                .opacity(isDimmed ? 0.3 : 1)
+                .accessibilityHidden(true)
+        case .threeDots:
+            HStack(spacing: PbRadius.Metrics.liveIndicatorDotSpacing) {
+                dot
+                dot
+                dot
+            }
+        }
+    }
+
+    private var dot: some View {
+        Circle()
+            .fill(Color.liveDot)
+            .frame(width: PbRadius.Metrics.liveIndicatorDotSize, height: PbRadius.Metrics.liveIndicatorDotSize)
+            .opacity(isDimmed ? 0.3 : 1)
+            .accessibilityHidden(true)
     }
 
     /// Starts the pulse unless Reduce Motion is active, and settles the dot at full opacity when it
@@ -156,6 +191,7 @@ private struct ActivityStatusPreview: View {
             ActivityNoticeView(text: "Finished", systemImage: "checkmark.circle.fill", style: .finished(.completed))
             ActivityNoticeView(text: "Failed · exit 1", systemImage: "xmark.circle.fill", style: .finished(.failed))
             LiveStepLineView(text: "Reading AppDelegate.swift…")
+            LiveStepLineView(text: "Running 2 tests…", indicator: .threeDots)
         }
         .padding(PbRadius.Metrics.spacing16)
         .frame(width: PbRadius.Metrics.taskDetailNarrowPreviewWidth)

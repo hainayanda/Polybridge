@@ -12,6 +12,8 @@ import MonitorCore
 import PbUI
 import SwiftUI
 
+// MARK: - MenuBarRunningRowView
+
 struct MenuBarRunningRowView: View {
     let model: MenuBarRunningRowModel
     let onTap: () -> Void
@@ -19,11 +21,11 @@ struct MenuBarRunningRowView: View {
     var body: some View {
         Button(action: onTap) {
             ActivityCard {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 8) {
-                        RunningSpinner().frame(width: 16, height: 16)
+                VStack(alignment: .leading, spacing: PbRadius.Metrics.spacing4) {
+                    HStack(spacing: PbRadius.Metrics.spacing8) {
+                        RunningSpinner().frame(width: PbRadius.Metrics.statusIconSize, height: PbRadius.Metrics.statusIconSize)
                         Text(model.title).font(.pb(.body, weight: .medium)).lineLimit(1)
-                        Spacer(minLength: 4)
+                        Spacer(minLength: PbRadius.Metrics.spacing4)
                         TimelineView(.periodic(from: .now, by: 1)) { context in
                             Text(Format.clock(elapsed(at: context.date)))
                                 .font(.pb(.caption))
@@ -31,7 +33,7 @@ struct MenuBarRunningRowView: View {
                                 .foregroundStyle(Color.secondaryText)
                         }
                     }
-                    HStack(spacing: 4) {
+                    HStack(spacing: PbRadius.Metrics.spacing4) {
                         if let activityLine = model.activityLine {
                             Text(activityLine)
                                 .font(model.activityIsMonospaced ? .pb(.caption, design: .monospaced) : .pb(.caption))
@@ -43,7 +45,7 @@ struct MenuBarRunningRowView: View {
                         }
                     }
                     .foregroundStyle(Color.secondaryText)
-                    .padding(.leading, 24)
+                    .padding(.leading, PbRadius.Metrics.menuBarRunningRowDetailInset)
                 }
             }
             .contentShape(Rectangle())
@@ -75,7 +77,7 @@ struct MenuBarRunningRowView: View {
 
 private struct MenuBarRunningRowPreview: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: PbRadius.Metrics.spacing8) {
             MenuBarRunningRowView(
                 model: MenuBarRunningRowModel(
                     id: "abc123", backend: "claude", title: "Fix the login bug", repoName: "polybridge",
@@ -101,7 +103,7 @@ private struct MenuBarRunningRowPreview: View {
             )
         }
         .padding()
-        .frame(width: 380)
+        .frame(width: PbRadius.Metrics.menuBarPopoverWidth)
         .background(Color.windowBG)
     }
 }

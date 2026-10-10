@@ -16,6 +16,7 @@ import Testing
     private static let expected: [(name: String, light: UInt32, dark: UInt32)] = [
         ("hairline", 0xE2E2E6, 0x2E2E32),
         ("accentLink", 0x3452CC, 0x8EA2F0),
+        ("workflowMarqueeFill", 0x3452CC, 0x8EA2F0),
         ("accentFill", 0x3452CC, 0x4A64D0),
         ("selectedRow", 0xE3E8F8, 0x252C45),
         ("runningBG", 0xE6EAF8, 0x1F2640),
@@ -32,6 +33,7 @@ import Testing
         ("neutralFill", 0xECECEF, 0x2A2A2E),
         ("neutralText", 0x3A3A3C, 0xD1D1D6),
         ("secondaryText", 0x4D4D55, 0xB6B6BE),
+        ("accessRadioBorder", 0x4D4D55, 0xB6B6BE),
         ("tertiaryText", 0x686870, 0x909099),
         ("primaryText", 0x1C1C1F, 0xF2F2F4),
         ("onAccent", 0xFFFFFF, 0xFFFFFF),
@@ -110,6 +112,34 @@ import Testing
             // then — a dark variant exists; the two fixed semantic entries are exempt.
             #expect(dark != light, "\(entry.name) has no dark variant")
         }
+    }
+
+    @Test(arguments: [NSAppearance.Name.aqua, .darkAqua])
+    func givenTheDerivedAccessRadioBorder_whenResolved_thenItPreservesSourceRGBAndUsesTheNamedOpacity(appearance: NSAppearance.Name) {
+        // given / when
+        var resolved: NSColor?
+        NSAppearance(named: appearance)!.performAsCurrentDrawingAppearance {
+            resolved = NSColor(Palette.accessRadioBorder.color).usingColorSpace(.sRGB)
+        }
+
+        // then — opacity is the only derived change; RGB remains the secondary-text token for each
+        // appearance, so the existing radio ink does not acquire a new hard-coded colour.
+        let color = resolved!
+        let expectedRGB = appearance == .darkAqua ? Palette.secondaryText.dark : Palette.secondaryText.light
+        #expect(Resolved.hex(Palette.accessRadioBorder.color, in: appearance) == expectedRGB)
+        #expect(abs(color.alphaComponent - 0.6) < 0.01)
+    }
+
+    @Test(arguments: [NSAppearance.Name.aqua, .darkAqua])
+    func givenTheDerivedWorkflowMarqueeFill_whenResolved_thenItPreservesAccentRGBAndUsesEightPercentAlpha(appearance: NSAppearance.Name) {
+        var resolved: NSColor?
+        NSAppearance(named: appearance)!.performAsCurrentDrawingAppearance {
+            resolved = NSColor(Palette.workflowMarqueeFill.color).usingColorSpace(.sRGB)
+        }
+        let color = resolved!
+        let expectedRGB = appearance == .darkAqua ? Palette.accentLink.dark : Palette.accentLink.light
+        #expect(Resolved.hex(Palette.workflowMarqueeFill.color, in: appearance) == expectedRGB)
+        #expect(abs(color.alphaComponent - 0.08) < 0.01)
     }
 
     @Test(arguments: [NSAppearance.Name.aqua, .darkAqua])

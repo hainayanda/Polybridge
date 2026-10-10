@@ -259,5 +259,94 @@ public enum PbRadius {
         public static let workflowDiagnosticsMaximumHeight: CGFloat = 180
         public static let workflowLaunchSheetWidth: CGFloat = 580
         public static let workflowLaunchSheetHeight: CGFloat = 650
+        /// Parallel lanes (§6.5): the 3 pt status strip across a lane card's top edge.
+        public static let parallelLaneStatusStripHeight: CGFloat = 3
+        /// Maximum height of a settled lane's independently scrollable result callout.
+        public static let parallelResultMaximumHeight: CGFloat = 160
+        /// Width of the Parallel screen's deferred title skeleton.
+        public static let parallelSkeletonTitleWidth: CGFloat = 180
+        /// Height of the Parallel screen's deferred title skeleton.
+        public static let parallelSkeletonTitleHeight: CGFloat = 18
+        /// Width of the Parallel screen's deferred metadata skeleton.
+        public static let parallelSkeletonMetaWidth: CGFloat = 260
+        /// Square avatar placeholder inside a deferred lane.
+        public static let parallelSkeletonAvatarSize: CGFloat = 22
+        /// Corner radius of the deferred lane's avatar placeholder.
+        public static let parallelSkeletonAvatarRadius: CGFloat = 11
+        /// Width of the deferred lane's title placeholder.
+        public static let parallelSkeletonColumnTitleWidth: CGFloat = 160
+        /// Width of the deferred lane's metadata placeholder.
+        public static let parallelSkeletonColumnMetaWidth: CGFloat = 100
+        /// Width of a standalone lane content preview.
+        public static let parallelColumnPreviewWidth: CGFloat = 380
+        /// Height of a standalone lane content preview.
+        public static let parallelColumnPreviewHeight: CGFloat = 560
+        /// The Parallel claim pills' capsule padding, paired with the status badge metrics.
+        public static let parallelPillHorizontalPadding: CGFloat = 8
+        /// Vertical inset of the Parallel claim pills.
+        public static let parallelPillVerticalPadding: CGFloat = 4
+        /// The live indicator's three-dot variant (§6.5): dot size and the gap between dots.
+        public static let liveIndicatorDotSize: CGFloat = 4
+        /// Gap between native presentation dots in the live indicator.
+        public static let liveIndicatorDotSpacing: CGFloat = 3
+        /// New session (§6.6): the sheet's own width, its prompt editor, the focus ring's
+        /// 1.5 pt accent stroke with its 4 pt running-tint glow, and the minimum card widths the
+        /// adaptive agent/access grids wrap at (5 agent cards per row at 760; 2×2 access cards).
+        public static let newSessionSheetWidth: CGFloat = 760
+        /// Height of the New session task editor.
+        public static let newSessionPromptEditorHeight: CGFloat = 112
+        /// Stroke width of the focused task editor.
+        public static let newSessionPromptFocusBorderWidth: CGFloat = 1.5
+        /// Radius of the focused task editor's running-tint glow.
+        public static let newSessionPromptFocusGlowRadius: CGFloat = 4
+        /// Selected agent and requested-access card border width.
+        public static let newSessionCardSelectedBorderWidth: CGFloat = 1.5
+        /// Minimum agent card width before the catalog wraps.
+        public static let newSessionAgentCardMinimumWidth: CGFloat = 128
+        /// Minimum requested-access card width before options wrap.
+        public static let newSessionAccessCardMinimumWidth: CGFloat = 300
+        /// Retained sheet height clamps and the access radio's selected ring.
+        public static let newSessionIdealHeight: CGFloat = 860
+        /// Retained minimum height of the New session sheet.
+        public static let newSessionMinimumHeight: CGFloat = 420
+        /// Retained maximum height of the New session sheet.
+        public static let newSessionMaximumHeight: CGFloat = 920
+        /// Retained selected access radio ring width.
+        public static let accessRadioSelectedStroke: CGFloat = 5
+        /// Retained unselected requested-access radio ring width.
+        public static let accessRadioUnselectedStroke: CGFloat = 1.5
+        /// Retained width of the Advanced effort and turn-limit fields.
+        public static let newSessionAdvancedFieldWidth: CGFloat = 160
+        /// Retained inset of the Advanced options grid.
+        public static let newSessionAdvancedLeadingInset: CGFloat = 15
+        /// Existing prompt placeholder inset and expanded disclosure angle.
+        public static let newSessionPromptPlaceholderInset: CGFloat = 13
+        /// Rotation in degrees of the expanded Advanced disclosure.
+        public static let newSessionDisclosureAngle: Double = 90
+        /// Settings (§6.7): the content column's maximum width, centred near the top.
+        public static let settingsContentMaxWidth: CGFloat = 560
+        /// Retained width of the MCP allowlist sheet.
+        public static let mcpAllowlistSheetWidth: CGFloat = 590
+        /// Retained native Settings scene width and allowlist scroll-area minimum.
+        public static let settingsSceneWidth: CGFloat = 620
+        /// Retained height of the native Settings scene.
+        public static let settingsSceneHeight: CGFloat = 460
+        /// Retained minimum height of the allowlist scrolling area.
+        public static let mcpAllowlistMinimumHeight: CGFloat = 150
+        /// Retained maximum height of the allowlist scrolling area.
+        public static let mcpAllowlistMaximumHeight: CGFloat = 260
+        /// Menu bar: the status item's item gap, the header's compact icon targets and the
+        /// running row's second-line inset under its 16 pt status glyph.
+        public static let menuBarItemSpacing: CGFloat = 3
+        /// Compact header icon button's square target.
+        public static let menuBarIconButtonFrame: CGFloat = 24
+        /// Settings gear's square target in the popover.
+        public static let menuBarGearIconFrame: CGFloat = 20
+        /// Detail inset beneath the running row's status glyph.
+        public static let menuBarRunningRowDetailInset: CGFloat = 24
+        /// The existing popover width, independent of its displayed task counts.
+        public static let menuBarPopoverWidth: CGFloat = 380
+        /// Retained height of the menu-bar popover.
+        public static let menuBarPopoverHeight: CGFloat = 560
     }
 }

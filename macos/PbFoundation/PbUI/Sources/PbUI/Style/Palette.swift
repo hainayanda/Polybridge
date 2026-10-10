@@ -18,6 +18,8 @@ public extension Color {
     static let hairline = Palette.hairline.color
     /// The accent as text or an icon: links, the running label.
     static let accentLink = Palette.accentLink.color
+    /// Workflow selection marquee fill, preserving the accent ink's 8% opacity.
+    static let workflowMarqueeFill = Palette.workflowMarqueeFill.color
     /// The accent as a fill behind `onAccent` content: the primary button, the send button.
     static let accentFill = Palette.accentFill.color
     /// Selected sidebar row fill.
@@ -64,6 +66,8 @@ public extension Color {
     static let selectedSegment = Palette.selectedSegment.color
     /// Secondary text (meta lines) with a contrast guaranteed on every surface above.
     static let secondaryText = Palette.secondaryText.color
+    /// Unselected requested-access radio border, preserving the secondary ink's 60% opacity.
+    static let accessRadioBorder = Palette.accessRadioBorder.color
     /// Tertiary text (section headers, timestamps, captions), lighter than `secondaryText`.
     static let tertiaryText = Palette.tertiaryText.color
     /// Primary text at full contrast: row and card titles read as content, not disabled chrome.
@@ -97,10 +101,20 @@ enum Palette {
             self.dark = dark
             self.color = Color(light: light, dark: dark)
         }
+
+        /// An appearance-aware derived entry retaining its source RGB values and opacity.
+        init(_ name: String, deriving source: Entry, opacity: Double) {
+            self.name = name
+            self.light = source.light
+            self.dark = source.dark
+            self.color = source.color.opacity(opacity)
+        }
     }
 
     static let hairline = Entry("hairline", light: 0xE2E2E6, dark: 0x2E2E32)
     static let accentLink = Entry("accentLink", light: 0x3452CC, dark: 0x8EA2F0)
+    /// The existing workflow selection marquee's faint accent fill.
+    static let workflowMarqueeFill = Entry("workflowMarqueeFill", deriving: accentLink, opacity: 0.08)
     static let accentFill = Entry("accentFill", light: 0x3452CC, dark: 0x4A64D0)
     static let selectedRow = Entry("selectedRow", light: 0xE3E8F8, dark: 0x252C45)
     static let runningBG = Entry("runningBG", light: 0xE6EAF8, dark: 0x1F2640)
@@ -117,6 +131,8 @@ enum Palette {
     static let neutralFill = Entry("neutralFill", light: 0xECECEF, dark: 0x2A2A2E)
     static let neutralText = Entry("neutralText", light: 0x3A3A3C, dark: 0xD1D1D6)
     static let secondaryText = Entry("secondaryText", light: 0x4D4D55, dark: 0xB6B6BE)
+    /// The existing unselected access radio ink, derived centrally without changing its RGB.
+    static let accessRadioBorder = Entry("accessRadioBorder", deriving: secondaryText, opacity: 0.6)
     static let tertiaryText = Entry("tertiaryText", light: 0x686870, dark: 0x909099)
     static let primaryText = Entry("primaryText", light: 0x1C1C1F, dark: 0xF2F2F4)
     static let onAccent = Entry("onAccent", light: 0xFFFFFF, dark: 0xFFFFFF)
@@ -156,9 +172,9 @@ enum Palette {
     static let dotOther = Entry("dot.other", light: 0x8E8E93, dark: 0x98989D)
 
     static let all: [Entry] = [
-        hairline, accentLink, accentFill, selectedRow, runningBG, runningFG, liveDot, doneGreen,
+        hairline, accentLink, workflowMarqueeFill, accentFill, selectedRow, runningBG, runningFG, liveDot, doneGreen,
         doneBG, warningFG, warningBG, failedRed, dangerFG, dangerBG, cancelledGray, neutralFill,
-        neutralText, secondaryText, tertiaryText, primaryText, onAccent, shadow, codeFill,
+        neutralText, secondaryText, accessRadioBorder, tertiaryText, primaryText, onAccent, shadow, codeFill,
         editPreviewFill, inspectorFill, diffHunkFill, diffAddedFill, diffRemovedFill, claudeBG,
         claudeFG, codexBG, codexFG, opencodeBG, opencodeFG, vibeBG, vibeFG, antigravityBG,
         antigravityFG, otherBackendBG, otherBackendFG,
