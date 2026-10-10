@@ -77,11 +77,22 @@ public struct StatusBadge: View {
     public var elapsedText: String?
     /// Adds a visible and spoken "taken over" annotation when a person took the session over.
     public var isTakenOver: Bool
+    /// A caller-supplied presentation that overrides the shared status mapping — the workflow
+    /// run header's honest mapping (starting/settling/paused/cancelling) is the intended caller.
+    /// The default `nil` keeps every existing task/menu mapping unchanged; an override never
+    /// changes `TaskStatus`, a domain classification, or any action eligibility.
+    public var presentationOverride: StatusBadgePresentation?
 
-    public init(status: TaskStatus, elapsedText: String? = nil, isTakenOver: Bool = false) {
+    public init(
+        status: TaskStatus,
+        elapsedText: String? = nil,
+        isTakenOver: Bool = false,
+        presentationOverride: StatusBadgePresentation? = nil
+    ) {
         self.status = status
         self.elapsedText = elapsedText
         self.isTakenOver = isTakenOver
+        self.presentationOverride = presentationOverride
     }
 
     /// The pure status → presentation mapping (SPEC §5.1): raw `pending`/`queued` read as Pending,
@@ -127,7 +138,18 @@ public struct StatusBadge: View {
         return parts.joined(separator: ", ")
     }
 
-    private var presentation: StatusBadgePresentation { Self.presentation(for: status) }
+    /// The resolved presentation: a caller-supplied override when one is given, otherwise the
+    /// shared status mapping. Pure and `nonisolated` so the override contract is testable.
+    public nonisolated static func effectivePresentation(
+        for status: TaskStatus,
+        override: StatusBadgePresentation?
+    ) -> StatusBadgePresentation {
+        override ?? presentation(for: status)
+    }
+
+    private var presentation: StatusBadgePresentation {
+        Self.effectivePresentation(for: status, override: presentationOverride)
+    }
 
     private var accessibilityText: String {
         Self.accessibilityLabel(stateLabel: presentation.label, elapsedText: elapsedText, isTakenOver: isTakenOver)
@@ -204,5 +226,35 @@ private struct StatusBadgesPreview: View {
     .padding()
     .background(Color.windowBG)
     .environment(\.pbReduceMotionOverride, true)
+}
+
+private struct WorkflowStatusBadgesPreview: View {
+    var body: some View {
+    // The workflow run header's honest mapping, delivered through the same shared capsule.
+    VStack(alignment: .leading, spacing: PbRadius.Metrics.spacing10) {
+        StatusBadge(status: .other("starting"), presentationOverride: StatusBadgePresentation(
+            indicator: .spinner, label: "Starting", tint: .running))
+        StatusBadge(status: .other("paused"), presentationOverride: StatusBadgePresentation(
+            indicator: .symbol("exclamationmark.triangle.fill"), label: "Paused", tint: .warning))
+        StatusBadge(status: .other("cancelling"), presentationOverride: StatusBadgePresentation(
+            indicator: .symbol("stop.fill"), label: "Cancelling…", tint: .pending))
+        StatusBadge(status: .other("running"), elapsedText: "1:30", presentationOverride: StatusBadgePresentation(
+            indicator: .spinner, label: "Running", tint: .running))
+    }
+    .padding()
+    .background(Color.windowBG)
+    }
+}
+
+#Preview("Workflow status override - light") {
+    WorkflowStatusBadgesPreview().preferredColorScheme(.light)
+}
+
+#Preview("Workflow status override - dark") {
+    WorkflowStatusBadgesPreview().preferredColorScheme(.dark)
+}
+
+#Preview("Workflow status override - Reduce Motion") {
+    WorkflowStatusBadgesPreview().preferredColorScheme(.dark).environment(\.pbReduceMotionOverride, true)
 }
 #endif

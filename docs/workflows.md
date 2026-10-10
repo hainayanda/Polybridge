@@ -1048,7 +1048,7 @@ New canvases start with Start → Plan → Implementation → Review → End in 
 
 With the canvas focused, use ⌘C and ⌘V to copy and paste selected nodes. Pasted nodes get new IDs and an offset; connections within the selected group are copied. Existing Start/End nodes are skipped so terminal nodes stay unique. Text fields retain their normal copy/paste behavior.
 
-With the canvas focused, press ⌘Z repeatedly to undo earlier edits. A full node drag is one undo step. Text fields retain their normal text undo. **Discard Changes**, beside Save, restores the saved workflow (or the starter for a new workflow) and clears its unsaved draft. Discard and canvas undo are unavailable while an agent is editing.
+With the canvas focused, press ⌘Z repeatedly to undo earlier edits. A full node drag is one undo step. Text fields retain their normal text undo. **Discard**, beside Save, restores the saved workflow (or the starter for a new workflow) and clears its unsaved draft. Discard and canvas undo are unavailable while an agent is editing.
 
 ## Edit the current canvas with an agent
 

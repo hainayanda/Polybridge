@@ -1,3 +1,4 @@
+import PbUI
 import SwiftUI
 
 // MARK: - WorkflowDiagnosticsViewport
@@ -21,10 +22,27 @@ struct WorkflowDiagnosticsViewport<Content: View>: View {
 #if DEBUG
 #Preview {
     VStack {
-        WorkflowDiagnosticsViewport(maximumHeight: 180) {
+        WorkflowDiagnosticsViewport(maximumHeight: PbRadius.Metrics.workflowDiagnosticsMaximumHeight) {
             Text("Workflow diagnostics").padding()
         }
-        Color.clear
-    }.frame(width: 600, height: 700)
+        Color.cardFill.opacity(0)
+    }.frame(width: PbRadius.Metrics.sidebarPreviewHeight, height: PbRadius.Metrics.workflowPreviewHeight)
+}
+
+#Preview("Workflow diagnostics viewport - long content scrolls") {
+    VStack {
+        WorkflowDiagnosticsViewport(maximumHeight: PbRadius.Metrics.workflowDiagnosticsMaximumHeight) {
+            VStack(alignment: .leading, spacing: PbRadius.Metrics.spacing8) {
+                ForEach(0 ..< 20, id: \.self) { index in
+                    Text("Diagnostic line \(index)").padding(.vertical, PbRadius.Metrics.spacing2)
+                }
+            }
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        Color.cardFill.opacity(0)
+    }
+    .frame(width: PbRadius.Metrics.sidebarPreviewHeight, height: PbRadius.Metrics.workflowPreviewHeight)
+    .preferredColorScheme(.dark)
 }
 #endif

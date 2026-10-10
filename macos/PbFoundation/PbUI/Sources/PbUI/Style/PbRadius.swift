@@ -160,5 +160,104 @@ public enum PbRadius {
         public static let taskSkeletonToolbarBlockRadius: CGFloat = 7
         public static let taskComponentPreviewWidth: CGFloat = 560
         public static let timelinePanePreviewWidth: CGFloat = 640
+        /// Workflow editor and run (§6.3/§6.4): the measured node, canvas, panel and control
+        /// geometry. These are the existing contracts, named so no view writes the literal.
+        public static let workflowNodeSize = CGSize(width: 200, height: 92)
+        public static let workflowCompactNodeSize = CGSize(width: 72, height: 72)
+        public static let workflowParallelBoundarySize = CGSize(width: 110, height: 72)
+        public static let workflowSnapSpacing: CGFloat = 10
+        public static let workflowGridDotDiameter: CGFloat = 1.7
+        public static let workflowGridMinimumScreenSpacing: CGFloat = 20
+        public static let workflowPortOuterRadius: CGFloat = 5.25
+        public static let workflowPortHighlightRadius: CGFloat = 6.75
+        public static let workflowCanvasInset: CGFloat = 16
+        public static let workflowUnsavedDotSize: CGFloat = 6
+        /// Node card (§6.3): padding, the 24 pt role tile, selection stroke and ring, shadows.
+        public static let workflowNodePadding: CGFloat = 12
+        public static let workflowNodeIconTileSize: CGFloat = 24
+        public static let workflowNodeIconTileCornerRadius: CGFloat = 7
+        public static let workflowNodeSelectedBorderWidth: CGFloat = 1.5
+        public static let workflowNodeAttentionBorderWidth: CGFloat = 1.5
+        public static let workflowNodeRingWidth: CGFloat = 4
+        public static let workflowNodeRingInset: CGFloat = 2
+        public static let workflowNodePendingOpacity: CGFloat = 0.75
+        public static let workflowNodeShadowNearY: CGFloat = 1
+        public static let workflowNodeShadowNearRadius: CGFloat = 2
+        public static let workflowNodeShadowNearOpacity: CGFloat = 0.05
+        public static let workflowNodeShadowFarY: CGFloat = 6
+        public static let workflowNodeShadowFarRadius: CGFloat = 20
+        public static let workflowNodeShadowFarOpacity: CGFloat = 0.06
+        /// Connections: stroke widths, the arrowhead, hit slop and the condition pill.
+        public static let workflowConnectionLineWidth: CGFloat = 1.5
+        public static let workflowConnectionHighlightedLineWidth: CGFloat = 2
+        public static let workflowArrowheadLength: CGFloat = 7
+        public static let workflowArrowheadHalfWidth: CGFloat = 5
+        public static let workflowConnectionHitWidth: CGFloat = 18
+        public static let workflowConditionPillHorizontalPadding: CGFloat = 9
+        public static let workflowConditionPillVerticalPadding: CGFloat = 4
+        public static let workflowConditionPillOffset: CGFloat = 16
+        public static let workflowConditionPillMaximumWidth: CGFloat = 160
+        /// The floating glass step tray, its divider and the zoom capsule.
+        public static let workflowTrayCornerRadius: CGFloat = 14
+        public static let workflowTrayPadding: CGFloat = 4
+        public static let workflowTrayDividerHeight: CGFloat = 18
+        public static let workflowZoomPadding: CGFloat = 6
+        public static let workflowZoomSymbolSize = CGSize(width: 14, height: 18)
+        public static let workflowZoomResetWidth: CGFloat = 44
+        public static let workflowZoomInset: CGFloat = 12
+        /// The inline glass header group's ellipsis menu target and its hairline separator.
+        public static let workflowHeaderMenuWidth: CGFloat = 30
+        public static let workflowHeaderDividerHeight: CGFloat = 16
+        /// Inspector and run panel widths: initial 288 (§6.3/§6.4), the unchanged clamps and
+        /// the canvas minimum the native split defends.
+        public static let workflowInspectorInitialWidth: CGFloat = 288
+        public static let workflowInspectorMinimumWidth: CGFloat = 220
+        public static let workflowInspectorMaximumWidth: CGFloat = 500
+        public static let workflowCanvasMinimumWidth: CGFloat = 400
+        public static let workflowRunCanvasMinimumHeight: CGFloat = 170
+        public static let workflowRunCanvasIdealHeight: CGFloat = 300
+        public static let workflowRunActivityMinimumHeight: CGFloat = 240
+        public static let workflowRunPanelMinimumWidth: CGFloat = 220
+        public static let workflowRunPanelIdealWidth: CGFloat = 288
+        public static let workflowRunPanelMaximumWidth: CGFloat = 500
+        /// The run plan checklist's 4 pt progress strip.
+        public static let workflowPlanProgressHeight: CGFloat = 4
+        /// The needs-attention recovery banner (§6.4): radius, padding and the compact
+        /// growing multiline editor's two-line minimum and 100 pt maximum.
+        public static let recoveryBannerCornerRadius: CGFloat = 14
+        public static let recoveryBannerPadding: CGFloat = 14
+        public static let recoveryEditorMinimumHeight: CGFloat = 56
+        public static let recoveryEditorMaximumHeight: CGFloat = 100
+        /// Workflow preview canvases.
+        public static let workflowPreviewWidth: CGFloat = 1200
+        public static let workflowPreviewHeight: CGFloat = 700
+        public static let workflowNarrowPreviewWidth: CGFloat = 480
+        /// Retained workflow fields, loading shapes, port targets and component preview sizes.
+        public static let workflowPortDiameter: CGFloat = 9
+        public static let workflowLoadingStatusHeight: CGFloat = 27
+        public static let workflowNodePreviewInset: CGFloat = 40
+        public static let workflowLoadingSpacer: CGFloat = 60
+        public static let workflowLoadingCompactNodeSize: CGFloat = 64
+        public static let workflowFieldValueWidth: CGFloat = 80
+        public static let workflowLoadingNodeHeight: CGFloat = 86
+        public static let workflowLoadingNodeWidth: CGFloat = 130
+        public static let workflowCanvasPreviewHeight: CGFloat = 360
+        public static let workflowLoadingGraphWidth: CGFloat = 508
+        public static let workflowInspectorPreviewHeight: CGFloat = 650
+        public static let workflowLoadingTitleWidth: CGFloat = 75
+        public static let workflowLoadingMetaWidth: CGFloat = 45
+        public static let workflowLoadingConnectorMidpoint: CGFloat = 43
+        public static let workflowLoadingConnectorTip: CGFloat = 37.5
+        public static let workflowLoadingConnectorWing: CGFloat = 31.5
+        public static let workflowLoadingConnectorUpperY: CGFloat = 37
+        public static let workflowLoadingConnectorLowerY: CGFloat = 49
+        public static let workflowConnectionDash: [CGFloat] = [5, 3]
+        public static let workflowPendingDash: [CGFloat] = [4, 3]
+        public static let workflowTooltipMaximumWidth: CGFloat = 240
+        public static let workflowTooltipHorizontalClearance: CGFloat = 36
+        public static let workflowTooltipVerticalClearance: CGFloat = 16
+        public static let workflowDiagnosticsMaximumHeight: CGFloat = 180
+        public static let workflowLaunchSheetWidth: CGFloat = 580
+        public static let workflowLaunchSheetHeight: CGFloat = 650
     }
 }

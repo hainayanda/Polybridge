@@ -118,4 +118,29 @@ import Testing
             isTakenOver: false
         ) == "Needs attention")
     }
+
+    @Test func givenCallerSuppliedOverride_whenResolved_thenItWinsOverTheSharedMapping() {
+        // given — a workflow caller's honest presentation for a raw status the shared mapping
+        // would draw as unknown.
+        let override = StatusBadgePresentation(indicator: .spinner, label: "Starting", tint: .running)
+
+        // when
+        let resolved = StatusBadge.effectivePresentation(for: .other("starting"), override: override)
+
+        // then — the override drives the badge; the raw status itself is never reinterpreted.
+        #expect(resolved == override)
+        #expect(resolved != StatusBadge.presentation(for: .other("starting")))
+    }
+
+    @Test func givenNoOverride_whenResolved_thenEveryExistingMappingIsUnchanged() {
+        // given / when / then — the default nil keeps each shared task/menu mapping intact.
+        let statuses: [TaskStatus] = [
+            .running, .completed, .failed, .timedOut, .cancelled,
+            .other("pending"), .other("Queued"), .other("settling"),
+            .other("needs_input"), .other("mystery-state")
+        ]
+        for status in statuses {
+            #expect(StatusBadge.effectivePresentation(for: status, override: nil) == StatusBadge.presentation(for: status), "\(status)")
+        }
+    }
 }
