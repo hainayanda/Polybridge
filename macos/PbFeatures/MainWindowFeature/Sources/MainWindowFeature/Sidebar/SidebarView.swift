@@ -462,7 +462,7 @@ struct SidebarView<VM: SidebarViewModel>: View {
     private var workflowDefinitions: some View {
         Section(isExpanded: $workflowsExpanded.animation(PbMotion.disclosure(reduceMotion: reduceMotion))) {
                 ForEach(viewModel.savedWorkflows) { workflow in
-                    Label(workflow.id, systemImage: "point.3.connected.trianglepath.dotted")
+                    SidebarWorkflowDefinitionRow(title: workflow.id)
                         .font(.pb(.body, weight: .medium))
                         .frame(minHeight: minimumRowHeight)
                         .tag(MonitorDestination.workflow(workflow.id))
