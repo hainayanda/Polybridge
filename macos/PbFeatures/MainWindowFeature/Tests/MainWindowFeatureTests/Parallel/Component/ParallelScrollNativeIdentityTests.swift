@@ -279,6 +279,61 @@ import Testing
         #expect(abs(latestOffset - 100) < 2)
     }
 
+    @Test func givenArmedRestoration_whenScrollbarKnobIsPressed_thenLaterLayoutCannotSnapBack() async throws {
+        _ = NSApplication.shared
+        let harness = try NativeIdentityHarness()
+        defer { harness.close() }
+        harness.targetA.scrollerStyle = .legacy
+        harness.targetA.layoutSubtreeIfNeeded()
+        let identity = ParallelScrollNativeIdentity()
+        let view = harness.makeObserver()
+        let provider = TestAnchorProvider(target: 400)
+        var offsets: [CGFloat] = []
+        view.onPosition = { offset, _, _ in offsets.append(offset) }
+        view.usesNativeIdentity = true
+        identity.setAnchorProvider(provider)
+        identity.register(view)
+        view.configure(ids: [], stride: 0, restorationOffset: 400, restorationActive: true)
+        identity.deliver(harness.targetA)
+        await waitUntil(timeout: 2) { offsets.contains { abs($0 - 400) < 2 } }
+        try #require(offsets.contains { abs($0 - 400) < 2 }, "Initial restoration must settle before the knob press")
+
+        // The knob hit point is supplied in window coordinates, matching AppKit's testPart API.
+        let scroller = try #require(harness.targetA.verticalScroller)
+        let knob = scroller.rect(for: .knob)
+        try #require(knob.width > 0 && knob.height > 0)
+        let windowPoint = scroller.convert(NSPoint(x: knob.midX, y: knob.midY), to: nil)
+        #expect(scroller.testPart(windowPoint) == .knob)
+        let event = try #require(NSEvent.mouseEvent(
+            with: .leftMouseDown,
+            location: windowPoint,
+            modifierFlags: [], timestamp: 0, windowNumber: harness.window.windowNumber,
+            context: nil, eventNumber: 0, clickCount: 1, pressure: 1
+        ))
+
+        // when — invoke the production event classifier directly. Dispatching a synthetic knob
+        // click through AppKit enters its private tracking loop and can terminate a headless test
+        // process; this still uses the real window/scroller coordinates and production path.
+        view.observeNativeNavigationIntent(event)
+        await waitUntil(timeout: 2) { provider.cancelCount == 1 }
+        #expect(provider.cancelCount == 1)
+        #expect(!provider.isAnchorRestorationActive)
+
+        // A subsequent user move and layout report must remain at that new position; the old
+        // anchor must not reapply its numeric target after the knob press.
+        // The fixture's document is non-flipped: native y=740 is logical reading offset 100
+        // with the initial 160-point viewport.
+        harness.move(harness.targetA, to: 740)
+        await waitUntil(timeout: 2) { offsets.contains { abs($0 - 100) < 2 } }
+        let beforeLayout = offsets.count
+        harness.resize(harness.targetA, height: 150)
+        await waitUntil(timeout: 2) { offsets.count > beforeLayout }
+        let latest = try #require(offsets.last)
+        // Resizing the viewport by 10 points changes the logical offset by the same amount;
+        // the important property is that the cancelled 400-point target is never reapplied.
+        #expect(abs(latest - 110) < 2)
+    }
+
     @Test func givenOuterLiveScrollNotification_whenOwnTargetMovesUp_thenIntentRemainsScoped() async throws {
         _ = NSApplication.shared
         let harness = try NativeIdentityHarness()
@@ -451,6 +506,25 @@ import Testing
 
 private func insetsEqual(_ lhs: NSEdgeInsets, _ rhs: NSEdgeInsets) -> Bool {
     lhs.top == rhs.top && lhs.left == rhs.left && lhs.bottom == rhs.bottom && lhs.right == rhs.right
+}
+
+@MainActor private final class TestAnchorProvider: ParallelScrollAnchorProvider {
+    private(set) var cancelCount = 0
+    private(set) var isAnchorRestorationActive = true
+    let target: CGFloat
+
+    init(target: CGFloat) { self.target = target }
+
+    var ownsNumericRestoration: Bool { true }
+
+    func immediateAnchorTarget(document: NSView) -> CGFloat? {
+        isAnchorRestorationActive ? target : nil
+    }
+
+    func cancelAnchorRestoration() {
+        cancelCount += 1
+        isAnchorRestorationActive = false
+    }
 }
 
 // MARK: - Fixture

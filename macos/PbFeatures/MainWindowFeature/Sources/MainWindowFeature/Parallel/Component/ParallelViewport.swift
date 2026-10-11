@@ -487,7 +487,7 @@ final class ParallelScrollObservationView: NSView {
 
     /// Native List navigation signals apply only to this scoped scroll view and never consume
     /// the event. Keyboard navigation must originate from its own first responder subtree.
-    private func observeNativeNavigationIntent(_ event: NSEvent) {
+    func observeNativeNavigationIntent(_ event: NSEvent) {
         guard usesNativeIdentity, !isTornDown, axis == .vertical,
               let scroll = observedScrollView, event.window === scroll.window else { return }
         switch event.type {
@@ -508,7 +508,7 @@ final class ParallelScrollObservationView: NSView {
             let part = scroller.testPart(event.locationInWindow)
             if part == .decrementLine || part == .decrementPage {
                 signalUpwardIntent()
-            } else if part == .incrementLine || part == .incrementPage {
+            } else if part == .incrementLine || part == .incrementPage || part == .knob {
                 cancelAnchorReference()
             }
         default: break
