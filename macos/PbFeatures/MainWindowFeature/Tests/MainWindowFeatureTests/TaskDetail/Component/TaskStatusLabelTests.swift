@@ -101,10 +101,11 @@ import Testing
     }
 
     private func clockSeconds(_ text: String) -> Int? {
-        let parts = text.split(separator: ":").compactMap { Int($0) }
+        let parts = text.split(separator: ":").map { Int($0.trimmingCharacters(in: .whitespaces)) }
+        guard parts.allSatisfy({ $0 != nil }) else { return nil }
         switch parts.count {
-        case 2: return parts[0] * 60 + parts[1]
-        case 3: return parts[0] * 3600 + parts[1] * 60 + parts[2]
+        case 2: return parts[0]! * 60 + parts[1]!
+        case 3: return parts[0]! * 3600 + parts[1]! * 60 + parts[2]!
         default: return nil
         }
     }
