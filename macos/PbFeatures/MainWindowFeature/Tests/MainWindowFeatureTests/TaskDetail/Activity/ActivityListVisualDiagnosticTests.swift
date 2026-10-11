@@ -179,7 +179,8 @@ import Testing
                                     tailValue: ActivityFeedTail(
                                         liveStep: LiveStep(rows: timeline, isRunning: true),
                                         pendingMessages: [PendingMessage(id: "pending", text: "Please also check the cold keychain path.")]),
-                                    horizontalPadding: horizontalPadding, state: state, onLoadMore: nil) { EmptyView() }
+                                    horizontalPadding: horizontalPadding, state: state, onLoadMore: nil,
+                                    tailPresentation: .absent)
             .frame(width: size.width, height: size.height)
             .preferredColorScheme(dark ? .dark : .light)
         self.controller = NSHostingController(rootView: AnyView(feed))

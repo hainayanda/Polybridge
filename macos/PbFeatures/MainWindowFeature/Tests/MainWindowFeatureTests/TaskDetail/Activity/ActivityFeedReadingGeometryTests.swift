@@ -232,30 +232,79 @@ import Testing
         let targetOffset = max(1, scroll.documentVisibleRect.minY + 180)
         scroll.contentView.scroll(to: CGPoint(x: 0, y: targetOffset))
         scroll.reflectScrolledClipView(scroll.contentView)
-        await waitUntil(timeout: 5) { @MainActor in !state.followLive.isFollowing && state.anchor != nil }
+        var freshPaused = false
+        await waitUntil(timeout: 5) { @MainActor in
+            guard let anchor = state.anchor,
+                  let frame = measurementFrame(for: anchor, in: host, scroll: scroll) else { return false }
+            freshPaused = !state.followLive.isFollowing && abs(state.scrollOffset - targetOffset) < 3
+                && abs(scroll.documentVisibleRect.minY - targetOffset) < 3
+                && abs(frame.minY - scroll.documentVisibleRect.minY - anchor.relativeOffset) < 3
+            return freshPaused
+        }
+        try #require(
+            freshPaused,
+            Comment(rawValue: "Fresh paused anchor setup failed offset=\(state.scrollOffset) "
+                + "native=\(scroll.documentVisibleRect) anchor=\(String(describing: state.anchor))"))
         let anchor = try #require(state.anchor)
+        let originalGroup = try #require(
+            rows(prepending: false)
+.compactMap { row -> ToolGroup? in
+                guard case .toolGroup(let group) = row else { return nil }
+                return group
+            }
+.first { $0.id == anchor.id },
+            "The paused anchor must identify the original tool group: \(anchor.id)")
+        let originalMemberIDs = Set(originalGroup.members.map(\.id))
         let offsetBeforeChrome = scroll.documentVisibleRect.minY
 
         // when — exercise the production lifecycle after the existing viewport observer is live.
         scroll.scrollerStyle = .legacy
         NotificationCenter.default.post(name: NSScroller.preferredScrollerStyleDidChangeNotification, object: nil)
         await waitUntil(timeout: 5) { @MainActor in scroll.scrollerStyle == .overlay }
+        let overlayFrame = try #require(
+            nativeStableMeasurement(id: anchor.id, host: host, scroll: scroll),
+            "The original semantic anchor must have a native measurement after chrome reassertion")
+        #expect(abs(overlayFrame.minY - scroll.documentVisibleRect.minY - anchor.relativeOffset) < 4,
+                Comment(rawValue: "overlay offset=\(scroll.documentVisibleRect.minY) frame=\(overlayFrame) anchor=\(anchor)"))
 
-        // when — a prepend and width reflow happen through the existing observer path.
+        // when — width reflow and prepend overlap immediately through the existing observer path.
         window.setContentSize(CGSize(width: 340, height: 450))
         host.rootView = feed(rows(prepending: true), state: state)
         await waitUntil(timeout: 5) { @MainActor in
+            state.viewportPositioned && abs(scroll.contentView.bounds.width - 340) < 1
+        }
+        await waitUntil(timeout: 5) { @MainActor in
             host.layoutSubtreeIfNeeded()
-            return state.viewportPositioned && state.anchor?.id == anchor.id && !state.followLive.isFollowing
+            return state.viewportPositioned && state.anchor?.id == "tool-older" && !state.followLive.isFollowing
         }
 
         // then — the scrollbar presentation change did not replace the feed, consume a page, or
         // turn a paused reader back into live-follow.
         #expect(scroll.scrollerStyle == .overlay)
-        #expect(state.anchor?.id == anchor.id)
+        // The prepend helper groups these rows under the new leading group ID. The retained
+        // semantic position therefore migrates from tool-first to tool-older while its native
+        // frame and relative offset remain unchanged.
+        #expect(state.anchor?.id == "tool-older")
         #expect(!state.followLive.isFollowing)
         #expect(state.scrollOffset.isFinite)
         #expect(abs(offsetBeforeChrome - targetOffset) < 2)
+        let replacementRows = rows(prepending: true)
+        let replacementGroup = try #require(
+            replacementRows.compactMap { row -> ToolGroup? in
+                guard case .toolGroup(let group) = row else { return nil }
+                return group
+            }
+.first { $0.id == state.anchor?.id },
+            "The migrated semantic anchor must identify the replacement tool group")
+        #expect(Set(replacementGroup.members.map(\.id)).isSuperset(of: originalMemberIDs),
+                "The replacement semantic group must retain every original member")
+        #expect(!Set(replacementRows.map(\.id)).contains(anchor.id),
+                "The old semantic anchor identity must be replaced after prepend")
+        let replacementFrame = try #require(
+            nativeStableMeasurement(id: "tool-older", host: host, scroll: scroll),
+            "The migrated semantic anchor must have a native measurement after prepend")
+        #expect(abs(replacementFrame.minY - scroll.documentVisibleRect.minY - anchor.relativeOffset) < 4,
+                Comment(rawValue: "final offset=\(scroll.documentVisibleRect.minY) frame=\(replacementFrame) anchor=\(anchor)"))
     }
 
     @Test func givenLiveBottomActivityFeed_whenLegacyChromeIsReasserted_thenBottomFollowRemainsLive() async throws {
@@ -381,7 +430,7 @@ import Testing
                       history: EventHistoryState = EventHistoryState(),
                       onLoadMore: (() -> Bool)? = nil) -> some View {
         ActivityFeedView(rows: rows, start: nil, history: history, isLoading: false,
-                         horizontalPadding: 24, state: state, onLoadMore: onLoadMore) { EmptyView() }.readingColumn()
+                         horizontalPadding: 24, state: state, onLoadMore: onLoadMore).readingColumn()
     }
 
     final class PageRequests { var total = 0 }
@@ -562,6 +611,17 @@ import Testing
                 abs(lhs.minY - scroll.documentVisibleRect.minY - anchor.relativeOffset)
                     < abs(rhs.minY - scroll.documentVisibleRect.minY - anchor.relativeOffset)
             }
+    }
+
+    private func nativeStableMeasurement(id: String, host: NSView, scroll: NSScrollView) -> CGRect? {
+        guard let document = scroll.documentView else { return nil }
+        let matches = descendants(host)
+.compactMap { $0 as? ActivityRowGeometry.MeasurementView }
+            .filter { $0.stableID == id && $0.enclosingScrollView === scroll }
+        guard matches.count == 1, let view = matches.first else { return nil }
+        let frame = view.convert(view.bounds, to: document)
+        guard frame.width > 0, frame.height > 0, frame.intersects(scroll.documentVisibleRect) else { return nil }
+        return frame
     }
 
     private func invalidateMeasurements(in host: NSView) {

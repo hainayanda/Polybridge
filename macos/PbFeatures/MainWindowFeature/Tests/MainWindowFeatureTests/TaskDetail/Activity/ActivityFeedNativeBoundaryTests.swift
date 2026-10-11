@@ -67,7 +67,10 @@ import Testing
             if delta == 23 {
                 try await exerciseLiveIntent(scroll: scroll, bottom: bottom,
                                              bottomOffset: bottomOffset, delta: delta, state: state)
-                try await observeAfterLiveIntent(scroll: scroll, document: document, state: state)
+                // An upward live-intent move remains paused until a stable downward move
+                // re-enters the bottom zone; the later near-bottom reenable is directional.
+                try await observePausedGap(scroll: scroll, document: document,
+                                           bottomOffset: bottomOffset, delta: delta, state: state)
             }
         }
 
@@ -109,21 +112,9 @@ import Testing
         }
     }
 
-    private func observeAfterLiveIntent(scroll: NSScrollView, document: NSView,
-                                        state: ParallelColumnUIState) async throws {
-        await waitUntil(timeout: 5) { @MainActor in
-            state.followLive.isFollowing && document.bounds.maxY - scroll.documentVisibleRect.maxY > 20
-        }
-        for _ in 0 ..< 10 {
-            try #require(state.followLive.isFollowing)
-            try #require(document.bounds.maxY - scroll.documentVisibleRect.maxY > 20)
-            try await Task.sleep(for: .milliseconds(50))
-        }
-    }
-
     private func feed(state: ParallelColumnUIState) -> some View {
         ActivityFeedView(rows: rows(), start: nil, history: EventHistoryState(), isLoading: false,
-                         horizontalPadding: 24, state: state, onLoadMore: nil) { EmptyView() }.readingColumn()
+                         horizontalPadding: 24, state: state, onLoadMore: nil).readingColumn()
     }
 
     private func rows() -> [ActivityRow] {

@@ -33,6 +33,10 @@ extension ActivityFeedReadingGeometryTests {
         await waitUntil(timeout: 5) { @MainActor in state.viewportPositioned && state.followLive.isFollowing }
         try #require(state.viewportPositioned && state.followLive.isFollowing)
         let scroll = try #require(descendants(host).compactMap { $0 as? NSScrollView }.first { $0.hasVerticalScroller })
+        // Attach before the programmatic upward move so any old-bottom lease or target clamp is
+        // observable from the first native transition, including a request that never arrives.
+        let diagnostics = try BoundedRestorationDiagnosticTrace(host: host, requiresArmedProvider: false)
+        defer { diagnostics.detach() }
         state.followLive.suspend()
         scroll.contentView.scroll(to: CGPoint(x: scroll.contentView.bounds.minX, y: 150))
         scroll.reflectScrolledClipView(scroll.contentView)
@@ -40,7 +44,12 @@ extension ActivityFeedReadingGeometryTests {
             requests.total > 0 && !state.followLive.isFollowing && state.anchor != nil
                 && scroll.documentVisibleRect.minY <= 200
         }
-        try #require(requests.total > 0)
+        try #require(requests.total > 0,
+                     """
+                     Older-page request missing offset=\(scroll.documentVisibleRect.minY)
+                     follow=\(state.followLive.isFollowing) positioned=\(state.viewportPositioned)
+                     anchor=\(String(describing: state.anchor)) diagnostics=\(diagnostics.messages)
+                     """)
         try #require(!state.followLive.isFollowing && state.anchor != nil
                          && scroll.documentVisibleRect.minY <= 200)
         let anchor = try #require(state.anchor)
@@ -53,9 +62,6 @@ extension ActivityFeedReadingGeometryTests {
                                            rowIDs: current.map(\.id))
         recorder.capture()
         try #require(recorder.samples.count == 1)
-        let diagnostics = try BoundedRestorationDiagnosticTrace(host: host)
-        defer { diagnostics.detach() }
-
         let outerWidth = forceLegacyScroller
             ? try applyLegacyChrome(host: host, scroll: scroll, anchor: anchor, diagnostics: diagnostics)
             : 0
@@ -126,11 +132,13 @@ extension ActivityFeedReadingGeometryTests {
         private let observationViews: [ParallelScrollObservationView]
         private(set) var messages: [String] = []
 
-        init(host: NSView) throws {
+        init(host: NSView, requiresArmedProvider: Bool = true) throws {
             self.observationViews = Self.descendants(host).compactMap { $0 as? ParallelScrollObservationView }
             try #require(!observationViews.isEmpty, "The feed must expose its native observation view")
-            try #require(observationViews.contains { $0.anchorProvider is ActivityFeedReferenceRestoration },
-                         "The paused paging fixture must have an armed restoration provider")
+            if requiresArmedProvider {
+                try #require(observationViews.contains { $0.anchorProvider is ActivityFeedReferenceRestoration },
+                             "The paused paging fixture must have an armed restoration provider")
+            }
             for view in observationViews {
                 view.restorationDiagnostic = sink
                 (view.anchorProvider as? ActivityFeedReferenceRestoration)?.diagnostic = sink
@@ -242,7 +250,9 @@ extension ActivityFeedReadingGeometryTests {
         let restoredViewport = scroll.documentVisibleRect
         let restoredRowFrame = try #require(firstVisibleMeasurementFrame(in: host, scroll: scroll))
         #expect(abs(restoredRowFrame.minY - restoredViewport.minY - pausedAnchor.relativeOffset) < 3)
-        #expect(abs(restoredAnchor.relativeOffset - pausedAnchor.relativeOffset) < 3)
+        #expect(
+            abs(restoredAnchor.relativeOffset - pausedAnchor.relativeOffset) < 3,
+            "The retained anchor offset must remain stable after pagination")
         #expect(abs(state.scrollOffset - scroll.documentVisibleRect.minY) < 2)
     }
 
