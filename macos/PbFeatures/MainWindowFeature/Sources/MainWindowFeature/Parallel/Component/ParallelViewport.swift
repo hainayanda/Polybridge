@@ -118,6 +118,12 @@ struct ParallelScrollObserver: NSViewRepresentable {
     var restorationActive = false
     var onViewportSize: ((CGSize) -> Void)?
     var onUpwardIntent: (() -> Void)?
+    /// Scoped native identity (a List-backed feed's own NSScrollView, disclosed through PbUI's
+    /// `.scrollChromeScope(onNativeScrollView:)` bounded marker-pair relay). When present the
+    /// observation view attaches only to the identities this holder delivers — never to its own
+    /// `enclosingScrollView` — and an explicit nil fails closed. Absent (the default), both the
+    /// horizontal lane and every ScrollView-backed surface keep their exact prior behaviour.
+    var nativeIdentity: ParallelScrollNativeIdentity?
     let onPosition: (CGFloat, CGFloat, CGFloat) -> Void
 
     func makeNSView(context: Context) -> ParallelScrollObservationView {
@@ -127,27 +133,90 @@ struct ParallelScrollObserver: NSViewRepresentable {
     }
 
     static func dismantleNSView(_ view: ParallelScrollObservationView, coordinator: ()) {
-        view.removeWheelMonitor()
+        view.bindNativeIdentity(nil)
+        view.teardownObservation()
     }
 
     func updateNSView(_ view: ParallelScrollObservationView, context: Context) {
+        view.usesNativeIdentity = nativeIdentity != nil
         view.axis = axis
         view.onPosition = onPosition
         view.onViewportSize = onViewportSize
         view.onUpwardIntent = onUpwardIntent
         view.updateWheelMonitor()
         view.configure(ids: columnIDs, stride: columnStride, restorationOffset: restorationOffset, restorationActive: restorationActive)
+        view.bindNativeIdentity(nativeIdentity)
+    }
+}
+
+// MARK: - ParallelScrollNativeIdentity
+
+/// Main-actor holder wiring one scoped container's disclosed native scroll identity to this
+/// observer's observation view — the bounded path a List-backed feed needs: its own NSScrollView
+/// is not reachable as the representable's `enclosingScrollView` (the observation view must sit
+/// outside the marker pair, and inside a virtualized row it would die with the row), so the
+/// identity comes from PbUI's strict marker-pair discovery instead.
+///
+/// The holder never defers on its own: the scope relay's single generation-guarded main-queue
+/// delivery is the only asynchrony, so an unmounted or replaced observation view is exactly a
+/// weak miss — no stale attach callback can reach a dead view. Registration re-delivers the last
+/// known identity so a queued restoration survives the observation view's own initial mount, and
+/// an explicit nil detaches the observation view's native notifications and wheel monitor — fail
+/// closed, never a fallback to any enclosing scroll view.
+@MainActor
+final class ParallelScrollNativeIdentity {
+    private weak var observationView: ParallelScrollObservationView?
+    /// The last identity the scope relay delivered — weak, so a scoped scroll view that
+    /// deallocated reads as nil on the observation view's next registration.
+    private weak var knownScrollView: NSScrollView?
+
+    /// Registers the observation view — also re-registering it after a representable remount —
+    /// and immediately delivers the last known identity, so a scroll view disclosed before the
+    /// observation view mounted still attaches once it exists.
+    func register(_ view: ParallelScrollObservationView) {
+        observationView = view
+        view.adoptNativeIdentity(knownScrollView)
+    }
+
+    /// Releases the observation view at representable dismantle; the dying view detaches its own
+    /// subscriptions and wheel monitor.
+    func unregister(_ view: ParallelScrollObservationView) {
+        guard observationView === view else { return }
+        observationView = nil
+    }
+
+    /// The scope relay's delivery point: pushes the disclosed identity straight to the weakly
+    /// held observation view — direct adoption that bypasses `configure`'s unchanged-input early
+    /// return, so a discovered or replaced target attaches and reports even when nothing else
+    /// changed.
+    func deliver(_ scrollView: NSScrollView?) {
+        knownScrollView = scrollView
+        observationView?.adoptNativeIdentity(scrollView)
     }
 }
 
 // MARK: - ParallelScrollObservationView
 
 final class ParallelScrollObservationView: NSView {
+    private weak var nativeIdentityOwner: ParallelScrollNativeIdentity?
+    private var isTornDown = false
+
+    /// Transfer registration when the representable changes holders; preserve the old holder's
+    /// last scoped identity for an observer-only remount.
+    func bindNativeIdentity(_ holder: ParallelScrollNativeIdentity?) {
+        guard nativeIdentityOwner !== holder else { return }
+        nativeIdentityOwner?.unregister(self)
+        if nativeIdentityOwner != nil { detachNativeTarget() }
+        nativeIdentityOwner = holder
+        holder?.register(self)
+    }
+
     var axis = ParallelScrollObserver.Axis.horizontal
     var onPosition: ((CGFloat, CGFloat, CGFloat) -> Void)?
     var onViewportSize: ((CGSize) -> Void)?
     var onUpwardIntent: (() -> Void)?
     private var wheelMonitor: Any?
+    private var liveUserScroll = false
     private weak var observedScrollView: NSScrollView?
     private var subscriptions = Set<AnyCancellable>()
     private var ids: [String] = []
@@ -161,6 +230,155 @@ final class ParallelScrollObservationView: NSView {
     private var lastOffset: CGFloat = 0
     private var lastReported: CGRect?
     private var lastViewportSize: CGSize?
+    /// True when a scoped native identity (`nativeIdentity`) owns attachment: the observation
+    /// view then never attaches through its own `enclosingScrollView` — including never to an
+    /// enclosing horizontal lane — and every attach/detach comes from `adoptNativeIdentity`.
+    var usesNativeIdentity = false
+    /// The most recently delivered scoped identity, kept even while it cannot attach yet (a
+    /// native document view that has not laid out): the bounded lifecycle events re-attempt it.
+    private weak var nativeTarget: NSScrollView?
+    /// The borrowed insets state of the currently adopted native target, restored on replacement
+    /// or detach while the target is still on a window.
+    private var nativeInsetBackup: NativeInsetBackup?
+    private var nativeTableSpacingBackup: NativeTableSpacingBackup?
+
+    private struct NativeTableSpacingBackup {
+        weak var table: NSTableView?
+        let spacing: NSSize
+    }
+
+    /// The inset state this observer explicitly zeroes on an adopted native target so the feed's
+    /// own document spacing is the only spacing — see `enforceNativeInsets(on:)`.
+    private struct NativeInsetBackup {
+        weak var scrollView: NSScrollView?
+        var automaticallyAdjusts: Bool
+        var insets: NSEdgeInsets
+    }
+
+    /// Direct push from the scoped identity holder — bypasses `configure`'s unchanged-input early
+    /// return, so a discovered or replaced List scroll view attaches and reports even when no
+    /// configure input changed. An explicit nil detaches the native notifications and wheel
+    /// monitor and fails closed; a repeated identical target only reports.
+    func adoptNativeIdentity(_ scrollView: NSScrollView?) {
+        guard usesNativeIdentity, !isTornDown else { return }
+        nativeTarget = scrollView
+        applyNativeIdentity(scrollView)
+    }
+
+    /// The bounded lifecycle retry: window and superview moves (and configure's deferred block)
+    /// re-attempt the native adoption, or fall back to the enclosing-scroll attachment for every
+    /// default observer, whose behaviour is unchanged.
+    private func reattach() {
+        guard !isTornDown else { return }
+        if usesNativeIdentity { applyNativeIdentity(nativeTarget) } else { attach() }
+    }
+
+    /// The single native attach/detach decision: an identical live target only reports; a new
+    /// target detaches the old one's notifications, wheel monitor and borrowed insets before
+    /// attaching; a target without a document view yet is left pending for the lifecycle retry;
+    /// nil detaches everything and fails closed.
+    private func applyNativeIdentity(_ scrollView: NSScrollView?) {
+        guard let scrollView else {
+            if observedScrollView != nil { detachNativeTarget() }
+            return
+        }
+        if scrollView === observedScrollView {
+            report()
+            return
+        }
+        detachNativeTarget()
+        guard scrollView.documentView != nil else { return }
+        observedScrollView = scrollView
+        enforceNativeInsets(on: scrollView)
+        attachNotifications(for: scrollView)
+        updateWheelMonitor()
+        report()
+    }
+
+    /// Detaches the currently adopted native target's notifications, wheel monitor and borrowed
+    /// insets. The queued restoration state (`requestedOffset`/`pendingOffset`) deliberately
+    /// survives — replacement and initial attachment must still land a pending restoration.
+    private func detachNativeTarget() {
+        subscriptions.removeAll()
+        removeWheelMonitor()
+        liveUserScroll = false
+        restoreNativeInsets()
+        observedScrollView = nil
+        lastReported = nil
+    }
+
+    /// Full release at representable dismantle: notifications, wheel monitor and any borrowed
+    /// native insets go with the observation view.
+    func teardownObservation() {
+        isTornDown = true
+        liveUserScroll = false
+        subscriptions.removeAll()
+        removeWheelMonitor()
+        restoreNativeInsets()
+        observedScrollView = nil
+    }
+
+    /// A List-backed feed expresses its whole spacing contract inside its own document (row
+    /// padding and explicit gap logic), so the adopted native target's insets are explicitly
+    /// owned: automatic native adjustment is disabled and the insets zeroed on adoption and
+    /// re-asserted on every report — keeping this observer's geometry in plain document
+    /// coordinates across later resize and layout passes. The pre-adoption state is captured
+    /// once per target and restored while the target still has a window.
+    private func enforceNativeInsets(on scroll: NSScrollView) {
+        if nativeInsetBackup?.scrollView !== scroll {
+            nativeInsetBackup = NativeInsetBackup(
+                scrollView: scroll,
+                automaticallyAdjusts: scroll.automaticallyAdjustsContentInsets,
+                insets: scroll.contentInsets
+            )
+        }
+        if scroll.automaticallyAdjustsContentInsets { scroll.automaticallyAdjustsContentInsets = false }
+        let insets = scroll.contentInsets
+        if insets.top != 0 || insets.left != 0 || insets.bottom != 0 || insets.right != 0 {
+            scroll.contentInsets = NSEdgeInsetsZero
+        }
+        // SwiftUI's List can use horizontal intercell spacing even with plain table style.
+        // The feed supplies its own horizontal padding; retain native vertical spacing.
+        if let table = scroll.documentView as? NSTableView {
+            if nativeTableSpacingBackup?.table !== table {
+                nativeTableSpacingBackup = NativeTableSpacingBackup(table: table, spacing: table.intercellSpacing)
+            }
+            if table.intercellSpacing.width != 0 {
+                table.intercellSpacing = NSSize(width: 0, height: table.intercellSpacing.height)
+                // Retile the native table after the property change: already-realized cells
+                // otherwise retain their old frames until recycling or a window resize.
+                table.needsLayout = true
+                DispatchQueue.main.async { [weak self, weak table] in
+                    guard let self, !self.isTornDown, let table,
+                          observedScrollView?.documentView === table,
+                          table.intercellSpacing.width == 0 else { return }
+                    if table.tableColumns.count == 1 { table.sizeLastColumnToFit() }
+                    table.tile()
+                    table.needsLayout = true
+                    table.layoutSubtreeIfNeeded()
+                }
+            }
+        }
+    }
+
+    /// Restores the borrowed insets of the last adopted target, capturing nothing new; an
+    /// off-window target is released without writes, mirroring the shared chrome owner's rule.
+    private func restoreNativeInsets() {
+        if let backup = nativeTableSpacingBackup {
+            nativeTableSpacingBackup = nil
+            if let table = backup.table, table.window != nil {
+                table.intercellSpacing = backup.spacing
+                if table.tableColumns.count == 1 { table.sizeLastColumnToFit() }
+                table.tile()
+                table.needsLayout = true
+            }
+        }
+        guard let backup = nativeInsetBackup else { return }
+        nativeInsetBackup = nil
+        guard let scroll = backup.scrollView, scroll.window != nil else { return }
+        scroll.automaticallyAdjustsContentInsets = backup.automaticallyAdjusts
+        scroll.contentInsets = backup.insets
+    }
 
     func configure(ids: [String], stride: CGFloat, restorationOffset: CGFloat?, restorationActive: Bool) {
         let geometryChanged = configuredAxis != axis || ids != self.ids || stride != self.stride
@@ -182,32 +400,45 @@ final class ParallelScrollObservationView: NSView {
             requestedOffset = restorationOffset
             if let restorationOffset { pendingOffset = restorationOffset } else if axis == .vertical { pendingOffset = nil }
         }
-        DispatchQueue.main.async { [weak self] in self?.attach(); self?.report() }
+        DispatchQueue.main.async { [weak self] in self?.reattach(); self?.report() }
     }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if window == nil {
+            liveUserScroll = false
             subscriptions.removeAll()
             removeWheelMonitor()
+            restoreNativeInsets()
             observedScrollView = nil
             lastReported = nil
             lastViewportSize = nil
-        } else { DispatchQueue.main.async { [weak self] in self?.attach() } }
+        } else { DispatchQueue.main.async { [weak self] in self?.reattach() } }
     }
 
     override func viewDidMoveToSuperview() {
         super.viewDidMoveToSuperview()
-        DispatchQueue.main.async { [weak self] in self?.attach() }
+        DispatchQueue.main.async { [weak self] in self?.reattach() }
     }
 
     private func attach() {
-        guard window != nil, let scroll = enclosingScrollView, scroll !== observedScrollView,
-              let document = scroll.documentView else { return }
+        // Native-identity mode never attaches through `enclosingScrollView` — that would reach
+        // an outer lane or canvas, not the scoped List's own scroll view.
+        guard !usesNativeIdentity, window != nil, let scroll = enclosingScrollView, scroll !== observedScrollView,
+              scroll.documentView != nil else { return }
         subscriptions.removeAll()
         removeWheelMonitor()
         observedScrollView = scroll
         updateWheelMonitor()
+        attachNotifications(for: scroll)
+        report()
+    }
+
+    /// Subscribes the native bounds/frame notifications of one adopted scroll view and its
+    /// document — the shared body of both attachment paths.
+    private func attachNotifications(for scroll: NSScrollView) {
+        guard let document = scroll.documentView else { return }
+        subscriptions.removeAll()
         scroll.contentView.postsBoundsChangedNotifications = true
         scroll.contentView.postsFrameChangedNotifications = true
         document.postsFrameChangedNotifications = true
@@ -221,7 +452,16 @@ final class ParallelScrollObservationView: NSView {
                 .sink { [weak self] _ in self?.report(observeExternalMovement: name == NSView.boundsDidChangeNotification) }
                 .store(in: &subscriptions)
         }
-        report()
+        if usesNativeIdentity {
+            NotificationCenter.default
+    .publisher(for: NSScrollView.willStartLiveScrollNotification, object: scroll)
+                .sink { [weak self] _ in self?.liveUserScroll = true }
+                .store(in: &subscriptions)
+            NotificationCenter.default
+    .publisher(for: NSScrollView.didEndLiveScrollNotification, object: scroll)
+                .sink { [weak self] _ in self?.liveUserScroll = false }
+                .store(in: &subscriptions)
+        }
     }
 
     func updateWheelMonitor() {
@@ -230,8 +470,14 @@ final class ParallelScrollObservationView: NSView {
             return
         }
         guard wheelMonitor == nil else { return }
-        wheelMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
-            self?.observeWheelIntent(event)
+        let events: NSEvent.EventTypeMask = usesNativeIdentity
+            ? [.scrollWheel, .keyDown, .leftMouseDown] : .scrollWheel
+        wheelMonitor = NSEvent.addLocalMonitorForEvents(matching: events) { [weak self] event in
+            if event.type == .scrollWheel {
+                self?.observeWheelIntent(event)
+            } else {
+                self?.observeNativeNavigationIntent(event)
+            }
             return event
         }
     }
@@ -246,6 +492,37 @@ final class ParallelScrollObservationView: NSView {
               scroll.bounds.contains(scroll.convert(event.locationInWindow, from: nil)),
               event.scrollingDeltaY > 0, event.momentumPhase.isEmpty,
               event.phase.isEmpty || event.phase.contains(.began) else { return }
+        signalUpwardIntent()
+    }
+
+    /// Native List navigation signals apply only to this scoped scroll view and never consume
+    /// the event. Keyboard navigation must originate from its own first responder subtree.
+    private func observeNativeNavigationIntent(_ event: NSEvent) {
+        guard usesNativeIdentity, !isTornDown, axis == .vertical,
+              let scroll = observedScrollView, event.window === scroll.window else { return }
+        switch event.type {
+        case .keyDown:
+            guard let responder = scroll.window?.firstResponder as? NSView,
+                  responder === scroll || responder.isDescendant(of: scroll),
+                  let character = event.charactersIgnoringModifiers?.unicodeScalars.first?.value,
+                  [UInt32(NSUpArrowFunctionKey), UInt32(NSPageUpFunctionKey), UInt32(NSHomeFunctionKey)].contains(character)
+            else { return }
+            signalUpwardIntent()
+        case .leftMouseDown:
+            guard let scroller = scroll.verticalScroller,
+                  scroller.bounds.contains(scroller.convert(event.locationInWindow, from: nil)) else { return }
+            let part = scroller.testPart(event.locationInWindow)
+            if part == .decrementLine || part == .decrementPage { signalUpwardIntent() }
+        default: break
+        }
+    }
+
+    private func signalUpwardIntent() {
+        if usesNativeIdentity {
+            pendingOffset = nil
+            requestedOffset = nil
+            restorationActive = false
+        }
         onUpwardIntent?()
     }
 
@@ -253,6 +530,7 @@ final class ParallelScrollObservationView: NSView {
     /// Content shrinkage and viewport resizing remain layout changes, not user scroll evidence.
     private func observeExternalUpwardScroll(visible: CGRect, document: NSView, length: CGFloat, viewport: CGFloat) {
         let offset = document.isFlipped ? visible.minY : document.bounds.maxY - visible.maxY
+        if usesNativeIdentity, liveUserScroll, offset < lastOffset - 0.5 { signalUpwardIntent() }
         guard axis == .vertical, let lastReported, offset < lastOffset - 0.5,
               abs(length - lastReported.width) < 0.5, viewport == lastReported.height else { return }
         pendingOffset = nil
@@ -263,7 +541,10 @@ final class ParallelScrollObservationView: NSView {
     }
 
     private func report(observeExternalMovement: Bool = false) {
-        guard let scroll = observedScrollView, let document = scroll.documentView else { return }
+        guard !isTornDown, let scroll = observedScrollView, let document = scroll.documentView else { return }
+        // Native targets re-assert the zero-inset contract on every report, so a later resize or
+        // layout pass that restores an automatic inset cannot shift the feed's document geometry.
+        if usesNativeIdentity { enforceNativeInsets(on: scroll) }
         let visible = scroll.documentVisibleRect
         let viewportSize = scroll.contentView.bounds.size
         if viewportSize != lastViewportSize {

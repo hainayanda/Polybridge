@@ -76,6 +76,35 @@ import Testing
         try #require(probe.box.didObserve, "plain List hierarchy probe did not attach")
         print("list-hierarchy=\(reportURL.path)")
     }
+
+    @Test func givenActivityFeedFixture_whenBlankRowAreaReceivesLocalClick_thenNativeListDoesNotSelectRow() async throws {
+        guard ProcessInfo.processInfo.environment["PB_ACTIVITY_BASELINE_OUTPUT"] != nil else { return }
+        let fixture = try await ActivityListBaselineFixture(
+            size: CGSize(width: 420, height: 450), dark: false, expanded: false
+        )
+        defer { fixture.close() }
+        _ = try await fixture.settle()
+        let table = try #require(fixture.nativeTable)
+        try #require(table.selectedRow == -1)
+        let initialHighlight = table.selectionHighlightStyle
+        let row = try #require(table.numberOfRows > 0 ? table.rect(ofRow: 0) : nil)
+        // The trailing two points are outside the SwiftUI cell frame (the cell ends at x=411
+        // in the 420-point fixture), so this exercises the List row hit area without invoking a
+        // row control or relying on a programmatic selection.
+        let localPoint = NSPoint(x: table.bounds.maxX - 2, y: row.midY)
+        let windowPoint = table.convert(localPoint, to: nil)
+        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+            let event = try #require(NSEvent.mouseEvent(
+                with: type, location: windowPoint, modifierFlags: [], timestamp: 0,
+                windowNumber: fixture.window.windowNumber, context: nil, eventNumber: 0,
+                clickCount: 1, pressure: 1
+            ))
+            fixture.window.sendEvent(event)
+        }
+        await Task.yield()
+        #expect(table.selectedRow == -1)
+        #expect(table.selectionHighlightStyle == initialHighlight)
+    }
 }
 
 // MARK: - Baseline fixture
@@ -91,14 +120,19 @@ import Testing
     static var timelineRows: [ConversationTimelineRow] {
         [
             ActivityFixture.started(prompt: "Investigate the long activity reply and preserve the user's context.", task: "visual"),
-            ActivityFixture.text(1, "### Findings\n\nThe activity feed keeps Markdown readable while tool work continues.\n\n- first finding\n- second finding", task: "visual"),
+            ActivityFixture.text(
+                1,
+                "### Findings\n\nThe activity feed keeps Markdown readable while tool work continues.\n\n"
+                    + "- first finding\n- second finding",
+                task: "visual"
+            ),
             ActivityFixture.tool(2, task: "visual", category: "read", path: "/repo/Sources/Activity.swift", live: false),
             ActivityFixture.tool(3, task: "visual", category: "read", path: "/repo/Tests/ActivityTests.swift", live: false),
             ActivityFixture.separator("Follow-up turn", task: "visual"),
             ActivityFixture.text(4, "The completed read group is followed by a pending command.", task: "visual"),
             ActivityFixture.tool(5, task: "visual", category: "shell", command: "swift test --filter Activity", live: false),
             ActivityFixture.tool(6, task: "visual", category: "shell", command: "swift test --filter ActivityPending", resolved: false, live: true),
-            ActivityFixture.row(7, task: "visual", live: false, .finished(status: "completed", exitCode: 0, summary: nil)),
+            ActivityFixture.row(7, task: "visual", live: false, .finished(status: "completed", exitCode: 0, summary: nil))
         ]
     }
 
@@ -132,6 +166,10 @@ import Testing
 
     var name: String { "activity-list-\(Int(size.width))x\(Int(size.height))-\(dark ? "dark" : "light")-\(expanded ? "expanded" : "collapsed")" }
 
+    var nativeTable: NSTableView? {
+        descendants(controller.view).compactMap { $0 as? NSTableView }.first
+    }
+
     func settle() async throws -> String {
         var last = ""
         var stable = 0
@@ -148,14 +186,35 @@ import Testing
     func metrics() -> String {
         let scroll = descendants(controller.view).compactMap { $0 as? NSScrollView }.first
         guard let scroll else { return "scroll=nil" }
-        return "viewport=\(scroll.contentView.bounds.size) document=\(scroll.documentView?.frame.size ?? .zero) scroller=\(scroll.hasVerticalScroller)/\(scroll.scrollerStyle.rawValue)/\(scroll.autohidesScrollers)"
+        var result = "viewport=\(scroll.contentView.bounds.size) document=\(scroll.documentView?.frame.size ?? .zero) "
+            + "scroller=\(scroll.hasVerticalScroller)/\(scroll.scrollerStyle.rawValue)/\(scroll.autohidesScrollers)"
+        if let document = scroll.documentView {
+            result += " nativeDocumentFrame=\(document.frame) nativeDocumentBounds=\(document.bounds) clipBounds=\(scroll.contentView.bounds)"
+        }
+        let tables = descendants(scroll).compactMap { $0 as? NSTableView }
+        for (index, table) in tables.enumerated() {
+            result += " table[\(index)]=style:\(table.style.rawValue),spacing:\(table.intercellSpacing),"
+                + "selectionHighlight:\(table.selectionHighlightStyle.rawValue),selectedRow:\(table.selectedRow),"
+                + "emptySelection:\(table.allowsEmptySelection),multipleSelection:\(table.allowsMultipleSelection),"
+                + "frame:\(table.frame),bounds:\(table.bounds),rows:\(table.numberOfRows),"
+                + "columns:\(table.numberOfColumns),column0:\(table.numberOfColumns > 0 ? table.rect(ofColumn: 0) : .zero)"
+            if table.numberOfRows > 0, table.numberOfColumns > 0 {
+                result += ",row0:\(table.rect(ofRow: 0)),cell0:\(table.frameOfCell(atColumn: 0, row: 0))"
+            }
+        }
+        if let document = scroll.documentView {
+            let measurements = descendants(document).compactMap { $0 as? ActivityRowGeometry.MeasurementView }
+            let documentFrames = measurements.map { $0.convert($0.bounds, to: document) }
+            result += " measurementFrames=\(documentFrames)"
+        }
+        return result
     }
 
     func captureBitmap() throws -> NSBitmapImageRep {
         let screen = try #require(window.screen ?? NSScreen.screens.first)
         let frame = window.frame.integral
-        let sf = screen.frame
-        let rect = CGRect(x: frame.minX, y: sf.maxY - frame.maxY, width: frame.width, height: frame.height)
+        let screenFrame = screen.frame
+        let rect = CGRect(x: frame.minX, y: screenFrame.maxY - frame.maxY, width: frame.width, height: frame.height)
         let raw = FileManager.default.temporaryDirectory.appendingPathComponent("pb-activity-baseline-\(UUID().uuidString).png")
         let process = Process(); process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
         process.arguments = ["-x", "-R\(Int(rect.minX)),\(Int(rect.minY)),\(Int(rect.width)),\(Int(rect.height))", raw.path]
@@ -220,8 +279,27 @@ private struct ListHierarchyProbe: NSViewRepresentable {
             }
             if let scroll = nearestScroll {
                 lines.append("nearestScroll=\(type(of: scroll)) document=\(String(describing: scroll.documentView.map { type(of: $0) }))")
+                lines.append(
+                    "scrollFrame=\(scroll.frame) scrollBounds=\(scroll.bounds) "
+                        + "clipFrame=\(scroll.contentView.frame) clipBounds=\(scroll.contentView.bounds)"
+                )
+                if let document = scroll.documentView {
+                    lines.append("documentFrame=\(document.frame) documentBounds=\(document.bounds)")
+                }
                 let tables = descendants(scroll).compactMap { $0 as? NSTableView }
                 lines.append("ownedTables=\(tables.map { String(describing: type(of: $0)) })")
+                for (index, table) in tables.enumerated() {
+                    lines.append(
+                        "table[\(index)] frame=\(table.frame) bounds=\(table.bounds) "
+                            + "style=\(table.style.rawValue) rowHeight=\(table.rowHeight) "
+                            + "intercellSpacing=\(table.intercellSpacing) rows=\(table.numberOfRows) "
+                            + "columns=\(table.numberOfColumns) "
+                            + "column0=\(table.numberOfColumns > 0 ? table.rect(ofColumn: 0) : .zero)"
+                    )
+                    if table.numberOfRows > 0, table.numberOfColumns > 0 {
+                        lines.append("table[\(index)] row0=\(table.rect(ofRow: 0)) cell0=\(table.frameOfCell(atColumn: 0, row: 0))")
+                    }
+                }
             } else { lines.append("nearestScroll=nil") }
             try? lines.joined(separator: "\n").write(to: reportURL, atomically: true, encoding: .utf8)
             box.didObserve = true

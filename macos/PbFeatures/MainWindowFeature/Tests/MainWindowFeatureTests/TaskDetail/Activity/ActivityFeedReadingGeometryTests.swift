@@ -99,6 +99,90 @@ import Testing
         #expect(!visibleRows.isEmpty, "Partially visible feed must realize row content before any user scrolling")
     }
 
+    @Test func givenPausedLiveActivityFeed_whenPrependingHistoryArrives_thenReadingPositionIsPreserved() async throws {
+        _ = NSApplication.shared
+        let state = ParallelColumnUIState()
+        let host = NSHostingView(rootView: feed(rows(prepending: false), state: state))
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 420, height: 450),
+                              styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        window.makeKeyAndOrderFront(nil)
+        defer { window.contentView = nil; window.close() }
+        await waitUntil(timeout: 5) { @MainActor in state.viewportPositioned && state.followLive.isFollowing }
+        try #require(state.viewportPositioned && state.followLive.isFollowing,
+                     "The feed must finish initial positioning while still following live output")
+        let scroll = try #require(descendants(host).compactMap { $0 as? NSScrollView }.first { $0.hasVerticalScroller })
+        let document = try #require(scroll.documentView)
+        let legalBottom = scroll.contentView
+.constrainBoundsRect(
+            CGRect(origin: CGPoint(x: scroll.contentView.bounds.minX,
+                                   y: document.bounds.maxY - scroll.contentView.bounds.height),
+                   size: scroll.contentView.bounds.size))
+.origin
+        scroll.contentView.scroll(to: legalBottom)
+        scroll.reflectScrolledClipView(scroll.contentView)
+        await waitUntil(timeout: 5) {
+            @MainActor in state.viewportPositioned && state.followLive.isFollowing
+                && scroll.documentVisibleRect.maxY >= document.bounds.maxY - 2
+        }
+        try #require(state.viewportPositioned && state.followLive.isFollowing
+                         && scroll.documentVisibleRect.maxY >= document.bounds.maxY - 2,
+                     "The feed must settle at the live bottom before pausing")
+        let initialOffset = scroll.documentVisibleRect.minY
+        let liveAnchor = state.anchor
+
+        // Explicitly pause the feed, then move the native viewport to the reading position.
+        state.followLive.suspend()
+        try #require(!state.followLive.isFollowing)
+        let target = max(0, initialOffset - 180)
+        scroll.contentView.scroll(to: CGPoint(x: scroll.contentView.bounds.minX, y: target))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        await waitUntil(timeout: 5) {
+            @MainActor in !state.followLive.isFollowing && state.anchor != nil
+                && state.anchor != liveAnchor
+                && abs(state.scrollOffset - scroll.documentVisibleRect.minY) < 2
+                && scroll.documentVisibleRect.minY <= initialOffset - 24
+        }
+        try #require(!state.followLive.isFollowing && state.anchor != nil
+                         && state.anchor != liveAnchor
+                         && abs(state.scrollOffset - scroll.documentVisibleRect.minY) < 2
+                         && scroll.documentVisibleRect.minY <= initialOffset - 24,
+                     "The paused feed must record a meaningful upward reading position")
+        let pausedAnchor = try #require(state.anchor)
+        let pausedViewport = scroll.documentVisibleRect
+        let pausedRowFrame = try #require(firstVisibleMeasurementFrame(in: host, scroll: scroll),
+                                          "The paused anchor must have a mounted row measurement")
+        #expect(abs(pausedRowFrame.minY - pausedViewport.minY - pausedAnchor.relativeOffset) < 3,
+                "The captured anchor must describe the measured row's position in the viewport")
+        let generationBeforePublication = measurementGeneration(in: host)
+
+        host.rootView = feed(rows(prepending: true), state: state)
+        await waitUntil(timeout: 5) {
+            @MainActor in measurementGeneration(in: host) > generationBeforePublication
+                && state.viewportPositioned && !state.followLive.isFollowing
+                && state.anchor?.id == pausedAnchor.id
+                && firstVisibleMeasurementFrame(in: host, scroll: scroll).map {
+                    abs($0.minY - scroll.documentVisibleRect.minY - pausedAnchor.relativeOffset) < 3
+                } == true
+                && abs(state.scrollOffset - scroll.documentVisibleRect.minY) < 2
+        }
+
+        try #require(measurementGeneration(in: host) > generationBeforePublication,
+                     "The prepended snapshot must update mounted row measurements")
+        #expect(state.viewportPositioned)
+        #expect(!state.followLive.isFollowing)
+        #expect(state.anchor?.id == pausedAnchor.id)
+        let restoredViewport = scroll.documentVisibleRect
+        let restoredRowFrame = try #require(firstVisibleMeasurementFrame(in: host, scroll: scroll),
+                                           "The restored anchor must have a mounted row measurement")
+        #expect(abs(restoredRowFrame.minY - restoredViewport.minY - pausedAnchor.relativeOffset) < 3,
+                "Prepending history must preserve the anchor's position within its row")
+        #expect(abs(state.anchor!.relativeOffset - pausedAnchor.relativeOffset) < 3,
+                "Prepending history must preserve the semantic reading anchor")
+        #expect(abs(state.scrollOffset - scroll.documentVisibleRect.minY) < 2)
+    }
+
     @Test func givenAPausedActivityFeed_whenLegacyChromeIsReasserted_thenReadingAnchorAndFollowStateSurvive() async throws {
         // given — this is the real ActivityFeedView used by Task detail, Parallel lanes and
         // Workflow activity. Start paused so the test checks semantic reading, not live-bottom.
@@ -289,4 +373,22 @@ import Testing
     }
 
     private func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
+
+    private func firstVisibleMeasurementFrame(in host: NSView, scroll: NSScrollView) -> CGRect? {
+        guard let document = scroll.documentView else { return nil }
+        return descendants(host)
+            .compactMap { $0 as? ActivityRowGeometry.MeasurementView }
+            .map { $0.convert($0.bounds, to: document) }
+            .filter { $0.width > 0 && $0.height > 0 && $0.maxY > scroll.documentVisibleRect.minY
+                && $0.minY < scroll.documentVisibleRect.maxY
+            }
+            .min { $0.minY < $1.minY }
+    }
+
+    private func measurementGeneration(in view: NSView) -> Int {
+        descendants(view)
+.compactMap { $0 as? ActivityRowGeometry.MeasurementView }
+            .map(\.generation)
+.max() ?? -1
+    }
 }

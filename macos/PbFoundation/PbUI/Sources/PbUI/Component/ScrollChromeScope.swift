@@ -34,6 +34,18 @@
 //  check either. A no-op scope adds no invisible gesture layer and no focusable or accessibility
 //  element.
 //
+//  Optional native identity disclosure: `scrollChromeScope(onNativeScrollView:)` additionally
+//  hands the SAME bounded discovery result to a caller-supplied handler — the scoped container's
+//  own NSScrollView, or nil. The two markers report independently into one relay that aggregates
+//  them: an identity survives while either live marker still reports it, nil is delivered only
+//  once every live marker reports nothing (a churning marker never unseats its peer's scope), an
+//  identical NSScrollView is never redelivered, and delivery is deferred to the main queue with a
+//  generation guard so no identity is published during layout and only the newest knowledge ever
+//  publishes. Every reference — markers, scroll views, the delivered identity — is weak, so a
+//  deallocated candidate publishes nil, fail closed. The handler changes no chrome behaviour; the
+//  markers keep their chrome tokens exactly as before, and a scope installed without a handler
+//  leaves the relay unused.
+//
 
 import AppKit
 import Combine
@@ -47,6 +59,78 @@ struct ScrollChromeScopePairID: Equatable {
     let raw = UUID()
 }
 
+// MARK: - ScrollChromeScopeNativeIdentityHandler
+
+/// Receives the scoped container's own native scroll identity: the bounded marker-pair
+/// discovery's NSScrollView, or nil once every live marker reports nothing. Delivery is always
+/// main-actor and never happens during a layout pass.
+public typealias ScrollChromeScopeNativeIdentityHandler = @MainActor (NSScrollView?) -> Void
+
+// MARK: - ScrollChromeScopeIdentityRelay
+
+/// Aggregates one scope's two independent marker discoveries into a single native scroll-identity
+/// stream for the optional `onNativeScrollView` handler. Both markers report their own bounded
+/// candidate (or nil) on every reconcile; the relay never invents a target and never scans — it
+/// only aggregates what the strict discovery already produced.
+///
+/// Delivery rules: an identity is live while ANY live marker still reports it; nil publishes only
+/// once every live marker reports nothing, so one marker churning (conditional replacement, sheet
+/// re-presentation) never unseats its peer's scope. An identical NSScrollView is never
+/// redelivered. Delivery is deferred one main-queue hop with a generation guard: a block publishes
+/// only when it carries the newest report generation, so coalesced bursts publish once and no
+/// handler runs during layout. Every reference — markers, candidates, the last delivered identity
+/// — is weak, so a deallocated candidate publishes nil (fail closed) and nothing is ever kept
+/// alive by the relay.
+@MainActor
+final class ScrollChromeScopeIdentityRelay {
+    /// One marker's latest bounded discovery. Both references are weak: a dead marker is purged
+    /// before aggregation and a dead candidate reads as absent, never as a delivered identity.
+    private struct MarkerIdentity {
+        weak var marker: ScrollChromeScopeMarkerView?
+        weak var scrollView: NSScrollView?
+    }
+
+    private var identities: [ObjectIdentifier: MarkerIdentity] = [:]
+    private var onIdentity: ScrollChromeScopeNativeIdentityHandler?
+    private weak var lastDelivered: NSScrollView?
+    private var lastDeliveryWasNil = true
+    /// Bumped by every marker report; a deferred block publishes only under the newest generation.
+    private var generation = 0
+
+    /// Installs the handler once per scope instance; the handler is expected to capture
+    /// lifetime-stable state (a caller's own holder), so later body evaluations keep the first.
+    func install(handler: @escaping ScrollChromeScopeNativeIdentityHandler) {
+        guard onIdentity == nil else { return }
+        onIdentity = handler
+    }
+
+    /// One marker's bounded discovery result — its bracketed candidate, or nil while that marker
+    /// isolates nothing. Called from the marker's single main-actor reconciliation point only.
+    func report(_ scrollView: NSScrollView?, from marker: ScrollChromeScopeMarkerView) {
+        identities[ObjectIdentifier(marker)] = MarkerIdentity(marker: marker, scrollView: scrollView)
+        generation &+= 1
+        let scheduled = generation
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated { self?.deliver(generation: scheduled) }
+        }
+    }
+
+    /// The deferred publish point: publishes only under the newest report generation, purges dead
+    /// markers, reads the CURRENT aggregated state (so a replacement that arrived after
+    /// scheduling is what publishes, never a stale identity), deduplicates an unchanged scroll
+    /// view, and delivers nil exactly on the all-markers-detached transition.
+    private func deliver(generation scheduled: Int) {
+        guard scheduled == generation else { return }
+        identities = identities.filter { $0.value.marker != nil }
+        let aggregated = identities.values.compactMap(\.scrollView).first
+        let changed = aggregated.map { $0 !== lastDelivered } ?? !lastDeliveryWasNil
+        guard changed else { return }
+        lastDelivered = aggregated
+        lastDeliveryWasNil = aggregated == nil
+        onIdentity?(aggregated)
+    }
+}
+
 // MARK: - ScrollChromeScopeMarkerView
 
 /// One hidden, noninteractive marker of a scope pair: it never draws, never takes part in hit
@@ -56,6 +140,7 @@ struct ScrollChromeScopePairID: Equatable {
 final class ScrollChromeScopeMarkerView: NSView {
     /// The identity shared with this marker's peer, set once at creation.
     let pairID: ScrollChromeScopePairID
+    var identityRelay: ScrollChromeScopeIdentityRelay?
     /// Set by the representable; called on the main thread for every move to a window or a new
     /// superview, exactly the events that can change the bounded scope.
     var onReconcile: (() -> Void)?
@@ -226,6 +311,9 @@ enum ScrollChromeScopeDiscovery {
 /// re-presentation) never leaves the container without chrome while its peer still brackets it.
 struct ScrollChromeScopeMarker: NSViewRepresentable {
     let pairID: ScrollChromeScopePairID
+    /// The scope's identity relay, present only when the scope was installed with an
+    /// `onNativeScrollView` handler; every marker still carries its own chrome token either way.
+    var identityRelay: ScrollChromeScopeIdentityRelay?
 
     @MainActor
     final class Coordinator {
@@ -237,6 +325,7 @@ struct ScrollChromeScopeMarker: NSViewRepresentable {
 
     func makeNSView(context: Context) -> ScrollChromeScopeMarkerView {
         let view = ScrollChromeScopeMarkerView(pairID: pairID)
+        view.identityRelay = identityRelay
         view.setAccessibilityElement(false)
         view.onReconcile = { [weak coordinator = context.coordinator, weak view] in
             guard let view, let coordinator else { return }
@@ -256,11 +345,15 @@ struct ScrollChromeScopeMarker: NSViewRepresentable {
     }
 
     func updateNSView(_ view: ScrollChromeScopeMarkerView, context: Context) {
+        view.identityRelay = identityRelay
         Self.reconcile(view: view, coordinator: context.coordinator)
     }
 
     static func dismantleNSView(_ view: ScrollChromeScopeMarkerView, coordinator: Coordinator) {
         view.onReconcile = nil
+        // The marker is going away: its discovery no longer vouches for any candidate, so the
+        // relay sees nil from this half before the entry is purged as dead at delivery time.
+        view.identityRelay?.report(nil, from: view)
         coordinator.frameCancellable?.cancel()
         coordinator.frameCancellable = nil
         if let token = coordinator.token {
@@ -291,9 +384,14 @@ struct ScrollChromeScopeMarker: NSViewRepresentable {
                 ScrollChromeOwner.detach(token)
                 coordinator.token = nil
             }
+            view.identityRelay?.report(nil, from: view)
             return
         }
         let scroll = ScrollChromeScopeDiscovery.candidate(around: view)
+        // The same bounded fact feeds both halves of the scope: the chrome token decisions below
+        // and the identity relay — the candidate (or its absence) is reported once, before any
+        // chrome attach/detach branch can return.
+        view.identityRelay?.report(scroll, from: view)
         if let token = coordinator.token {
             guard let scroll, scroll.hasVerticalScroller || scroll.hasHorizontalScroller else {
                 ScrollChromeOwner.detach(token)
@@ -323,11 +421,21 @@ struct ScrollChromeScopeModifier: ViewModifier {
     /// One identity per scope instance, stable across body re-evaluations and shared by both
     /// markers, so nested scopes never pair across each other.
     @State private var pairID = ScrollChromeScopePairID()
+    /// Aggregates the markers' discoveries for the optional handler; allocated once per scope
+    /// instance. A scope without a handler passes nil to both markers and never touches it.
+    @State private var identityRelay = ScrollChromeScopeIdentityRelay()
+    let onNativeScrollView: ScrollChromeScopeNativeIdentityHandler?
+
+    init(onNativeScrollView: ScrollChromeScopeNativeIdentityHandler? = nil) {
+        self.onNativeScrollView = onNativeScrollView
+    }
 
     func body(content: Content) -> some View {
-        content
-            .background { ScrollChromeScopeMarker(pairID: pairID) }
-            .overlay { ScrollChromeScopeMarker(pairID: pairID) }
+        if let onNativeScrollView { identityRelay.install(handler: onNativeScrollView) }
+        let relay = onNativeScrollView == nil ? nil : identityRelay
+        return content
+            .background { ScrollChromeScopeMarker(pairID: pairID, identityRelay: relay) }
+            .overlay { ScrollChromeScopeMarker(pairID: pairID, identityRelay: relay) }
     }
 }
 
@@ -348,8 +456,17 @@ extension View {
     ///
     /// For ordinary `ScrollView`-backed containers prefer the document probe instead:
     /// `.background(ScrollChrome())` inside the scrolling document.
-    public func scrollChromeScope() -> some View {
-        modifier(ScrollChromeScopeModifier())
+    ///
+    /// When `onNativeScrollView` is supplied, the same bounded discovery additionally discloses
+    /// the scoped container's own NSScrollView identity to that handler — the discovery result
+    /// itself, or nil once every live marker isolates nothing. Delivery is deferred off layout,
+    /// coalesced and deduplicated, weakly referenced on both ends (a deallocated candidate
+    /// publishes nil), and never a broader search. Chrome ownership is unchanged either way, and
+    /// omitting the handler keeps the scope's exact prior shape.
+    public func scrollChromeScope(
+        onNativeScrollView: ScrollChromeScopeNativeIdentityHandler? = nil
+    ) -> some View {
+        modifier(ScrollChromeScopeModifier(onNativeScrollView: onNativeScrollView))
     }
 }
 

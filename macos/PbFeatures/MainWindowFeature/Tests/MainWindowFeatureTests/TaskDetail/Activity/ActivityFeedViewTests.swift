@@ -102,7 +102,7 @@ import Testing
         _ = NSApplication.shared
         let state = ParallelColumnUIState()
         let requests = Requests()
-        let values = rows(80, from: 100)
+        let values = rows(150, from: 100)
         let host = NSHostingView(rootView: ActivityFeedView(rows: values, start: nil, history: EventHistoryState(hasMore: true), isLoading: false,
             state: state, onLoadMore: { requests.total += 1; return true }) { EmptyView() }.frame(width: 420, height: 450))
         let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 420, height: 450), styleMask: [.titled], backing: .buffered, defer: false)
@@ -115,7 +115,7 @@ import Testing
         await waitUntil { abs(state.scrollOffset - readingOffset) < 2 && !state.followLive.isFollowing && requests.total == 1 }
         let anchor = try #require(state.anchor)
         // when
-        host.rootView = ActivityFeedView(rows: rows(100) + values + rows(1, from: 180), start: nil,
+        host.rootView = ActivityFeedView(rows: rows(120, from: -120) + values + rows(1, from: 250), start: nil,
             history: EventHistoryState(), isLoading: false, paginationRevision: 1, state: state, onLoadMore: nil) { EmptyView() }.frame(width: 420, height: 450)
         await waitUntil {
             host.layoutSubtreeIfNeeded()

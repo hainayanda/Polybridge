@@ -2,51 +2,6 @@ import MonitorCore
 import PbUI
 import SwiftUI
 
-// MARK: - ActivityFeedWindow
-
-/// UI pages are independent of the bounded event reader's pages.
-enum ActivityFeedWindow {
-    static let pageSize = 100
-    static let threshold: CGFloat = 200
-
-    static func firstIndex(ids: [String], retainedID: String?) -> Int {
-        retainedID.flatMap { ids.firstIndex(of: $0) } ?? max(0, ids.count - pageSize)
-    }
-
-    static func olderBoundary(ids: [String], retainedID: String?) -> String? {
-        let first = firstIndex(ids: ids, retainedID: retainedID)
-        guard first > 0 else { return nil }
-        return ids[max(0, first - pageSize)]
-    }
-
-    static func shouldLoad(offset: CGFloat, viewport: CGFloat, eligibility: ActivityFeedEligibility) -> Bool {
-        eligibility.positioned && !eligibility.restoring && eligibility.visible && !eligibility.loading
-            && eligibility.error == nil && viewport > 0 && offset <= threshold
-    }
-}
-
-/// Bounds automatic filling when collapsed or filtered pages do not grow the viewport.
-struct ActivityShortFillBudget {
-    private(set) var remaining = 1
-    mutating func replenish() { remaining = 1 }
-    mutating func consume(content: CGFloat, viewport: CGFloat) -> Bool {
-        guard content <= viewport + 1 else { return true }
-        guard remaining > 0 else { return false }
-        remaining -= 1
-        return true
-    }
-}
-
-// MARK: - ActivityFeedEligibility
-
-struct ActivityFeedEligibility {
-    var positioned = false
-    var restoring = false
-    var visible = true
-    var loading = false
-    var error: String?
-}
-
 // MARK: - ActivityFeedPosition
 
 @MainActor
@@ -109,6 +64,9 @@ struct ActivityFeedView<Tail: View>: View {
     @State private var nativeViewportReady = false
     @State private var realizedLastRowID: String?
     @State private var position = ActivityFeedPosition()
+    /// Weak relay endpoint between the List's scoped native identity and its scroll observer;
+    /// owned here so it lives exactly as long as this feed instance.
+    @State private var nativeIdentity = ParallelScrollNativeIdentity()
     @State private var pendingReadingCapture = true
     @State private var positioned = false
     @State private var followingLayout = true
@@ -132,98 +90,199 @@ struct ActivityFeedView<Tail: View>: View {
 
     var body: some View {
         ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: PbRadius.Metrics.spacing20) {
-                    historyHeader
-                    if let emptyText { Text(emptyText).font(.pb(.body)).foregroundStyle(Color.secondaryText) }
-                    ForEach(shown) { row in
-                        rowView(row)
-                            .id(row.id)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(ActivityRowGeometry(
-                                generation: measurementGeneration,
-                                measurements: position.measurements
-                            ) { [generation = measurementGeneration] frame in
-                                guard generation == measurementGeneration else { return }
-                                guard position.frames[row.id] != frame else { return }
-                                position.frames[row.id] = frame
-                                if row.id == shown.last?.id, realizedLastRowID != row.id { realizedLastRowID = row.id }
-                                scheduleReadingUpdate()
-                            })
-                            .pbFadeIn(animate: positioned && !restoring && state.followLive.isFollowing && !seenIDs.contains(row.id))
-                            .onAppear { seenIDs.insert(row.id) }
-                    }
-                    tail()
-                    Color.clear.frame(height: PbRadius.Metrics.hairlineStroke).id(Self.bottomID)
+            feedList
+                .task(id: ActivityFeedKey(nativeViewportReady: nativeViewportReady, realizedLastRowID: realizedLastRowID,
+                                         rows: shown, tail: tailValue, showsPromptBubble: showsPromptBubble,
+                                         expandedGroups: state.expandedGroups, viewport: viewportSize, history: history,
+                                         loading: isLoading, visible: isVisible, paginationRevision: paginationRevision, restoring: restoring)) {
+                    await settle(proxy)
                 }
-                .padding(.horizontal, horizontalPadding)
-                .padding(.vertical, PbRadius.Metrics.spacing12)
-                .coordinateSpace(name: "activity-feed-document")
-                // The user-authorized Phase 4 amendment: thin, auto-hiding native chrome on this
-                // feed's own enclosing vertical scroll view — attached inside the document so it
-                // can never target an outer lane or canvas, and non-layout-occupying. Every other
-                // scroll setting, observer and callback below is untouched.
-                .background(ActivityScrollChrome())
-                .background(ParallelScrollObserver(axis: .vertical, restorationOffset: targetOffset, restorationActive: restoring || followingLayout,
-                                                   onViewportSize: observeViewport, onUpwardIntent: upwardIntent) { offset, content, viewport in
-                    if positioned, !restoring, abs(content - position.content) < 0.5, position.viewport == viewport,
-                       abs(offset - position.offset) > 0.5 {
-                        pendingReadingCapture = true
-                        if offset < position.offset { shortFillBudget.replenish() }
-                    }
-                    if positioned, !restoring, abs(content - position.content) < 0.5, position.viewport == viewport, offset < position.offset - 0.5 {
-                        state.followLive.observe(offset: offset, contentHeight: content, viewportHeight: viewport)
-                        if !state.followLive.isFollowing { targetOffset = nil }
-                    }
-                    if state.followLive.isFollowing, position.content != content || position.viewport != viewport { followingLayout = true }
-                    position.measurements.scheduleMeasurements()
-                    position.offset = offset
-                    position.content = content
-                    position.viewport = viewport
-                    // Native attachment can follow the first keyed task. Retry proxy positioning
-                    // once the inner scroll view has a usable viewport.
-                    let ready = viewport > 0
-                    if nativeViewportReady != ready { nativeViewportReady = ready }
-                    scheduleReadingUpdate()
-                })
-            }
-            .task(id: ActivityFeedKey(nativeViewportReady: nativeViewportReady, realizedLastRowID: realizedLastRowID,
-                                     rows: shown, tail: tailValue, showsPromptBubble: showsPromptBubble,
-                                     expandedGroups: state.expandedGroups, viewport: viewportSize, history: history,
-                                     loading: isLoading, visible: isVisible, paginationRevision: paginationRevision, restoring: restoring)) {
-                await settle(proxy)
-            }
-            .onDisappear { position.pagingTask?.cancel(); position.pagingTask = nil }
-            .onChange(of: rows) { old, next in
-                if state.followLive.isFollowing { followingLayout = true }
-                preserveRegroupedAnchor(old: old, next: next)
-                if !state.followLive.isFollowing { beginRestoration() }
-                if waitingForPage, requestedIDs != ids {
-                    state.retainedFirstID = next.first?.id
-                    waitingForPage = false
-                }
-            }
-            .onChange(of: tailValue) { _, _ in
-                if state.followLive.isFollowing { followingLayout = true } else { beginRestoration() }
-            }
-            .onChange(of: paginationRevision) { _, _ in
-                rejectedPageIDs = nil
-                waitingForPage = false
-                sawLoading = false
-                if !state.followLive.isFollowing { beginRestoration() }
-                if !rows.isEmpty { state.retainedFirstID = rows.first?.id }
-            }
-            .onChange(of: history) { _, next in
-                rejectedPageIDs = nil
-                if waitingForPage {
-                    sawLoading = sawLoading || next.isLoading
-                    if !next.isLoading, sawLoading || next.error != nil || !next.hasMore {
+                .onDisappear { position.pagingTask?.cancel(); position.pagingTask = nil }
+                .onChange(of: rows) { old, next in
+                    if state.followLive.isFollowing { followingLayout = true }
+                    preserveRegroupedAnchor(old: old, next: next)
+                    if !state.followLive.isFollowing { beginRestoration() }
+                    if waitingForPage, requestedIDs != ids {
+                        state.retainedFirstID = next.first?.id
                         waitingForPage = false
-                        restoring = !state.followLive.isFollowing
                     }
                 }
-            }
+                .onChange(of: tailValue) { _, _ in
+                    if state.followLive.isFollowing { followingLayout = true } else { beginRestoration() }
+                }
+                .onChange(of: paginationRevision) { _, _ in
+                    rejectedPageIDs = nil
+                    waitingForPage = false
+                    sawLoading = false
+                    if !state.followLive.isFollowing { beginRestoration() }
+                    if !rows.isEmpty { state.retainedFirstID = rows.first?.id }
+                }
+                .onChange(of: history) { _, next in
+                    rejectedPageIDs = nil
+                    if waitingForPage {
+                        sawLoading = sawLoading || next.isLoading
+                        if !next.isLoading, sawLoading || next.error != nil || !next.hasMore {
+                            waitingForPage = false
+                            restoring = !state.followLive.isFollowing
+                        }
+                    }
+                }
         }
+    }
+
+    /// Uses native List row virtualization with explicit document spacing and shared card views.
+    /// The bounded scroll scope supplies the container identity independently of realized rows.
+    private var feedList: some View {
+        List {
+            if showsHistoryHeader { historyHeaderRow }
+            if emptyText != nil { emptyTextRow }
+            ForEach(shown) { row in
+                rowContent(row)
+                    .modifier(ActivityFeedRowPlacement(
+                        top: isDocumentFirst(row) ? PbRadius.Metrics.spacing12 : PbRadius.Metrics.spacing20,
+                        bottom: PbRadius.Metrics.zero,
+                        horizontalPadding: horizontalPadding
+                    ))
+            }
+            if hasTailContent { tailRow }
+            sentinelRow
+        }
+        .listStyle(.plain)
+        .contentMargins(PbRadius.Metrics.zero, for: .scrollContent)
+        // AppKit requires a positive default height; every explicit feed row exceeds this.
+        .environment(\.defaultMinListRowHeight, PbRadius.Metrics.hairlineStroke)
+        .scrollContentBackground(.hidden)
+        .scrollChromeScope(onNativeScrollView: { identity in nativeIdentity.deliver(identity) })
+        // Outside the scope's marker pair: in native-identity mode this observation view never
+        // attaches to its own enclosingScrollView — an outer parallel lane is never a target.
+        .background(ParallelScrollObserver(
+            axis: .vertical, restorationOffset: targetOffset, restorationActive: restoring || followingLayout,
+            onViewportSize: observeViewport, onUpwardIntent: upwardIntent, nativeIdentity: nativeIdentity
+        ) { offset, content, viewport in
+            if positioned, !restoring, !followingLayout, abs(content - position.content) < 0.5, position.viewport == viewport,
+               abs(offset - position.offset) > 0.5 {
+                pendingReadingCapture = true
+                if offset < position.offset { shortFillBudget.replenish() }
+            }
+            if positioned, !restoring, !followingLayout, abs(content - position.content) < 0.5, position.viewport == viewport, offset < position.offset - 0.5 {
+                state.followLive.observe(offset: offset, contentHeight: content, viewportHeight: viewport)
+                if !state.followLive.isFollowing { targetOffset = nil }
+            }
+            if state.followLive.isFollowing, position.content != content || position.viewport != viewport { followingLayout = true }
+            position.measurements.scheduleMeasurements()
+            position.offset = offset
+            position.content = content
+            position.viewport = viewport
+            // Native attachment can follow the first keyed task. Retry proxy positioning
+            // once the native list has a usable viewport.
+            let ready = viewport > 0
+            if nativeViewportReady != ready { nativeViewportReady = ready }
+            scheduleReadingUpdate()
+        })
+    }
+
+    /// The feed's explicit document spacing on one List row, with the native contributions
+    /// stripped: no row insets, separators, backgrounds or minimum height from the List itself,
+    /// and the row's own horizontal padding plus top gap (12pt at the document edge, 20pt between
+    /// actual children) live inside the row content. `ActivityRowGeometry` backgrounds the row
+    /// BEFORE this padding, so measured frames stay the real row's document coordinates and
+    /// exclude the inserted spacing.
+    private struct ActivityFeedRowPlacement: ViewModifier {
+        let top: CGFloat
+        let bottom: CGFloat
+        let horizontalPadding: CGFloat
+
+        func body(content: Content) -> some View {
+            content
+                .padding(EdgeInsets(top: top, leading: horizontalPadding, bottom: bottom, trailing: horizontalPadding))
+                .listRowInsets(EdgeInsets())
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+        }
+    }
+
+    /// The header is the document's first child whenever it shows — it owns the 12pt top edge.
+    private var showsHistoryHeader: Bool {
+        history.isLoading || waitingForPage || history.error != nil
+            || (!history.hasMore && !rows.isEmpty
+                && ActivityFeedWindow.firstIndex(ids: ids, retainedID: state.retainedFirstID) == 0)
+    }
+
+    @ViewBuilder private var historyHeaderRow: some View {
+        if showsHistoryHeader {
+            historyHeader
+                .modifier(ActivityFeedRowPlacement(top: PbRadius.Metrics.spacing12, bottom: PbRadius.Metrics.zero,
+                                                   horizontalPadding: horizontalPadding))
+        }
+    }
+
+    @ViewBuilder private var emptyTextRow: some View {
+        if let emptyText {
+            Text(emptyText)
+.font(.pb(.body))
+.foregroundStyle(Color.secondaryText)
+                .modifier(ActivityFeedRowPlacement(
+                    top: showsHistoryHeader ? PbRadius.Metrics.spacing20 : PbRadius.Metrics.spacing12,
+                    bottom: PbRadius.Metrics.zero,
+                    horizontalPadding: horizontalPadding
+                ))
+        }
+    }
+
+    /// A row owns the 12pt top edge exactly when no header or empty text precedes it.
+    private func isDocumentFirst(_ row: ActivityRow) -> Bool {
+        !showsHistoryHeader && emptyText == nil && row.id == shown.first?.id
+    }
+
+    private func rowContent(_ row: ActivityRow) -> some View {
+        rowView(row)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(ActivityRowGeometry(
+                generation: measurementGeneration,
+                measurements: position.measurements
+            ) { [generation = measurementGeneration] frame in
+                guard generation == measurementGeneration else { return }
+                guard position.frames[row.id] != frame else { return }
+                position.frames[row.id] = frame
+                if row.id == shown.last?.id, realizedLastRowID != row.id { realizedLastRowID = row.id }
+                scheduleReadingUpdate()
+            })
+            .pbFadeIn(animate: positioned && !restoring && state.followLive.isFollowing && !seenIDs.contains(row.id))
+            .onAppear { seenIDs.insert(row.id) }
+    }
+
+    /// EmptyView contributes no row even when a caller supplies tail metadata for settlement.
+    private var hasTailContent: Bool {
+        Tail.self != EmptyView.self && tailValue != ActivityFeedTail()
+    }
+
+    private var hasContentBeforeTail: Bool {
+        showsHistoryHeader || emptyText != nil || !shown.isEmpty
+    }
+
+    @ViewBuilder private var tailRow: some View {
+        if hasTailContent {
+            VStack(alignment: .leading, spacing: PbRadius.Metrics.spacing20) { tail() }
+                .modifier(ActivityFeedRowPlacement(
+                    top: hasContentBeforeTail ? PbRadius.Metrics.spacing20 : PbRadius.Metrics.spacing12,
+                    bottom: PbRadius.Metrics.zero,
+                    horizontalPadding: horizontalPadding
+                ))
+        }
+    }
+
+    /// The bottom sentinel keeps its own List row — outside the tail VStack — so live following
+    /// has a stable scroll target past the tail, and the document's 12pt bottom edge rides on
+    /// it.
+    private var sentinelRow: some View {
+        Color.clear
+            .frame(height: PbRadius.Metrics.hairlineStroke)
+            .modifier(ActivityFeedRowPlacement(
+                top: (hasContentBeforeTail || hasTailContent) ? PbRadius.Metrics.spacing20 : PbRadius.Metrics.spacing12,
+                bottom: PbRadius.Metrics.spacing12,
+                horizontalPadding: horizontalPadding
+            ))
+            .id(Self.bottomID)
     }
 
     @ViewBuilder private var historyHeader: some View {
@@ -413,7 +472,19 @@ struct ActivityFeedView<Tail: View>: View {
     }
 
     private var upwardIntent: (() -> Void)? {
-        isVisible ? { replenishShortFill() } : nil
+        isVisible ? {
+            pauseLayoutFollowingForUserIntent()
+            replenishShortFill()
+        } : nil
+    }
+
+    private func pauseLayoutFollowingForUserIntent() {
+        guard positioned, !restoring, followingLayout, state.followLive.isFollowing else { return }
+        state.followLive.suspend()
+        followingLayout = false
+        if state.retainedFirstID == nil { state.retainedFirstID = shown.first?.id }
+        targetOffset = nil
+        pendingReadingCapture = true
     }
 
     private func replenishShortFill() {
@@ -481,8 +552,10 @@ struct ActivityFeedView<Tail: View>: View {
 @MainActor
 private func activityFeedPreview() -> some View {
     let rows = ActivityRowsBuilder.build(from: PreviewFixtures.sampleRows(taskID: "feed-preview", running: false))
+    let liveStep = LiveStep(rows: [], isRunning: true)
     return ActivityFeedView(rows: rows, start: .now.addingTimeInterval(-600), history: EventHistoryState(),
-                            isLoading: false, emptyText: nil, state: ParallelColumnUIState(), onLoadMore: nil) {
+                            isLoading: false, tailValue: ActivityFeedTail(liveStep: liveStep), emptyText: nil,
+                            state: ParallelColumnUIState(), onLoadMore: nil) {
         LiveStepLineView(text: "Running the login tests…", indicator: .threeDots)
     }
     .frame(width: PbRadius.Metrics.timelinePanePreviewWidth, height: PbRadius.Metrics.taskDetailPreviewHeight)
