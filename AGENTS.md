@@ -35,7 +35,8 @@ uv run mcp dev src/polybridge/server.py         # MCP Inspector
 uv tool install . --force --no-cache             # reinstall after changes; --no-cache is required
 swiftformat macos && swiftlint lint                  # Monitor app: format, then lint (SwiftFormat 0.62.1, SwiftLint 0.65.0)
 scripts/check-private-refs.sh                        # private-reference guard (CI runs it too)
-for p in macos/PbFoundation/* macos/PbCore/* macos/PbFeatures/* macos/PolybridgeMonitor; do (cd "$p" && swift build && swift test --no-parallel); done  # Monitor app: serialize AppKit fixtures with async unit tests
+PB_NATIVE_SIDEBAR_BENCHMARK=1 python3 scripts/test-swift-package.py --package macos/PbFeatures/MainWindowFeature --mode suites  # Monitor app: guarded Swift Testing, one fresh process per suite (serialized)
+for p in macos/PbFoundation/* macos/PbCore/* macos/PbFeatures/MenuBarFeature macos/PbFeatures/SettingsFeature macos/PolybridgeMonitor; do python3 scripts/test-swift-package.py --package "$p" --mode aggregate || exit 1; done  # the other eight Monitor packages: one guarded serialized process each
 macos/build-app.sh                               # build the .app into macos/build/ (build only)
 ```
 
@@ -780,8 +781,31 @@ Before finishing any change under `macos/`, run `swiftformat macos && swiftlint 
 project; its patterns are assembled from pieces inside the script, so never quote them elsewhere.
 
 **CI.** `.github/workflows/lint.yml` (Linux) runs SwiftFormat `--lint`, SwiftLint and the guard;
-`.github/workflows/test.yml` (macOS) runs `swift test` per Monitor package, `macos/build-app.sh`, and
-`uv run pytest` with a temporary `HOME`/`CODEX_HOME`. The headless app smoke stays a local gate.
+`.github/workflows/test.yml` (macOS) runs `scripts/test-swift-package.py` for every Monitor package —
+one fresh process per suite for `MainWindowFeature`, one guarded aggregate process for the other
+eight — plus `macos/build-app.sh`, and `uv run pytest` with a temporary `HOME`/`CODEX_HOME`; the
+Swift job is capped at `timeout-minutes: 45`. The headless app smoke stays a local gate.
+
+**Swift Testing validation is fail-closed (`scripts/test-swift-package.py`).** The runner builds
+once, discovers target-qualified function IDs with `swift test list --skip-build`, and rejects
+empty, duplicate or unrecognized discovery. `--mode suites` runs each suite once in a fresh
+serialized process with anchored filters validated to cover discovery exactly and disjointly;
+`--mode aggregate` uses one guarded process. MainWindow uses suite isolation as an AppKit fixture
+policy. The cause of premature aggregate exit remains unresolved, and suite isolation does not
+validate shared-process ordering or state leakage. An incomplete isolated suite still fails.
+
+Each partition must exit zero, define and execute every discovered function exactly once in a
+complete event stream (schema 6.3.0, Testing Library 1902), and print a passing summary with the
+exact logical count. Parameterized cases do not inflate that count. Recorded issues, failed
+suites/tests, skips, malformed or truncated evidence, and unsupported toolchains fail validation;
+legacy XCTest must report zero tests and failures. Exit code alone never establishes success.
+Build/discovery time out after 600 seconds, suites after 300, and aggregate runs after 1200.
+Timeout cleanup signals only the runner-owned process group: TERM, five seconds of grace, then
+KILL including surviving descendants. Surviving descendants after normal exit fail the run;
+interruptions also clean up the owned group. The runner supports Python 3.9+. Flushed partition progress identifies the log directory;
+full logs, event streams and a final manifest retain evidence. Remaining independent partitions
+run after failures, then the runner exits nonzero. Fake-Swift regression tests live in
+`tests/test_swift_package_runner.py`.
 
 ## Enforcement must never overclaim
 
