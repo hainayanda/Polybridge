@@ -42,7 +42,8 @@
 //  identical NSScrollView is never redelivered, and delivery is deferred to the main queue with a
 //  generation guard so no identity is published during layout and only the newest knowledge ever
 //  publishes. Every reference — markers, scroll views, the delivered identity — is weak, so a
-//  deallocated candidate publishes nil, fail closed. The handler changes no chrome behaviour; the
+//  deallocated candidate is absent at the next report delivery, fail closed; weak zeroing alone
+//  does not schedule delivery. The handler changes no chrome behaviour; the
 //  markers keep their chrome tokens exactly as before, and a scope installed without a handler
 //  leaves the relay unused.
 //
@@ -79,8 +80,9 @@ public typealias ScrollChromeScopeNativeIdentityHandler = @MainActor (NSScrollVi
 /// redelivered. Delivery is deferred one main-queue hop with a generation guard: a block publishes
 /// only when it carries the newest report generation, so coalesced bursts publish once and no
 /// handler runs during layout. Every reference — markers, candidates, the last delivered identity
-/// — is weak, so a deallocated candidate publishes nil (fail closed) and nothing is ever kept
-/// alive by the relay.
+/// — is weak, so a deallocated candidate is absent at the next report delivery (fail closed)
+/// and nothing is ever kept alive by the relay. Weak zeroing alone does not schedule delivery;
+/// marker reconciliation and dismantling drive publication.
 @MainActor
 final class ScrollChromeScopeIdentityRelay {
     /// One marker's latest bounded discovery. Both references are weak: a dead marker is purged
