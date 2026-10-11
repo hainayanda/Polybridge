@@ -229,6 +229,7 @@ Parallel and workflow activity columns render lazily. Only visible columns updat
 columns retain their last snapshot and reading position until the group window closes. Returning
 columns show that snapshot immediately while refreshing in the background.
 Activity history loads automatically as you scroll toward older entries, with explicit retry on errors.
+Scrolling upward pauses live follow; scrolling down near the latest activity resumes it.
 
 Read [the workflow guide](docs/workflows.md) for definitions and execution contracts, and
 [contributor notes](CLAUDE.md) for architecture and harness behavior.

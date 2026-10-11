@@ -961,9 +961,41 @@ resize or discarding frames. Outer-width or clip-height changes still require co
 resize geometry. An outer-frame report arriving before the clip-width update keeps that measured
 resize requirement through the later clip report. Row measurements always use actual clip dimensions;
 horizontal lanes and observers without the native geometry callback retain their existing behavior.
-Upward adjustments within the existing 24-point follow zone return to the latest content immediately.
-This includes selection, focus or accessibility scrolling that sends no separate user-intent signal.
-A paused reader moving down into this zone keeps the chosen offset until the next content change.
+Previous native clip size and outer width live in the plain position coordinator, so multiple
+synchronous reports compare actual observations rather than a SwiftUI state snapshot.
+A different scroll identity resets that baseline before its synchronous first report. Nil
+identity delivery detaches observation while retaining the weak last scroll and baseline, so
+reattaching the same live scroll detects a real off-window resize without treating unchanged
+geometry as a new resize. Same-scroll document replacement also keeps the baseline. An upward reading
+report captures a coherent current native row before
+subsequent chrome reflow can clamp its offset. Paused feeds re-enter live follow only on downward
+movement with unchanged native content and viewport geometry, preserving the existing follow zone.
+Layout clamps and upward adjustments alone keep paused reading paused.
+While already following, upward adjustments within the existing 24-point follow zone return
+to the latest content immediately, including selection, focus or accessibility scrolling that
+sends no separate user-intent signal. A paused reader moving upward remains paused. A paused
+reader moving downward into the zone re-enters live follow while keeping the chosen offset until
+the next content change.
+
+### Stable activity List rendering
+
+Activity List content has an explicit value boundary: native offset, viewport, follow and
+restoration callbacks update the outer coordinator without rebuilding unchanged List content.
+The render inputs include row values, disclosure state, placement, animation decisions and
+measurement generation. Tail presentation is concrete data, including sub-task strip presence
+and start time, pending messages, live text and indicator. Only the tail child observes this
+content store; the List depends on effective tail presence. Constant-presence updates leave
+reading leases, measurement generation, cached frames and restoration targets intact. Structural
+presence changes retain the existing restoration path. Selection and other callbacks use a
+nonpublishing relay refreshed by the parent. Tail presence keeps the prior semantic-tail gate.
+Native identity delivery remains installed through dismantle, while action and measurement
+callbacks refresh on appearance; reappearance reschedules measurements without opening a new
+restoration or advancing its generation. The legacy-scrollbar experiments reproduced repeated
+clip-width and document-height changes without the List boundary and stable geometry with it.
+A settled paused-reader tail update passed with isolated tail content, while the same update
+failed with tail content in the List equality key. Hosted regressions cover both scrollbar
+preferences, paused tail updates, remounts and history prepend, checking native row placement
+and scroll offsets.
 
 ### Older-page restoration without proxy excursions
 
