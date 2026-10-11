@@ -31,6 +31,7 @@ import Testing
         // when — mount through the normal run loop and wait for the native table to settle.
         window.orderFront(nil)
         defer {
+            print("synthetic-first-mount diagnostics dropped=\(recorder.droppedDiagnosticCount) trace=\(recorder.diagnosticTrace.joined(separator: " | "))")
             recorder.detach(from: controller)
             harness.sut.didDisappear(); window.contentViewController = nil; window.close()
         }
@@ -57,14 +58,13 @@ import Testing
         // then — the feed reaches bottom with visible rows and no oscillating geometry.
         let metrics = firstMountMetrics(samples: recorder.validSamples)
         let trace = recorder.mountTrace.map(\.logLine).joined(separator: " | ")
-        let diagnostics = recorder.diagnosticTrace.joined(separator: " | ")
         try #require(recorder.validSamples.count >= 2,
                      "The bounded observation must compare an initial and terminal valid sample")
         print(
             "synthetic-first-mount rows=\(table.numberOfRows) notifications=\(recorder.mountTrace.count) "
                 + "reversals=\(metrics.reversals) heightTransitions=\(metrics.heightTransitions) "
                 + "validSamples=\(recorder.validSamples.count) stableIDs=\(metrics.stableIDs) "
-                + "stableGeometry=\(metrics.stableGeometry) trace=\(trace) diagnostics=\(diagnostics)"
+                + "stableGeometry=\(metrics.stableGeometry) trace=\(trace)"
         )
         #expect(table.numberOfRows >= 5)
         #expect(document.bounds.height > scroll.contentView.bounds.height)
@@ -302,7 +302,10 @@ import Testing
         private var observer: NSObjectProtocol?
         private var diagnosticViewIDs: Set<ObjectIdentifier> = []
         private var diagnosticAttachments: [DiagnosticAttachment] = []
+        private var diagnosticProviderIDs: Set<ObjectIdentifier> = []
+        private var diagnosticProviderAttachments: [DiagnosticProviderAttachment] = []
         private var diagnosticSequence = 0
+        private(set) var droppedDiagnosticCount = 0
 
         @MainActor init(controller: NSViewController) {
             self.observer = nil
@@ -327,8 +330,13 @@ import Testing
             for attachment in diagnosticAttachments {
                 attachment.view?.restorationDiagnostic = attachment.original
             }
+            for attachment in diagnosticProviderAttachments {
+                attachment.provider?.diagnostic = attachment.original
+            }
             diagnosticAttachments.removeAll()
+            diagnosticProviderAttachments.removeAll()
             diagnosticViewIDs.removeAll()
+            diagnosticProviderIDs.removeAll()
         }
 
         @MainActor private func record(objectID: ObjectIdentifier, in controller: NSViewController) {
@@ -411,11 +419,27 @@ import Testing
                     self?.appendDiagnostic("observer \(message)")
                 }
                 appendDiagnostic("observer-sink attached t=\(ProcessInfo.processInfo.systemUptime)")
+                if let provider = view.anchorProvider as? ActivityFeedReferenceRestoration {
+                    if diagnosticProviderIDs.insert(ObjectIdentifier(provider)).inserted {
+                        diagnosticProviderAttachments.append(
+                            DiagnosticProviderAttachment(provider: provider, original: provider.diagnostic)
+                        )
+                        provider.diagnostic = { [weak self] message in
+                            self?.appendDiagnostic("feed-restoration \(message)")
+                        }
+                        appendDiagnostic("feed-restoration-sink attached")
+                    }
+                } else {
+                    appendDiagnostic("feed-restoration-sink unavailable provider=\(String(describing: view.anchorProvider))")
+                }
             }
         }
 
         private func appendDiagnostic(_ line: String) {
-            guard diagnosticTrace.count < 300 else { return }
+            if diagnosticTrace.count >= 300 {
+                diagnosticTrace.remove(at: 100)
+                droppedDiagnosticCount += 1
+            }
             diagnosticSequence += 1
             diagnosticTrace.append(String(format: "#%03d t=%.6f %@",
                                            diagnosticSequence, ProcessInfo.processInfo.systemUptime, line))
@@ -427,6 +451,16 @@ import Testing
 
             init(view: ParallelScrollObservationView, original: ((String) -> Void)?) {
                 self.view = view
+                self.original = original
+            }
+        }
+
+        private final class DiagnosticProviderAttachment {
+            weak var provider: ActivityFeedReferenceRestoration?
+            let original: ((String) -> Void)?
+
+            init(provider: ActivityFeedReferenceRestoration, original: ((String) -> Void)?) {
+                self.provider = provider
                 self.original = original
             }
         }
