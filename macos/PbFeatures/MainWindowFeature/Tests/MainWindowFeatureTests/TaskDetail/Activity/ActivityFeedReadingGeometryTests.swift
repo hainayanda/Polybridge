@@ -99,6 +99,123 @@ import Testing
         #expect(!visibleRows.isEmpty, "Partially visible feed must realize row content before any user scrolling")
     }
 
+    @Test func givenPausedAnchor_whenTwoResizesArriveBeforeFreshMeasurement_thenLatestViewportRestoresAnchor() async throws {
+        // given — establish a real paused anchor with a mounted measurement.
+        _ = NSApplication.shared
+        let state = ParallelColumnUIState()
+        let host = NSHostingView(rootView: feed(rows(prepending: false), state: state))
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 420, height: 450),
+                              styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        window.orderFront(nil)
+        defer { window.contentView = nil; window.close() }
+        await waitUntil(timeout: 5) { @MainActor in state.viewportPositioned }
+        let scroll = try #require(descendants(host).compactMap { $0 as? NSScrollView }.first { $0.hasVerticalScroller })
+        for offset in stride(from: CGFloat(0), through: 900, by: 10) {
+            scroll.contentView.scroll(to: CGPoint(x: 0, y: offset))
+            scroll.reflectScrolledClipView(scroll.contentView)
+            await waitUntil(timeout: 5) { @MainActor in
+                abs(state.scrollOffset - offset) < 1 && !state.followLive.isFollowing
+            }
+            if state.anchor?.id == "tool-first" { break }
+        }
+        let anchor = try #require(state.anchor)
+        try #require(anchor.id == "tool-first")
+        let initialFrame = try #require(measurementFrame(for: anchor, in: host, scroll: scroll))
+        let initialViewportWidth = scroll.contentView.bounds.width
+
+        // when — resize twice before yielding to the queued measurement callbacks. The second
+        // callback must advance from the first pending width, while stale B geometry is rejected.
+        invalidateMeasurements(in: host)
+        window.setContentSize(CGSize(width: 700, height: 450))
+        window.setContentSize(CGSize(width: 340, height: 450))
+        await Task.yield()
+
+        // then — the final C viewport restores the same semantic row and remains paused.
+        await waitUntil(timeout: 5) { @MainActor in
+            state.viewportPositioned && !state.followLive.isFollowing
+                && state.anchor?.id == anchor.id
+                && abs(scroll.contentView.bounds.width - 340) < 1
+        }
+        let finalDocument = try #require(scroll.documentView)
+        let finalFrame = try #require(measurementFrame(for: anchor, in: host, scroll: scroll))
+        #expect(!state.followLive.isFollowing)
+        #expect(state.anchor?.id == anchor.id)
+        let expectedFinalWidth = initialFrame.width + scroll.contentView.bounds.width - initialViewportWidth
+        #expect(abs(finalFrame.width - expectedFinalWidth) < 3)
+        #expect(abs(finalFrame.minY - scroll.documentVisibleRect.minY - anchor.relativeOffset) < 3)
+        #expect(finalDocument.bounds.height > scroll.contentView.bounds.height)
+    }
+
+    @Test func givenPausedResizeThenLiveResize_whenRepausedResizeHasNoAnchorSample_thenRestorationCompletes() async throws {
+        // given — pause an interior reader, restore it through one resize, then return to live end.
+        _ = NSApplication.shared
+        let state = ParallelColumnUIState()
+        let host = NSHostingView(rootView: feed(rows(prepending: false), state: state))
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 420, height: 450),
+                              styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        window.orderFront(nil)
+        defer { window.contentView = nil; window.close() }
+        await waitUntil(timeout: 5) { @MainActor in state.viewportPositioned && state.followLive.isFollowing }
+        let scroll = try #require(descendants(host).compactMap { $0 as? NSScrollView }.first { $0.hasVerticalScroller })
+        let initialDocument = try #require(scroll.documentView)
+        let initialLegalBottom = legalBottomOrigin(scroll: scroll, document: initialDocument)
+        scroll.contentView.scroll(to: initialLegalBottom)
+        scroll.reflectScrolledClipView(scroll.contentView)
+        await waitUntil(timeout: 5) { @MainActor in state.followLive.isFollowing }
+        try #require(state.followLive.isFollowing)
+
+        // when — pause, resize while paused, then return to live-follow before another resize.
+        let firstAnchor = try await pauseAtOffset(delta: 700, scroll: scroll, state: state)
+        window.setContentSize(CGSize(width: 340, height: 450))
+        await waitUntil(timeout: 5) { @MainActor in
+            state.viewportPositioned && scroll.contentView.bounds.width <= 341
+                && !state.followLive.isFollowing && state.anchor?.id == firstAnchor.id
+        }
+        try #require(!state.followLive.isFollowing)
+        try #require(state.anchor?.id == firstAnchor.id)
+        try #require(scroll.contentView.bounds.width <= 341)
+        let resizedDocument = try #require(scroll.documentView)
+        let resizedLegalBottom = legalBottomOrigin(scroll: scroll, document: resizedDocument)
+        scroll.contentView.scroll(to: resizedLegalBottom)
+        scroll.reflectScrolledClipView(scroll.contentView)
+        await waitUntil(timeout: 5) { @MainActor in
+            state.followLive.isFollowing && scroll.documentVisibleRect.maxY >= resizedDocument.bounds.maxY - 2
+        }
+        try #require(state.followLive.isFollowing)
+        try #require(scroll.documentVisibleRect.maxY >= resizedDocument.bounds.maxY - 2)
+        window.setContentSize(CGSize(width: 620, height: 450))
+        await waitUntil(timeout: 5) { @MainActor in
+            guard let document = scroll.documentView else { return false }
+            return scroll.contentView.bounds.width >= 619 && state.followLive.isFollowing
+                && scroll.documentVisibleRect.maxY >= document.bounds.maxY - 2
+        }
+        try #require(state.followLive.isFollowing)
+        try #require(scroll.contentView.bounds.width >= 619)
+        let settledDocument = try #require(scroll.documentView)
+        try #require(scroll.documentVisibleRect.maxY >= settledDocument.bounds.maxY - 2)
+
+        // then — a second pause and rapid resize must carry the latest width until fresh rows mount.
+        let secondAnchor = try await pauseAtOffset(delta: 700, scroll: scroll, state: state)
+        let secondFrame = try #require(measurementFrame(for: secondAnchor, in: host, scroll: scroll))
+        let secondViewportWidth = scroll.contentView.bounds.width
+        invalidateMeasurements(in: host)
+        window.setContentSize(CGSize(width: 340, height: 450))
+        await Task.yield()
+        await waitUntil(timeout: 5) { @MainActor in
+            state.viewportPositioned && !state.followLive.isFollowing && state.anchor?.id == secondAnchor.id
+        }
+        try #require(!state.followLive.isFollowing)
+        try #require(state.anchor?.id == secondAnchor.id)
+        let finalFrame = try #require(measurementFrame(for: secondAnchor, in: host, scroll: scroll))
+        let expectedFinalWidth = secondFrame.width + scroll.contentView.bounds.width - secondViewportWidth
+        #expect(abs(finalFrame.width - expectedFinalWidth) < 3)
+        #expect(abs(finalFrame.minY - scroll.documentVisibleRect.minY - secondAnchor.relativeOffset) < 3)
+    }
+
     @Test func givenPausedLiveActivityFeed_whenPrependingHistoryArrives_thenReadingPositionIsPreserved() async throws {
         _ = NSApplication.shared
         let state = ParallelColumnUIState()
@@ -328,6 +445,35 @@ import Testing
         return measured
     }
 
+    private func legalBottomOrigin(scroll: NSScrollView, document: NSView) -> CGPoint {
+        let bottom = document.bounds.maxY - scroll.contentView.bounds.height
+        let bounds = CGRect(origin: CGPoint(x: 0, y: bottom), size: scroll.contentView.bounds.size)
+        return scroll.contentView.constrainBoundsRect(bounds).origin
+    }
+
+    private func pauseAtOffset(delta: CGFloat, scroll: NSScrollView,
+                               state: ParallelColumnUIState) async throws -> ParallelVerticalAnchor {
+        state.followLive.suspend()
+        let document = try #require(scroll.documentView)
+        let visible = scroll.documentVisibleRect
+        let currentOffset = document.isFlipped ? visible.minY : document.bounds.maxY - visible.maxY
+        let targetOffset = max(0, currentOffset - delta)
+        let nativeY = document.isFlipped
+            ? targetOffset
+            : max(0, document.bounds.maxY - scroll.contentView.bounds.height - targetOffset)
+        NotificationCenter.default.post(name: NSScrollView.willStartLiveScrollNotification,
+                                        object: scroll)
+        scroll.contentView.scroll(to: CGPoint(x: 0, y: nativeY))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        await waitUntil(timeout: 5) { @MainActor in
+            !state.followLive.isFollowing && state.anchor != nil
+                && abs(state.scrollOffset - targetOffset) < 2
+        }
+        try #require(!state.followLive.isFollowing)
+        try #require(abs(state.scrollOffset - targetOffset) < 2)
+        return try #require(state.anchor)
+    }
+
     private func feed(_ rows: [ActivityRow], state: ParallelColumnUIState,
                       history: EventHistoryState = EventHistoryState(),
                       onLoadMore: (() -> Bool)? = nil) -> some View {
@@ -363,6 +509,25 @@ import Testing
                 && $0.minY < scroll.documentVisibleRect.maxY
             }
             .min { $0.minY < $1.minY }
+    }
+
+    private func measurementFrame(for anchor: ParallelVerticalAnchor, in host: NSView,
+                                  scroll: NSScrollView) -> CGRect? {
+        guard let document = scroll.documentView else { return nil }
+        return descendants(host)
+            .compactMap { $0 as? ActivityRowGeometry.MeasurementView }
+            .map { $0.convert($0.bounds, to: document) }
+            .filter { $0.width > 0 && $0.height > 0 && $0.intersects(scroll.documentVisibleRect) }
+            .min { lhs, rhs in
+                abs(lhs.minY - scroll.documentVisibleRect.minY - anchor.relativeOffset)
+                    < abs(rhs.minY - scroll.documentVisibleRect.minY - anchor.relativeOffset)
+            }
+    }
+
+    private func invalidateMeasurements(in host: NSView) {
+        descendants(host)
+            .compactMap { $0 as? ActivityRowGeometry.MeasurementView }
+            .forEach { $0.invalidateMeasurement() }
     }
 
     private func verifyPublishedHistory(host: NSView, state: ParallelColumnUIState,

@@ -37,6 +37,30 @@ import Testing
         }
     }
 
+    @Test func givenParallelActivityFeedFixture_whenHostedAtBaselineSizes_thenCaptureLightAndDark() async throws {
+        guard let rawOutput = ProcessInfo.processInfo.environment["PB_ACTIVITY_BASELINE_OUTPUT"] else { return }
+        let output = URL(fileURLWithPath: rawOutput).standardizedFileURL
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        _ = NSApplication.shared
+
+        for size in [CGSize(width: 420, height: 450), CGSize(width: 900, height: 600)] {
+            for dark in [false, true] {
+                for expanded in [false, true] {
+                    let fixture = try await ActivityListBaselineFixture(
+                        size: size, dark: dark, expanded: expanded, surface: "parallel", horizontalPadding: 0
+                    )
+                    defer { fixture.close() }
+                    let metrics = try await fixture.settle()
+                    let bitmap = try fixture.captureBitmap()
+                    try #require(bitmap.pixelsWide > 0 && bitmap.pixelsHigh > 0)
+                    try #require(bitmapHasInk(bitmap), "(\(fixture.name)): screenshot is blank")
+                    try fixture.write(bitmap, metrics: metrics, output: output)
+                    print("parallel=\(output.appendingPathComponent(fixture.name + ".png").path) metrics=\(metrics)")
+                }
+            }
+        }
+    }
+
     @Test func givenPlainListWithTimelineRows_whenHosted_thenRecordNearestNativeScrollHierarchy() async throws {
         guard let rawOutput = ProcessInfo.processInfo.environment["PB_ACTIVITY_BASELINE_OUTPUT"] else { return }
         let output = URL(fileURLWithPath: rawOutput).standardizedFileURL
@@ -113,6 +137,8 @@ import Testing
     let size: CGSize
     let dark: Bool
     let expanded: Bool
+    let surface: String?
+    let horizontalPadding: CGFloat
     let state: ParallelColumnUIState
     let controller: NSHostingController<AnyView>
     let window: NSWindow
@@ -136,8 +162,10 @@ import Testing
         ]
     }
 
-    init(size: CGSize, dark: Bool, expanded: Bool) async throws {
+    init(size: CGSize, dark: Bool, expanded: Bool, surface: String? = nil, horizontalPadding: CGFloat = 24) async throws {
         self.size = size; self.dark = dark; self.expanded = expanded
+        self.surface = surface
+        self.horizontalPadding = horizontalPadding
         self.state = ParallelColumnUIState()
         let timeline = Self.timelineRows
         let activityRows = ActivityRowsBuilder.build(from: timeline)
@@ -151,7 +179,7 @@ import Testing
                                     tailValue: ActivityFeedTail(
                                         liveStep: LiveStep(rows: timeline, isRunning: true),
                                         pendingMessages: [PendingMessage(id: "pending", text: "Please also check the cold keychain path.")]),
-                                    horizontalPadding: 24, state: state, onLoadMore: nil) { EmptyView() }
+                                    horizontalPadding: horizontalPadding, state: state, onLoadMore: nil) { EmptyView() }
             .frame(width: size.width, height: size.height)
             .preferredColorScheme(dark ? .dark : .light)
         self.controller = NSHostingController(rootView: AnyView(feed))
@@ -164,7 +192,10 @@ import Testing
         window.orderFront(nil)
     }
 
-    var name: String { "activity-list-\(Int(size.width))x\(Int(size.height))-\(dark ? "dark" : "light")-\(expanded ? "expanded" : "collapsed")" }
+    var name: String {
+        let prefix = surface.map { "\($0)-" } ?? ""
+        return "\(prefix)activity-list-\(Int(size.width))x\(Int(size.height))-\(dark ? "dark" : "light")-\(expanded ? "expanded" : "collapsed")"
+    }
 
     var nativeTable: NSTableView? {
         descendants(controller.view).compactMap { $0 as? NSTableView }.first

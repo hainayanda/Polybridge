@@ -8,6 +8,74 @@ import Testing
 /// Synthetic regression for the narrow Activity mount where the newest assistant row is taller
 /// than the viewport. It intentionally uses no private task data and no forced layout call.
 @MainActor @Suite(.serialized) struct ActivityFeedLongMarkdownHostedTests {
+    @Test func givenEightTallActivityRows_whenTaskDetailMounts_thenBottomAndVisibleGeometryRemainStable() async throws {
+        // given — a narrow first mount with a tall latest assistant response and mixed rows.
+        _ = NSApplication.shared
+        let helper = TaskDetailVMTests()
+        let harness = helper.makeSUT()
+        let longText = String(
+            repeating: "A long assistant response wraps in the narrow reading column and includes "
+                + "**details**, `tokens`, and changing line lengths. ", count: 10
+        )
+        let items = tallActivityItems(longText: longText)
+        harness.detailBox.value = helper.task(status: "completed")
+        harness.itemsOverride.value = items
+        harness.eventsAvailabilityBox.value = .available
+        let controller = NSHostingController(rootView: NavigationStack { TaskDetailView(harness.sut) }.withPresentationContext())
+        controller.sceneBridgingOptions = .all
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 420, height: 450),
+                              styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentViewController = controller
+        var notificationOffsets: [CGFloat] = []
+        var notificationHeights: [CGFloat] = []
+        var notificationFrames: [[CGRect]] = []
+        let boundsObserver = NotificationCenter.default.addObserver(
+            forName: NSView.boundsDidChangeNotification, object: nil, queue: .main
+        ) { _ in
+            guard let scroll = activityScroll(in: controller.view), let document = scroll.documentView,
+                  document is NSTableView else { return }
+            notificationOffsets.append(scroll.documentVisibleRect.minY)
+            notificationHeights.append(document.bounds.height)
+            notificationFrames.append(descendants(document)
+                .compactMap { $0 as? ActivityRowGeometry.MeasurementView }
+                .map { $0.convert($0.bounds, to: document) }
+                .filter { $0.intersects(scroll.documentVisibleRect) })
+        }
+        defer { NotificationCenter.default.removeObserver(boundsObserver) }
+        // when — mount through the normal run loop and wait for the native table to settle.
+        window.orderFront(nil)
+        defer { harness.sut.didDisappear(); window.contentViewController = nil; window.close() }
+        harness.sut.didAppear()
+        harness.tasksSubject.send([harness.detailBox.value!])
+        await waitUntil(timeout: 5) { harness.sut.timelineWorker == nil && harness.sut.timelineModel.rows.count >= 5 }
+        await waitUntil(timeout: 5) { activityScroll(in: controller.view)?.documentView is NSTableView }
+
+        let scroll = try #require(activityScroll(in: controller.view))
+        let document = try #require(scroll.documentView)
+        let table = try #require(document as? NSTableView)
+        scroll.contentView.postsBoundsChangedNotifications = true
+        await waitUntil(timeout: 5) { document.bounds.maxY - scroll.documentVisibleRect.maxY <= 3 }
+        // Keep a bounded observation window: after the first settle, the test measures whether
+        // any residual first-mount motion reverses direction or repeatedly changes height.
+        try await Task.sleep(for: .milliseconds(500))
+        // then — the feed reaches bottom with visible rows and no oscillating geometry.
+        let metrics = firstMountMetrics(offsets: notificationOffsets, heights: notificationHeights,
+                                        frames: notificationFrames)
+        print(
+            "synthetic-first-mount rows=\(table.numberOfRows) notifications=\(notificationOffsets.count) "
+                + "reversals=\(metrics.reversals) heightTransitions=\(metrics.heightTransitions) "
+                + "frames=\(metrics.visibleFrames.count)"
+        )
+        #expect(table.numberOfRows >= 5)
+        #expect(document.bounds.height > scroll.contentView.bounds.height)
+        #expect(document.bounds.maxY - scroll.documentVisibleRect.maxY <= 3)
+        #expect(!notificationOffsets.isEmpty, "The mounted table must publish bounds notifications")
+        #expect(!metrics.visibleFrames.isEmpty, "Notifications must include actual visible row geometry")
+        #expect(metrics.reversals == 0)
+        #expect(metrics.heightTransitions < 3)
+    }
+
     @Test func givenTwoLatestRowsAndTallMarkdown_whenTaskDetailOpensNarrow_thenVisibleRowsAreMeasured() async throws {
         // given
         _ = NSApplication.shared
@@ -102,7 +170,8 @@ import Testing
         let allMeasured = descendants(document)
 .compactMap { $0 as? ActivityRowGeometry.MeasurementView }
             .map { $0.convert($0.bounds, to: document) }
-        print("FDC synthetic long-then-finished: document=\(document.bounds), visible=\(scroll.documentVisibleRect), measured=\(allMeasured)")
+        print("FDC synthetic long-then-finished: document=\(document.bounds), "
+            + "visible=\(scroll.documentVisibleRect), measured=\(allMeasured)")
         #expect(visible.count >= 2, "Both the tall assistant row and following finished row must be measured in the initial viewport")
     }
 
@@ -155,7 +224,10 @@ import Testing
     }
 
     private func markdownBody() -> String {
-        var sections = ["# Review notes", "## Findings", "- The first finding keeps the row tall.", "- The second finding contains `inline code`."]
+        var sections = [
+            "# Review notes", "## Findings", "- The first finding keeps the row tall.",
+            "- The second finding contains `inline code`."
+        ]
         sections += ["```swift\nlet sample = true\n```", "### Details"]
         sections += (0 ..< 12).map { index in
             "Paragraph \(index): This synthetic assistant response wraps across the narrow Activity reading column "
@@ -163,6 +235,42 @@ import Testing
                 + "prose to exercise markdown layout."
         }
         return sections.joined(separator: "\n\n")
+    }
+
+    private func tallActivityItems(longText: String) -> [TimelineItem] {
+        [
+            PreviewFixtures.textItem(longText, seq: 1),
+            PreviewFixtures.toolItem(tool: "Read", category: "read",
+                                     path: "/fictional/Sources/Activity.swift", seq: 2,
+                                     callID: "fixture-read-1"),
+            PreviewFixtures.toolItem(tool: "Read", category: "read",
+                                     path: "/fictional/Tests/Activity.swift", seq: 3,
+                                     callID: "fixture-read-2"),
+            PreviewFixtures.textItem(longText, seq: 4),
+            PreviewFixtures.toolItem(tool: "Bash", category: "shell",
+                                     command: "swift test --filter Activity", seq: 5,
+                                     callID: "fixture-shell-1"),
+            PreviewFixtures.toolItem(tool: "Bash", category: "shell",
+                                     command: "swift test --filter ActivityPending", seq: 6,
+                                     callID: "fixture-shell-2"),
+            PreviewFixtures.finishedItem(seq: 7),
+            PreviewFixtures.textItem(longText, seq: 8)
+        ]
+    }
+
+    private func firstMountMetrics(offsets: [CGFloat], heights: [CGFloat],
+                                   frames: [[CGRect]]) -> (reversals: Int, heightTransitions: Int,
+                                                            visibleFrames: [[CGRect]]) {
+        let directions = zip(offsets, offsets.dropFirst()).compactMap { pair -> Int? in
+            let movement = pair.1 - pair.0
+            guard abs(movement) > 5 else { return nil }
+            return movement > 0 ? 1 : -1
+        }
+        return (
+            zip(directions, directions.dropFirst()).filter { $0 != $1 }.count,
+            zip(heights, heights.dropFirst()).filter { abs($1 - $0) > 1 }.count,
+            frames.filter { !$0.isEmpty }
+        )
     }
 
     /// The real failing snapshot contains folded runs of adjacent tool calls interspersed with
@@ -210,4 +318,5 @@ import Testing
             .filter { $0.intersects(scroll.documentVisibleRect) }
             .count
     }
+
 }

@@ -127,6 +127,37 @@ import Testing
         #expect(intents == intentsBeforeEnd)
     }
 
+    @Test func givenNativeLiveScrollWithoutBoundsNotification_whenIdentityReasserts_thenUpwardMoveWinsOverRestoration() async throws {
+        _ = NSApplication.shared
+        let harness = try NativeIdentityHarness()
+        defer { harness.close() }
+        let identity = ParallelScrollNativeIdentity()
+        let view = harness.makeObserver()
+        var intents = 0
+        var offsets: [CGFloat] = []
+        view.onUpwardIntent = { intents += 1 }
+        view.onPosition = { offset, _, _ in offsets.append(offset) }
+        view.usesNativeIdentity = true
+        view.configure(ids: [], stride: 0, restorationOffset: 400, restorationActive: true)
+        identity.register(view)
+        identity.deliver(harness.targetA)
+        await waitUntil(timeout: 2) { offsets.contains { abs($0 - 400) < 2 } }
+        try #require(offsets.contains { abs($0 - 400) < 2 }, "Initial restoration must settle before the live move")
+
+        harness.targetA.contentView.postsBoundsChangedNotifications = false
+        NotificationCenter.default.post(name: NSScrollView.willStartLiveScrollNotification, object: harness.targetA)
+        // The fixture document is non-flipped: native y=740 corresponds to logical reading
+        // offset 100 in a 1,000-point document with a 160-point viewport.
+        harness.targetA.contentView.scroll(to: CGPoint(x: 0, y: 740))
+        harness.targetA.reflectScrolledClipView(harness.targetA.contentView)
+        view.adoptNativeIdentity(harness.targetA)
+        await waitUntil(timeout: 2) { offsets.contains { abs($0 - 100) < 2 } }
+
+        #expect(intents > 0)
+        let latestOffset = try #require(offsets.last)
+        #expect(abs(latestOffset - 100) < 2)
+    }
+
     @Test func givenOuterLiveScrollNotification_whenOwnTargetMovesUp_thenIntentRemainsScoped() async throws {
         _ = NSApplication.shared
         let harness = try NativeIdentityHarness()
@@ -187,7 +218,7 @@ import Testing
         #expect(callbackCount == 0)
     }
 
-    @Test func givenAdoptedTargetWithNativeInsets_whenObserverReportsAndThenTeardowns_thenInsetsAreZeroDuringUseAndRestoredAfterward() async throws {
+    @Test func givenAdoptedTargetWithNativeInsets_whenObserverReportsAndThenTeardowns_thenInsetsAreZeroAndNativeSpacingIsPreserved() async throws {
         // given
         _ = NSApplication.shared
         let harness = try NativeIdentityHarness(insets: NSEdgeInsets(top: 8, left: 4, bottom: 12, right: 2))
@@ -206,13 +237,13 @@ import Testing
         await waitUntil(timeout: 2) { insetsEqual(harness.targetA.contentInsets, NSEdgeInsetsZero) }
         try #require(insetsEqual(harness.targetA.contentInsets, NSEdgeInsetsZero))
         try #require(!harness.targetA.automaticallyAdjustsContentInsets)
-        try #require(table.intercellSpacing == NSSize(width: 0, height: 3))
+        try #require(table.intercellSpacing == NSSize(width: 17, height: 3))
         harness.targetA.contentInsets = NSEdgeInsets(top: 3, left: 2, bottom: 4, right: 1)
         harness.targetA.automaticallyAdjustsContentInsets = true
         NotificationCenter.default.post(name: NSView.boundsDidChangeNotification, object: harness.targetA.contentView)
         await waitUntil(timeout: 2) { insetsEqual(harness.targetA.contentInsets, NSEdgeInsetsZero) }
         try #require(insetsEqual(harness.targetA.contentInsets, NSEdgeInsetsZero))
-        try #require(table.intercellSpacing == NSSize(width: 0, height: 3))
+        try #require(table.intercellSpacing == NSSize(width: 17, height: 3))
         view.teardownObservation()
 
         // then
