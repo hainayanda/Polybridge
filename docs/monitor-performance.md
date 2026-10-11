@@ -971,7 +971,13 @@ anchor's coherent native package — its uniquely identified measurement view, r
 within-row inset (only the feed's 12/20 pt paddings validate), native index and count — before the
 structural change. The scroll observer holds the lease weakly through the generic
 `ParallelScrollAnchorProvider` seam (no Activity types cross it) and asks it on attach and on every
-document-frame notification, before reporting (ordinary bounds reports never apply its correction): a pure prepend above the anchor (native index and
+document-frame notification, before reporting (ordinary bounds reports never apply its correction).
+Completed feed callbacks also bind the same immutable intended List snapshot used by the body
+and synchronously retry the current native provider once. This closes the gap when a frame
+notification arrives before a publication callback advances the candidate generation; body
+registration itself remains data-only. Obsolete body generations are rejected, and nested
+provider retries are dropped without cancelling the lease; ordinary native reports remain active. The existing fresh native geometry and
+identity checks still gate this retry: a pure prepend above the anchor (native index and
 count grow by the same delta), or a height-only change with unchanged mapping, whose realized table matches the feed's independently modeled
 expected row count and anchor index corrects immediately from `rect(ofRow:)` plus the captured
 inset, keeping the row glued while realization proceeds. An inset is updated only when the

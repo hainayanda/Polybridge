@@ -58,10 +58,13 @@ private final class GeometryHarness {
     let measurement: ActivityRowGeometry.MeasurementView
 
     init(rowCount: Int) throws {
+        _ = NSApplication.shared
         self.window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 420, height: 300),
                           styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
         self.scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 420, height: 300))
         self.table = GeometryTable()
+        table.addTableColumn(NSTableColumn(identifier: NSUserInterfaceItemIdentifier("fixture")))
         table.frame = NSRect(x: 0, y: 0, width: 420, height: CGFloat(rowCount * 100))
         self.measurement = ActivityRowGeometry.MeasurementView(frame: NSRect(x: 0, y: 20, width: 420, height: 60))
         table.install(rowCount: rowCount)
@@ -81,12 +84,36 @@ private final class GeometryHarness {
 
 @MainActor
 private final class GeometryTable: NSTableView {
-    private(set) var rowCount = 0
+    // NSTableView.numberOfRows is derived from its data source. Keeping the fixture data source
+    // strongly owned makes the test exercise the same native row-count path as the production
+    // List bridge instead of relying on a subclass-only count override.
+    private let fixtureDataSource = GeometryTableDataSource()
 
-    func install(rowCount: Int) {
-        self.rowCount = rowCount
-        frame.size.height = CGFloat(rowCount * 100)
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        dataSource = fixtureDataSource
     }
 
-    override var numberOfRows: Int { rowCount }
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        dataSource = fixtureDataSource
+    }
+
+    func install(rowCount: Int) {
+        fixtureDataSource.rowCount = rowCount
+        reloadData()
+        frame.size.height = CGFloat(rowCount * 100)
+    }
+}
+
+private final class GeometryTableDataSource: NSObject, NSTableViewDataSource {
+    var rowCount = 0
+
+    func numberOfRows(in tableView: NSTableView) -> Int {
+        rowCount
+    }
+
+    func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
+        nil
+    }
 }

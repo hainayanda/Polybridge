@@ -76,6 +76,7 @@ struct ActivityFeedView<Tail: View>: View {
                 }
                 .onDisappear { position.pagingTask?.cancel(); position.pagingTask = nil }
                 .onChange(of: rows) { old, next in
+                    defer { bindIntendedListSnapshot() }
                     if state.followLive.isFollowing { followingLayout = true }
                     preserveRegroupedAnchor(old: old, next: next)
                     if !state.followLive.isFollowing { beginRestoration() }
@@ -86,10 +87,12 @@ struct ActivityFeedView<Tail: View>: View {
                     markReferencePagePublication()
                 }
                 .onChange(of: tailValue) { _, _ in
+                    defer { bindIntendedListSnapshot() }
                     if state.followLive.isFollowing { followingLayout = true } else { beginRestoration() }
                     markReferencePagePublication()
                 }
                 .onChange(of: paginationRevision) { _, _ in
+                    defer { bindIntendedListSnapshot() }
                     rejectedPageIDs = nil
                     waitingForPage = false
                     sawLoading = false
@@ -102,16 +105,12 @@ struct ActivityFeedView<Tail: View>: View {
     }
 
     private var feedList: some View {
-        // Body updates only plain intended-shape data; it never changes lease lifecycle.
-        position.registerListSnapshotCandidate(
-            generation: measurementGeneration,
-            expectedCount: expectedNativeRowCount,
-            expectedAnchorIndex: expectedNativeAnchorIndex,
-            expectedPadding: expectedNativeAnchorIndex.map { $0 == 0 ? PbRadius.Metrics.spacing12 : PbRadius.Metrics.spacing20 }
-        )
+        let snapshot = intendedListSnapshot
+        position.registerListSnapshotCandidate(generation: snapshot.generation, expectedCount: snapshot.expectedCount,
+                                               expectedAnchorIndex: snapshot.anchorIndex, expectedPadding: snapshot.expectedPadding)
         return List {
-            if showsHistoryHeader { historyHeaderRow }
-            if emptyText != nil { emptyTextRow }
+            if snapshot.showsHistoryHeader { historyHeaderRow }
+            if snapshot.showsEmptyText { emptyTextRow }
             ForEach(shown) { row in
                 rowContent(row)
                     .modifier(ActivityFeedRowPlacement(
@@ -120,7 +119,7 @@ struct ActivityFeedView<Tail: View>: View {
                         horizontalPadding: horizontalPadding
                     ))
             }
-            if hasTailContent { tailRow }
+            if snapshot.hasTailContent { tailRow }
             sentinelRow
         }
         .listStyle(.plain)
@@ -149,7 +148,6 @@ struct ActivityFeedView<Tail: View>: View {
                 let wasFollowing = state.followLive.isFollowing
                 state.followLive.observe(offset: offset, contentHeight: content, viewportHeight: viewport)
                 if !state.followLive.isFollowing { targetOffset = nil }
-                // Within the 24pt follow threshold, return to bottom without waiting for another render.
                 if wasFollowing, state.followLive.isFollowing, max(0, content - viewport) - offset > 1 {
                     followingLayout = true
                 }
@@ -212,14 +210,14 @@ struct ActivityFeedView<Tail: View>: View {
         !showsHistoryHeader && emptyText == nil && row.id == shown.first?.id
     }
 
-    private var expectedNativeRowCount: Int {
-        (showsHistoryHeader ? 1 : 0) + (emptyText != nil ? 1 : 0) + shown.count + (hasTailContent ? 1 : 0) + 1
+    private var intendedListSnapshot: ActivityFeedListSnapshot {
+        ActivityFeedListSnapshot(generation: measurementGeneration, shownIDs: shown.map(\.id),
+                                 showsHistoryHeader: showsHistoryHeader, showsEmptyText: emptyText != nil,
+                                 hasTailContent: hasTailContent, anchor: state.anchor)
     }
 
-    private var expectedNativeAnchorIndex: Int? {
-        guard let anchor = state.anchor, let id = anchor.resolvedID(in: shown.map(\.id)),
-              let index = shown.firstIndex(where: { $0.id == id }) else { return nil }
-        return (showsHistoryHeader ? 1 : 0) + (emptyText != nil ? 1 : 0) + index
+    private func bindIntendedListSnapshot() {
+        position.bindListSnapshot(intendedListSnapshot, nativeIdentity: nativeIdentity)
     }
 
     private func rowContent(_ row: ActivityRow) -> some View {
@@ -286,6 +284,7 @@ struct ActivityFeedView<Tail: View>: View {
         switch row {
         case .toolGroup(let group):
             ToolGroupCardView(group: group, start: start, isExpanded: state.expandedGroups.contains(group.id)) {
+                defer { bindIntendedListSnapshot() }
                 shortFillBudget.replenish()
                 beginRestoration(cause: .disclosure)
                 withAnimation(PbMotion.disclosure(reduceMotion: reduceMotion)) {
@@ -318,6 +317,7 @@ struct ActivityFeedView<Tail: View>: View {
     }
 
     private func observeViewport(_ size: CGSize) {
+        defer { bindIntendedListSnapshot() }
         guard size != viewportSize else { return }
         if positioned, !state.followLive.isFollowing {
             if viewportSize.width > 0, abs(size.width - viewportSize.width) > 0.5 {
@@ -340,7 +340,6 @@ struct ActivityFeedView<Tail: View>: View {
         position.discardStaleFrames(nativeIdentity: nativeIdentity)
         guard !Task.isCancelled, !isLoading, position.viewport > 0 else { return }
         if state.followLive.isFollowing {
-            // Realize actual content before trusting the lazy document's estimated height.
             if !positioned, let last = shown.last, position.frames[last.id] == nil {
                 targetOffset = nil
                 proxy.scrollTo(last.id, anchor: .bottom)
@@ -415,6 +414,7 @@ struct ActivityFeedView<Tail: View>: View {
     }
 
     private func historyChanged(_ next: EventHistoryState) {
+        defer { bindIntendedListSnapshot() }
         rejectedPageIDs = nil
         if waitingForPage {
             sawLoading = sawLoading || next.isLoading
@@ -476,7 +476,6 @@ private extension ActivityFeedView {
             pendingReadingCapture = true
         }
         state.scrollOffset = position.offset
-        // Retry coherent native capture; never reuse the cancelled anchor or cached frames.
         state.anchor = position.captureNativeReadingAnchor(shownIDs: shown.map(\.id), nativeIdentity: nativeIdentity)
         if transaction.pagePending, state.anchor != nil {
             // Hand off a new token synchronously, without invalidating measurements.
@@ -485,6 +484,7 @@ private extension ActivityFeedView {
                                               awaitingPagePublication: true)
             pendingReadingCapture = false
             restoring = true
+            bindIntendedListSnapshot()
         } else if transaction.pageCommitted {
             nativeIdentity.setAnchorProvider(nil)
             position.referenceRestoration = nil
@@ -634,10 +634,12 @@ private extension ActivityFeedView {
         if let boundary {
             beginRestoration(cause: .retainedReveal)
             state.retainedFirstID = boundary
+            bindIntendedListSnapshot()
         } else if history.hasMore { requestPage(retry: false) }
     }
 
     private func requestPage(retry: Bool) {
+        defer { bindIntendedListSnapshot() }
         let timing = MonitorMetrics.begin()
         defer { MonitorMetrics.end(timing, stage: .activityPaginationRequest) }
         guard isVisible, !waitingForPage, !history.isLoading, let onLoadMore,

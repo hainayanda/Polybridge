@@ -1,5 +1,6 @@
 import AppKit
 @testable import MainWindowFeature
+import PbTestUtilities
 import Testing
 
 @MainActor @Suite(.serialized) struct ActivityFeedReferenceRestorationTests {
@@ -18,6 +19,96 @@ import Testing
         #expect(!reference.isActive)
         #expect(reference.immediateAnchorTarget(document: NSView()) == nil)
         #expect(reference.appliedTarget == nil)
+    }
+
+    @Test func givenBodyCandidateFromOldGeneration_whenLeaseJoinsNewGeneration_thenDiagnosticRecordsGenerationDecline() throws {
+        let harness = try ReferenceTableHarness(rowCount: 3, anchorIndex: 1)
+        defer { harness.close() }
+        let measurements = ActivityRowMeasurements()
+        measurements.views.add(harness.measurement)
+        let identity = ParallelScrollNativeIdentity()
+        identity.deliver(harness.scroll)
+        let reference = ActivityFeedReferenceRestoration(measurements: measurements, generation: 7,
+                                                         awaitingPagePublication: true)
+        var diagnostics: [String] = []
+        reference.diagnostic = { diagnostics.append($0) }
+        let anchor = ParallelVerticalAnchor(id: "anchor", index: 1, relativeOffset: 18)
+        try #require(reference.captureReference(anchor: anchor, resolvedID: "anchor",
+                                                nativeIdentity: identity, document: harness.table))
+
+        // The body registers its snapshot before the pagination callback advances the lease.
+        reference.registerCandidate(generation: 7, expectedCount: 5, anchorIndex: 3)
+        reference.join(generation: 8)
+        harness.setAnchor(index: 3, rowCount: 5)
+
+        #expect(reference.immediateAnchorTarget(document: harness.table) == nil)
+        #expect(diagnostics.contains { $0.contains("candidate-generation") })
+
+        // The current body publication replaces the obsolete snapshot and can bind immediately;
+        // no later document-frame notification is needed to re-evaluate the native mapping.
+        reference.registerCandidate(generation: 8, expectedCount: 5, anchorIndex: 3)
+        #expect(reference.immediateAnchorTarget(document: harness.table) != nil)
+    }
+
+    @Test func givenFrameBeforeCurrentCandidate_whenCandidateBinds_thenNativeObserverCorrectsWithoutAnotherFrame() async throws {
+        let harness = try ReferenceTableHarness(rowCount: 3, anchorIndex: 1)
+        defer { harness.close() }
+        // Keep the target below the native maximum scroll offset: the harness document is 500
+        // points tall, so a 150-point viewport can apply the expected 302-point correction.
+        harness.scroll.setFrameSize(NSSize(width: 420, height: 150))
+        harness.window.layoutIfNeeded()
+        let measurements = ActivityRowMeasurements()
+        measurements.views.add(harness.measurement)
+        let identity = ParallelScrollNativeIdentity()
+        identity.deliver(harness.scroll)
+        let reference = ActivityFeedReferenceRestoration(measurements: measurements, generation: 7,
+                                                         awaitingPagePublication: true)
+        let position = ActivityFeedPosition()
+        position.referenceRestoration = reference
+        identity.setAnchorProvider(reference)
+        let anchor = ParallelVerticalAnchor(id: "anchor", index: 1, relativeOffset: 18)
+        try #require(reference.captureReference(anchor: anchor, resolvedID: "anchor",
+                                                nativeIdentity: identity, document: harness.table))
+
+        let observer = ParallelScrollObservationView(frame: .zero)
+        observer.axis = .vertical
+        observer.usesNativeIdentity = true
+        observer.anchorProvider = reference
+        var offsets: [CGFloat] = []
+        observer.onPosition = { offset, _, _ in offsets.append(offset) }
+        harness.table.addSubview(observer)
+        identity.register(observer)
+        identity.deliver(harness.scroll)
+        await waitUntil(timeout: 2) { !offsets.isEmpty }
+
+        // The body snapshot is old when the lease joins the new callback generation.
+        position.registerListSnapshotCandidate(generation: 7, expectedCount: 5, expectedAnchorIndex: 3)
+        reference.join(generation: 8)
+        harness.setAnchor(index: 3, rowCount: 5)
+        NotificationCenter.default.post(name: NSView.frameDidChangeNotification, object: harness.table)
+        await Task.yield()
+        #expect(reference.appliedTarget == nil)
+        #expect(!offsets.contains { abs($0 - 302) < 4 })
+
+        // Binding the current candidate re-evaluates the same native identity. No additional
+        // document-frame notification is sent after this callback.
+        let snapshot = ActivityFeedListSnapshot(
+            generation: 8, shownIDs: ["new-1", "new-2", "old", "anchor"],
+            showsHistoryHeader: false, showsEmptyText: false, hasTailContent: false, anchor: anchor
+        )
+        let beforeBind = offsets.count
+        position.bindListSnapshot(snapshot, nativeIdentity: identity)
+        await waitUntil(timeout: 2) { offsets.count > beforeBind }
+        #expect(offsets.count > beforeBind)
+
+        // Row 3 starts at 300, the retained 20-point row inset and 18-point relative reading
+        // offset produce the native document target 302.
+        #expect(offsets.contains { abs($0 - 302) < 4 })
+        let appliedTarget = try #require(reference.appliedTarget)
+        reference.registerCandidate(generation: 7, expectedCount: 3, anchorIndex: 1)
+        #expect(reference.immediateAnchorTarget(document: harness.table) != nil)
+        #expect(reference.appliedTarget == appliedTarget)
+        observer.teardownObservation()
     }
 
     @Test func givenCapturedAnchor_whenCandidateMatchesPrependDeltaAndNativeIdentity_thenFreshNativeTargetIsApplied() throws {
@@ -114,7 +205,7 @@ import Testing
         harness.setAnchor(index: 3, rowCount: 5)
         reference.registerCandidate(generation: 9, expectedCount: 5, anchorIndex: 3)
         let replacement = NSScrollView(frame: harness.scroll.frame)
-        let replacementTable = ReferenceTable()
+        let replacementTable = ReferenceTable(frame: .zero)
         replacement.documentView = replacementTable
         identity.deliver(replacement)
         #expect(reference.immediateAnchorTarget(document: replacementTable) == nil)
@@ -134,8 +225,10 @@ private final class ReferenceTableHarness {
         _ = NSApplication.shared
         self.window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 420, height: 300),
                           styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
         self.scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 420, height: 300))
-        self.table = ReferenceTable()
+        self.table = ReferenceTable(frame: .zero)
+        table.addTableColumn(NSTableColumn(identifier: NSUserInterfaceItemIdentifier("fixture")))
         self.anchorRow = NSTableRowView(frame: NSRect(x: 0, y: CGFloat(anchorIndex * 100), width: 420, height: 100))
         self.measurement = ActivityRowGeometry.MeasurementView(frame: NSRect(x: 0, y: 20, width: 420, height: 60))
         measurement.stableID = "anchor"
@@ -161,10 +254,20 @@ private final class ReferenceTableHarness {
 }
 
 @MainActor
-private final class ReferenceTable: NSTableView {
+private final class ReferenceTable: NSTableView, NSTableViewDataSource {
     private var rowCount = 0
     private var anchorIndex = -1
     private var anchorRow: NSTableRowView?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        dataSource = self
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        dataSource = self
+    }
 
     func installAnchorRow(_ row: NSTableRowView, index: Int, count: Int) {
         rowCount = count
@@ -172,9 +275,12 @@ private final class ReferenceTable: NSTableView {
         anchorRow = row
         row.frame.origin.y = CGFloat(index * 100)
         if row.superview !== self { addSubview(row) }
+        reloadData()
     }
 
-    override var numberOfRows: Int { rowCount }
+    func numberOfRows(in tableView: NSTableView) -> Int { rowCount }
+
+    func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? { nil }
 
     override func row(for view: NSView) -> Int {
         if let anchorRow, view === anchorRow || view.isDescendant(of: anchorRow) { return anchorIndex }

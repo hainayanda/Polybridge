@@ -40,6 +40,8 @@ extension ActivityFeedReadingGeometryTests {
                                            rowIDs: current.map(\.id))
         recorder.capture()
         try #require(recorder.samples.count == 1)
+        let diagnostics = try BoundedRestorationDiagnosticTrace(host: host)
+        defer { diagnostics.detach() }
 
         host.rootView = feed(older + current, state: state,
             history: EventHistoryState(hasMore: false), onLoadMore: { requests.total += 1; return true })
@@ -60,10 +62,46 @@ extension ActivityFeedReadingGeometryTests {
                    $0.relativeOffset)
         }
 .joined(separator: " | ")
+        let restoration = diagnostics.messages.joined(separator: " | ")
         try #require(recorder.samples.count >= 4)
         try #require(recorder.samples.count > 1)
         let excursion = recorder.samples.map { abs($0.relativeOffset - anchor.relativeOffset) }.max() ?? 0
-        #expect(excursion < 4, "Loading older rows must not visibly jump the retained cell: \(trace)")
+        #expect(excursion < 4,
+                "Loading older rows must not visibly jump the retained cell: \(trace) restoration=\(restoration)")
+    }
+
+    @MainActor
+    private final class BoundedRestorationDiagnosticTrace {
+        private let observationViews: [ParallelScrollObservationView]
+        private(set) var messages: [String] = []
+
+        init(host: NSView) throws {
+            self.observationViews = Self.descendants(host).compactMap { $0 as? ParallelScrollObservationView }
+            try #require(!observationViews.isEmpty, "The feed must expose its native observation view")
+            try #require(observationViews.contains { $0.anchorProvider is ActivityFeedReferenceRestoration },
+                         "The paused paging fixture must have an armed restoration provider")
+            for view in observationViews {
+                view.restorationDiagnostic = sink
+                (view.anchorProvider as? ActivityFeedReferenceRestoration)?.diagnostic = sink
+            }
+        }
+
+        func detach() {
+            for view in observationViews {
+                view.restorationDiagnostic = nil
+                (view.anchorProvider as? ActivityFeedReferenceRestoration)?.diagnostic = nil
+            }
+        }
+
+        private static func descendants(_ view: NSView) -> [NSView] {
+            [view] + view.subviews.flatMap(descendants)
+        }
+
+        private lazy var sink: (String) -> Void = { [weak self] message in
+            guard let self, messages.count < 100 else { return }
+            messages.append(String(format: "t=%.3f %@",
+                                        ProcessInfo.processInfo.systemUptime, message))
+        }
     }
 
     @Test func givenPausedFeedWithUnrealizedRetainedAnchor_whenOlderRowsLoad_thenProxyFallbackRestoresThatAnchor() async throws {

@@ -11,6 +11,36 @@ struct ActivityDocumentSamplePair: Equatable {
     let nativeRowCount: Int
 }
 
+/// Immutable intended List structure, shared by body construction and completed callbacks.
+struct ActivityFeedListSnapshot {
+    let generation: Int
+    let shownIDs: [String]
+    let showsHistoryHeader: Bool
+    let showsEmptyText: Bool
+    let hasTailContent: Bool
+    let anchorIndex: Int?
+
+    init(generation: Int, shownIDs: [String], showsHistoryHeader: Bool, showsEmptyText: Bool,
+         hasTailContent: Bool, anchor: ParallelVerticalAnchor?) {
+        self.generation = generation
+        self.shownIDs = shownIDs
+        self.showsHistoryHeader = showsHistoryHeader
+        self.showsEmptyText = showsEmptyText
+        self.hasTailContent = hasTailContent
+        let prefix = (showsHistoryHeader ? 1 : 0) + (showsEmptyText ? 1 : 0)
+        let resolvedID = anchor?.resolvedID(in: shownIDs)
+        self.anchorIndex = resolvedID.flatMap { shownIDs.firstIndex(of: $0) }.map { prefix + $0 }
+    }
+
+    var expectedCount: Int {
+        (showsHistoryHeader ? 1 : 0) + (showsEmptyText ? 1 : 0) + shownIDs.count + (hasTailContent ? 1 : 0) + 1
+    }
+
+    var expectedPadding: CGFloat? {
+        anchorIndex.map { $0 == 0 ? PbRadius.Metrics.spacing12 : PbRadius.Metrics.spacing20 }
+    }
+}
+
 // MARK: - ActivityFeedPosition
 
 /// Paired native row geometry used by reading restoration.
@@ -32,6 +62,8 @@ final class ActivityFeedPosition {
     /// joining, completing and cancelling are the only transitions, and nothing observable
     /// depends on it.
     var referenceRestoration: ActivityFeedReferenceRestoration?
+    /// Opt-in native restoration trace for bounded test diagnostics.
+    var restorationDiagnostic: ((String) -> Void)?
 
     func clearFrames() {
         frames.removeAll(keepingCapacity: true)
@@ -92,6 +124,7 @@ final class ActivityFeedPosition {
             transaction.captureReference(anchor: anchor, resolvedID: id, nativeIdentity: nativeIdentity,
                                          document: pairedDocument)
         }
+        transaction.diagnostic = restorationDiagnostic
         referenceRestoration = transaction
         nativeIdentity.setAnchorProvider(transaction)
     }
@@ -101,6 +134,17 @@ final class ActivityFeedPosition {
     func registerListSnapshotCandidate(generation: Int, expectedCount: Int, expectedAnchorIndex: Int?, expectedPadding: CGFloat? = nil) {
         referenceRestoration?.registerCandidate(generation: generation, expectedCount: expectedCount,
                                                 anchorIndex: expectedAnchorIndex, expectedPadding: expectedPadding)
+    }
+
+    /// Callback binding repairs a frame notification that arrived before the body candidate.
+    /// The body registration above remains plain data with no native side effects.
+    func bindListSnapshot(_ snapshot: ActivityFeedListSnapshot, nativeIdentity: ParallelScrollNativeIdentity) {
+        guard let transaction = referenceRestoration, transaction.isActive,
+              transaction.generation == snapshot.generation else { return }
+        transaction.registerCandidate(generation: snapshot.generation, expectedCount: snapshot.expectedCount,
+                                      anchorIndex: snapshot.anchorIndex, expectedPadding: snapshot.expectedPadding,
+                                      source: "callback")
+        nativeIdentity.reevaluateAnchorProvider(transaction)
     }
 
     /// Captures the reader's live semantic position directly from a coherent native row.
@@ -180,6 +224,7 @@ final class ActivityFeedReferenceRestoration: ParallelScrollAnchorProvider {
     private(set) var finished = false
     var cancellationReconciled = false
     private var awaitsMeasuredResize = false
+    var diagnostic: ((String) -> Void)?
 
     var isActive: Bool { !cancelled && !finished }
     var isAnchorRestorationActive: Bool { isActive }
@@ -237,12 +282,23 @@ final class ActivityFeedReferenceRestoration: ParallelScrollAnchorProvider {
     /// anchor; only the measurement generation advances, so the newest body-registered
     /// candidate still gates the native mapping.
     func join(generation: Int) {
+        if let diagnostic { diagnostic("join callback generation=\(self.generation)->\(generation)") }
         self.generation = generation
     }
 
     /// Registers the expected native snapshot of the List the feed body is about to construct.
     /// Plain candidate data only — body evaluation can never open, rearm or complete a lease.
-    func registerCandidate(generation: Int, expectedCount: Int, anchorIndex: Int?, expectedPadding: CGFloat? = nil) {
+    func registerCandidate(generation: Int, expectedCount: Int, anchorIndex: Int?, expectedPadding: CGFloat? = nil,
+                           source: String = "body") {
+        guard generation == self.generation else {
+            if let diagnostic { diagnostic("candidate obsolete \(source) generation=\(generation) leaseGeneration=\(self.generation)") }
+            return
+        }
+        if let diagnostic {
+            diagnostic("candidate \(source) generation=\(generation) leaseGeneration=\(self.generation)"
+                       + " count=\(expectedCount) index=\(String(describing: anchorIndex))"
+                       + " padding=\(String(describing: expectedPadding))")
+        }
         candidate = ListCandidate(generation: generation, expectedCount: expectedCount, expectedAnchorIndex: anchorIndex,
                                   expectedPadding: expectedPadding)
     }
@@ -296,6 +352,47 @@ final class ActivityFeedReferenceRestoration: ParallelScrollAnchorProvider {
         cancelled = true
     }
 
+    private func nativeTargetReference(document: NSView, outcome: inout String)
+        -> (ReferencePackage, ActivityRowGeometry.MeasurementView, NSTableView)? {
+        outcome = "inactive"
+        guard isActive else { return nil }
+        outcome = "reference-identity"
+        guard validateReferenceIdentity() else { return nil }
+        outcome = "no-package"
+        guard let captured = package else { return nil }
+        outcome = "document-identity"
+        guard document === captured.document else { return nil }
+        outcome = "no-source"
+        guard let source = captured.source else { return nil }
+        outcome = "source-window"
+        guard source.window != nil else { return nil }
+        outcome = "source-hidden"
+        guard !source.isHiddenOrHasHiddenAncestor else { return nil }
+        outcome = "source-stable-id"
+        guard source.stableID == captured.stableID else { return nil }
+        outcome = "measured-resize"
+        guard !awaitsMeasuredResize else { return nil }
+        outcome = "not-table"
+        guard let table = document as? NSTableView else { return nil }
+        return (captured, source, table)
+    }
+
+    private func diagnoseTarget(_ outcome: String, document: NSView) {
+        guard let diagnostic else { return }
+        let table = document as? NSTableView
+        let index = package?.source.map { table?.row(for: $0) ?? -1 } ?? -1
+        let rect = index >= 0 ? table?.rect(ofRow: index) : nil
+        diagnostic("target \(outcome) generation=\(generation)"
+                   + " candidateGeneration=\(String(describing: candidate?.generation))"
+                   + " candidateCount=\(String(describing: candidate?.expectedCount))"
+                   + " candidateIndex=\(String(describing: candidate?.expectedAnchorIndex))"
+                   + " count=\(table?.numberOfRows ?? -1) index=\(index)"
+                   + " capturedCount=\(String(describing: package?.nativeCount))"
+                   + " capturedIndex=\(String(describing: package?.nativeIndex))"
+                   + " row=\(String(describing: package?.rowView.map { ObjectIdentifier($0) }))"
+                   + " rect=\(String(describing: rect)) active=\(isActive) target=\(String(describing: appliedTarget))")
+    }
+
     /// The lease's immediate semantic vertical target for the given document, computed from the
     /// table's fresh `rect(ofRow:)` plus the captured row's validated inset — never from the
     /// stale descendant layout the measured frames still carry. Reserved for a pure prepend
@@ -304,26 +401,33 @@ final class ActivityFeedReferenceRestoration: ParallelScrollAnchorProvider {
     /// structural changes decline and wait for the coherent measured mapping. No arbitrary
     /// native relocation is ever inferred.
     func immediateAnchorTarget(document: NSView) -> CGFloat? {
+        var outcome = "identity-declined"
+        defer { diagnoseTarget(outcome, document: document) }
         if let captured = package, document !== captured.document {
             package = nil; appliedTarget = nil; appliedDocumentPair = nil
         }
-        guard isActive, validateReferenceIdentity(), let captured = package, document === captured.document,
-              let source = captured.source, source.window != nil, !source.isHiddenOrHasHiddenAncestor,
-              source.stableID == captured.stableID,
-              !awaitsMeasuredResize,
-              let table = document as? NSTableView else { return nil }
+        guard let (captured, source, table) = nativeTargetReference(document: document, outcome: &outcome) else { return nil }
         // The stable id must still identify exactly one realized measurement view.
+        outcome = "source-declined"
         let sources = measurements.views.allObjects.filter { $0.stableID == captured.stableID }
         guard sources.count == 1, sources.first === source else { return nil }
+        outcome = "row-declined"
         let currentIndex = table.row(for: source)
         guard currentIndex >= 0,
               let rowView = table.rowView(atRow: currentIndex, makeIfNecessary: false),
               rowView === captured.rowView,
               source === rowView || source.isDescendant(of: rowView) else { return nil }
+        outcome = "candidate-declined"
         let currentCount = table.numberOfRows
-        guard let candidate, candidate.generation == generation,
-              candidate.expectedCount == currentCount,
-              candidate.expectedAnchorIndex == currentIndex else { return nil }
+        outcome = "candidate-missing"
+        guard let candidate else { return nil }
+        outcome = "candidate-generation"
+        guard candidate.generation == generation else { return nil }
+        outcome = "candidate-count"
+        guard candidate.expectedCount == currentCount else { return nil }
+        outcome = "candidate-index"
+        guard candidate.expectedAnchorIndex == currentIndex else { return nil }
+        outcome = "mapping-declined"
         let delta = currentCount - captured.nativeCount
         guard delta >= 0, currentIndex - captured.nativeIndex == delta else {
             // The intended snapshot has committed, but its mapping is not a prepend. Native
@@ -349,6 +453,7 @@ final class ActivityFeedReferenceRestoration: ParallelScrollAnchorProvider {
         appliedTarget = target
         appliedDocumentPair = ActivityDocumentSamplePair(documentHeight: document.bounds.height,
                                                         nativeRowCount: currentCount)
+        outcome = "success"
         return target
     }
 }

@@ -58,6 +58,14 @@ final class ParallelScrollNativeIdentity {
         observationView?.anchorProvider = provider
     }
 
+    /// A completed state callback may publish a coherent candidate after its frame notification.
+    /// Reevaluate only the current provider against the currently adopted native document.
+    func reevaluateAnchorProvider(_ provider: ParallelScrollAnchorProvider) {
+        guard currentAnchorProvider === provider, provider.isAnchorRestorationActive,
+              knownScrollView?.documentView === knownDocument else { return }
+        observationView?.reevaluateAnchorProvider(provider)
+    }
+
     func resolvedAnchorProvider(fallback: ParallelScrollAnchorProvider?) -> ParallelScrollAnchorProvider? {
         ownsAnchorProvider ? currentAnchorProvider : fallback
     }

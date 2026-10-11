@@ -176,11 +176,14 @@ final class ParallelScrollObservationView: NSView {
     var onPosition: ((CGFloat, CGFloat, CGFloat) -> Void)?
     var onViewportSize: ((CGSize) -> Void)?
     var onUpwardIntent: (() -> Void)?
+    /// Opt-in bounded native report diagnostics; no message construction while unset.
+    var restorationDiagnostic: ((String) -> Void)?
     /// The reading-anchor provider of the adopted native target, held weakly: it dies with the
     /// lease that created it. Nil for every default observer.
     weak var anchorProvider: ParallelScrollAnchorProvider?
     private var wheelMonitor: Any?
     private var liveUserScroll = false
+    private var reevaluatingRestoration = false
     private weak var observedScrollView: NSScrollView?
     /// The document currently observed; a scroll view can replace it without changing identity.
     private weak var observedDocument: NSView?
@@ -582,6 +585,9 @@ final class ParallelScrollObservationView: NSView {
 
     private func applyRestorationTarget(_ target: CGFloat, scroll: NSScrollView, document: NSView,
                                         length: CGFloat, viewport: CGFloat, visible: CGRect) {
+        if let restorationDiagnostic {
+            restorationDiagnostic("apply target=\(target) visible=\(visible.minY) height=\(length) viewport=\(viewport)")
+        }
         pendingOffset = nil
         let clamped = min(max(0, target), max(0, length - viewport))
         var point = scroll.contentView.bounds.origin
@@ -594,11 +600,25 @@ final class ParallelScrollObservationView: NSView {
         }
     }
 
+    /// Synchronous callback-only retry; nested provider retries are dropped without ending the lease.
+    func reevaluateAnchorProvider(_ provider: ParallelScrollAnchorProvider) {
+        guard !reevaluatingRestoration, anchorProvider === provider, provider.isAnchorRestorationActive,
+              observedScrollView?.documentView === observedDocument else { return }
+        reevaluatingRestoration = true
+        defer { reevaluatingRestoration = false }
+        report(documentGeometryChanged: true)
+    }
+
     private func report(observeExternalMovement: Bool = false, documentGeometryChanged: Bool = false) {
         guard !isTornDown, let scroll = observedScrollView, let document = scroll.documentView else { return }
         // Native targets re-assert the zero-inset contract on every report, so a later resize or
         // layout pass that restores an automatic inset cannot shift the feed's document geometry.
         if usesNativeIdentity { enforceNativeInsets(on: scroll) }
+        if let restorationDiagnostic {
+            restorationDiagnostic("report geometry=\(documentGeometryChanged) external=\(observeExternalMovement)"
+                                  + " live=\(liveUserScroll) offset=\(scroll.documentVisibleRect.minY)"
+                                  + " height=\(document.bounds.height) rows=\((document as? NSTableView)?.numberOfRows ?? -1)")
+        }
         let visible = scroll.documentVisibleRect
         let viewportSize = scroll.contentView.bounds.size
         if viewportSize != lastViewportSize {
