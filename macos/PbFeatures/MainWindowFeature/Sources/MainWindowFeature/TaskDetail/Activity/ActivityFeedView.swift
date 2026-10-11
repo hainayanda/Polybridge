@@ -10,6 +10,7 @@ private struct ActivityFeedKey: Equatable {
     let realizedLastRowID: String?
     let rows: [ActivityRow]
     let tail: ActivityFeedTail
+    let tailPresentation: ActivityFeedTailPresentation
     let showsPromptBubble: Bool
     let expandedGroups: Set<String>
     let viewport: CGSize
@@ -23,7 +24,7 @@ private struct ActivityFeedKey: Equatable {
 // MARK: - ActivityFeedView
 
 /// Shared reading, progressive reveal and older-page behavior across activity surfaces.
-struct ActivityFeedView<Tail: View>: View {
+struct ActivityFeedView: View {
     let rows: [ActivityRow]
     let start: Date?
     let history: EventHistoryState
@@ -36,16 +37,17 @@ struct ActivityFeedView<Tail: View>: View {
     var showsPromptBubble = true
     let state: ParallelColumnUIState
     let onLoadMore: (() -> Bool)?
-    @ViewBuilder let tail: () -> Tail
+    var tailPresentation = ActivityFeedTailPresentation.absent
+    var onSelectChildTask: ((String) -> Void)?
 
+    @State private var tailStore: ActivityFeedTailStore
     @State private var measurementGeneration = 0
     @State private var viewportSize: CGSize = .zero
-    @State private var outerScrollWidth: CGFloat?
     @State private var nativeViewportReady = false
     @State private var realizedLastRowID: String?
     @State private var position = ActivityFeedPosition()
+    @State private var listCallbacks = ActivityFeedListCallbacks()
     @State private var nativeIdentity = ParallelScrollNativeIdentity()
-    @State private var pendingReadingCapture = true
     @State private var positioned = false
     @State private var followingLayout = true
     @State private var restoring = true
@@ -60,6 +62,28 @@ struct ActivityFeedView<Tail: View>: View {
     @State private var seenIDs: Set<String> = []
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    init(rows: [ActivityRow], start: Date?, history: EventHistoryState, isLoading: Bool,
+         tailValue: ActivityFeedTail = ActivityFeedTail(), paginationRevision: Int = 0, isVisible: Bool = true,
+         emptyText: String? = nil, horizontalPadding: CGFloat = PbRadius.Metrics.zero, showsPromptBubble: Bool = true,
+         state: ParallelColumnUIState, onLoadMore: (() -> Bool)?,
+         tailPresentation: ActivityFeedTailPresentation = .absent, onSelectChildTask: ((String) -> Void)? = nil) {
+        self.rows = rows
+        self.start = start
+        self.history = history
+        self.isLoading = isLoading
+        self.tailValue = tailValue
+        self.paginationRevision = paginationRevision
+        self.isVisible = isVisible
+        self.emptyText = emptyText
+        self.horizontalPadding = horizontalPadding
+        self.showsPromptBubble = showsPromptBubble
+        self.state = state
+        self.onLoadMore = onLoadMore
+        self.tailPresentation = tailPresentation
+        self.onSelectChildTask = onSelectChildTask
+        _tailStore = State(initialValue: ActivityFeedTailStore(presentation: tailPresentation.isVisible(with: tailValue) ? tailPresentation : .absent))
+    }
+
     private static var bottomID: String { "activity-feed-bottom" }
     private var ids: [String] { rows.map(\.id) }
     private var shown: [ActivityRow] {
@@ -67,15 +91,27 @@ struct ActivityFeedView<Tail: View>: View {
     }
 
     var body: some View {
-        ScrollViewReader { proxy in
-            feedList
+        let shownRows = shown
+        refreshListCallbacks()
+        return ScrollViewReader { proxy in
+            feedList(shownRows: shownRows)
                 .task(id: ActivityFeedKey(nativeViewportReady: nativeViewportReady, realizedLastRowID: realizedLastRowID,
-                                         rows: shown, tail: tailValue, showsPromptBubble: showsPromptBubble,
+                                         rows: shownRows, tail: tailValue, tailPresentation: tailPresentation, showsPromptBubble: showsPromptBubble,
                                          expandedGroups: state.expandedGroups, viewport: viewportSize, history: history,
                                          loading: isLoading, visible: isVisible, paginationRevision: paginationRevision, restoring: restoring)) {
                     await settle(proxy)
                 }
-                .onDisappear { position.pagingTask?.cancel(); position.pagingTask = nil }
+                .onAppear {
+                    refreshListCallbacks()
+                    tailStore.presentation = effectiveTailPresentation
+                    position.measurements.invalidateMeasurements()
+                    position.measurements.scheduleMeasurements()
+                }
+                .onDisappear {
+                    position.pagingTask?.cancel()
+                    position.pagingTask = nil
+                    listCallbacks.clearActions()
+                }
                 .onChange(of: rows) { old, next in
                     defer { bindIntendedListSnapshot() }
                     if state.followLive.isFollowing { followingLayout = true }
@@ -87,9 +123,15 @@ struct ActivityFeedView<Tail: View>: View {
                     }
                     markReferencePagePublication()
                 }
+                .onChange(of: effectiveTailPresentation) { old, next in
+                    defer { bindIntendedListSnapshot() }
+                    if state.followLive.isFollowing { followingLayout = true }
+                    else if (old != .absent) != (next != .absent) { beginRestoration() }
+                    tailStore.presentation = next
+                }
                 .onChange(of: tailValue) { _, _ in
                     defer { bindIntendedListSnapshot() }
-                    if state.followLive.isFollowing { followingLayout = true } else { beginRestoration() }
+                    if state.followLive.isFollowing { followingLayout = true }
                     markReferencePagePublication()
                 }
                 .onChange(of: paginationRevision) { _, _ in
@@ -105,47 +147,31 @@ struct ActivityFeedView<Tail: View>: View {
         }
     }
 
-    private var feedList: some View {
-        let snapshot = intendedListSnapshot
+    private func feedList(shownRows: [ActivityRow]) -> some View {
+        let snapshot = ActivityFeedListSnapshot(generation: measurementGeneration, shownIDs: shownRows.map(\.id),
+                                               showsHistoryHeader: showsHistoryHeader, showsEmptyText: emptyText != nil,
+                                               hasTailContent: hasTailContent, anchor: state.anchor)
         position.registerListSnapshotCandidate(generation: snapshot.generation, expectedCount: snapshot.expectedCount,
                                                expectedAnchorIndex: snapshot.anchorIndex, expectedPadding: snapshot.expectedPadding)
-        return List {
-            if snapshot.showsHistoryHeader { historyHeaderRow }
-            if snapshot.showsEmptyText { emptyTextRow }
-            ForEach(shown) { row in
-                rowContent(row)
-                    .modifier(ActivityFeedRowPlacement(
-                        top: isDocumentFirst(row) ? PbRadius.Metrics.spacing12 : PbRadius.Metrics.spacing20,
-                        bottom: PbRadius.Metrics.zero,
-                        horizontalPadding: horizontalPadding
-                    ))
-            }
-            if snapshot.hasTailContent { tailRow }
-            sentinelRow
-        }
-        .listStyle(.plain)
-        .contentMargins(PbRadius.Metrics.zero, for: .scrollContent)
-        // AppKit requires a positive default height; every explicit feed row exceeds this.
-        .environment(\.defaultMinListRowHeight, PbRadius.Metrics.hairlineStroke)
-        .scrollContentBackground(.hidden)
-        .scrollChromeScope(onNativeScrollView: { identity in
-            if nativeIdentity.deliver(identity) {
-                position.discardStaleFrames(nativeIdentity: nativeIdentity)
-                position.measurements.invalidateMeasurements()
-            }
-        })
+        return listContent(shownRows: shownRows)
+.equatable()
         // Outside the marker pair; native identity excludes the outer parallel lane.
         .background(ParallelScrollObserver(
             axis: .vertical, restorationOffset: targetOffset, restorationActive: restoring || followingLayout,
             onNativeViewportGeometry: observeViewport, onUpwardIntent: upwardIntent, nativeIdentity: nativeIdentity,
             anchorProvider: position.referenceRestoration
         ) { offset, content, viewport in
+            let unchangedGeometry = abs(content - position.content) < 0.5 && position.viewport == viewport
+            let movedUp = offset < position.offset - 0.5
+            let movedDown = offset > position.offset + 0.5
             if positioned, !restoring, !followingLayout, abs(content - position.content) < 0.5, position.viewport == viewport,
                abs(offset - position.offset) > 0.5 {
-                pendingReadingCapture = true
+                position.pendingReadingCapture = true
+                if movedUp, !state.followLive.isFollowing { targetOffset = nil }
                 if offset < position.offset { shortFillBudget.replenish() }
             }
-            if positioned, !restoring, !followingLayout, abs(content - position.content) < 0.5, position.viewport == viewport, offset < position.offset - 0.5 {
+            if positioned, !restoring, !followingLayout, unchangedGeometry, position.referenceRestoration?.isActive != true,
+               state.followLive.isFollowing ? movedUp : movedDown {
                 let wasFollowing = state.followLive.isFollowing
                 state.followLive.observe(offset: offset, contentHeight: content, viewportHeight: viewport)
                 if !state.followLive.isFollowing { targetOffset = nil }
@@ -158,6 +184,14 @@ struct ActivityFeedView<Tail: View>: View {
             position.offset = offset
             position.content = content
             position.viewport = viewport
+            if positioned, !restoring, !followingLayout, !state.followLive.isFollowing, unchangedGeometry, movedUp,
+               position.pendingReadingCapture, position.referenceRestoration?.isActive != true,
+               position.referenceRestoration?.cancelled != true,
+               let anchor = position.captureNativeReadingAnchor(shownIDs: shown.map(\.id), nativeIdentity: nativeIdentity) {
+                state.anchor = anchor
+                state.scrollOffset = offset
+                position.pendingReadingCapture = false
+            }
             reconcileReferenceRestoration()
             // Retry initial positioning when native attachment becomes usable.
             let ready = viewport > 0
@@ -166,49 +200,54 @@ struct ActivityFeedView<Tail: View>: View {
         })
     }
 
-    private struct ActivityFeedRowPlacement: ViewModifier {
-        let top: CGFloat
-        let bottom: CGFloat
-        let horizontalPadding: CGFloat
-
-        func body(content: Content) -> some View {
-            content
-                .padding(EdgeInsets(top: top, leading: horizontalPadding, bottom: bottom, trailing: horizontalPadding))
-                .listRowInsets(EdgeInsets())
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
+    private func refreshListCallbacks() {
+        let position = position
+        let nativeIdentity = nativeIdentity
+        listCallbacks.onNativeIdentity = { identity in
+            position.adoptViewportIdentity(identity)
+            if nativeIdentity.deliver(identity) {
+                position.discardStaleFrames(nativeIdentity: nativeIdentity)
+                position.measurements.invalidateMeasurements()
+            }
         }
+        listCallbacks.onFrame = { id, generation, sample in
+            guard generation == measurementGeneration else { return }
+            guard position.record(sample, for: id, nativeIdentity: nativeIdentity) else { return }
+            if id == shown.last?.id, realizedLastRowID != id { realizedLastRowID = id }
+            scheduleReadingUpdate()
+        }
+        listCallbacks.onAppear = { seenIDs.insert($0) }
+        listCallbacks.onRetry = { requestPage(retry: true) }
+        listCallbacks.onDisclosure = { id in
+            defer { bindIntendedListSnapshot() }
+            shortFillBudget.replenish()
+            beginRestoration(cause: .disclosure)
+            withAnimation(PbMotion.disclosure(reduceMotion: reduceMotion)) {
+                if !state.expandedGroups.insert(id).inserted { state.expandedGroups.remove(id) }
+            }
+        }
+        listCallbacks.onSelectChildTask = onSelectChildTask
+    }
+
+    private func listContent(shownRows: [ActivityRow]) -> ActivityFeedListContent {
+        let header: ActivityFeedListRenderInputs.Header = if history.isLoading || waitingForPage { .loading }
+        else if let error = history.error { .error(error) }
+        else if showsHistoryHeader { .beginning }
+        else { .none }
+        let fadeIDs = positioned && !restoring && state.followLive.isFollowing
+            ? Set(shownRows.map(\.id)).subtracting(seenIDs) : []
+        return ActivityFeedListContent(inputs: ActivityFeedListRenderInputs(
+            rows: shownRows, start: start, header: header, emptyText: emptyText, horizontalPadding: horizontalPadding,
+            showsPromptBubble: showsPromptBubble, expandedGroups: state.expandedGroups,
+            generation: measurementGeneration, fadeIDs: fadeIDs,
+            hasTail: hasTailContent
+        ), callbacks: listCallbacks, measurements: position.measurements, tailStore: tailStore)
     }
 
     private var showsHistoryHeader: Bool {
         history.isLoading || waitingForPage || history.error != nil
             || (!history.hasMore && !rows.isEmpty
                 && ActivityFeedWindow.firstIndex(ids: ids, retainedID: state.retainedFirstID) == 0)
-    }
-
-    @ViewBuilder private var historyHeaderRow: some View {
-        if showsHistoryHeader {
-            historyHeader
-                .modifier(ActivityFeedRowPlacement(top: PbRadius.Metrics.spacing12, bottom: PbRadius.Metrics.zero,
-                                                   horizontalPadding: horizontalPadding))
-        }
-    }
-
-    @ViewBuilder private var emptyTextRow: some View {
-        if let emptyText {
-            Text(emptyText)
-.font(.pb(.body))
-.foregroundStyle(Color.secondaryText)
-                .modifier(ActivityFeedRowPlacement(
-                    top: showsHistoryHeader ? PbRadius.Metrics.spacing20 : PbRadius.Metrics.spacing12,
-                    bottom: PbRadius.Metrics.zero,
-                    horizontalPadding: horizontalPadding
-                ))
-        }
-    }
-
-    private func isDocumentFirst(_ row: ActivityRow) -> Bool {
-        !showsHistoryHeader && emptyText == nil && row.id == shown.first?.id
     }
 
     private var intendedListSnapshot: ActivityFeedListSnapshot {
@@ -221,84 +260,8 @@ struct ActivityFeedView<Tail: View>: View {
         position.bindListSnapshot(intendedListSnapshot, nativeIdentity: nativeIdentity)
     }
 
-    private func rowContent(_ row: ActivityRow) -> some View {
-        rowView(row)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(ActivityRowGeometry(
-                generation: measurementGeneration,
-                measurements: position.measurements,
-                stableID: row.id
-            ) { [generation = measurementGeneration] sample in
-                guard generation == measurementGeneration else { return }
-                guard position.record(sample, for: row.id, nativeIdentity: nativeIdentity) else { return }
-                if row.id == shown.last?.id, realizedLastRowID != row.id { realizedLastRowID = row.id }
-                scheduleReadingUpdate()
-            })
-            .pbFadeIn(animate: positioned && !restoring && state.followLive.isFollowing && !seenIDs.contains(row.id))
-            .onAppear { seenIDs.insert(row.id) }
-    }
-
-    private var hasTailContent: Bool {
-        Tail.self != EmptyView.self && tailValue != ActivityFeedTail()
-    }
-
-    private var hasContentBeforeTail: Bool {
-        showsHistoryHeader || emptyText != nil || !shown.isEmpty
-    }
-
-    @ViewBuilder private var tailRow: some View {
-        if hasTailContent {
-            VStack(alignment: .leading, spacing: PbRadius.Metrics.spacing20) { tail() }
-                .modifier(ActivityFeedRowPlacement(
-                    top: hasContentBeforeTail ? PbRadius.Metrics.spacing20 : PbRadius.Metrics.spacing12,
-                    bottom: PbRadius.Metrics.zero,
-                    horizontalPadding: horizontalPadding
-                ))
-        }
-    }
-
-    private var sentinelRow: some View {
-        Color.clear
-            .frame(height: PbRadius.Metrics.hairlineStroke)
-            .modifier(ActivityFeedRowPlacement(
-                top: (hasContentBeforeTail || hasTailContent) ? PbRadius.Metrics.spacing20 : PbRadius.Metrics.spacing12,
-                bottom: PbRadius.Metrics.spacing12,
-                horizontalPadding: horizontalPadding
-            ))
-            .id(Self.bottomID)
-    }
-
-    @ViewBuilder private var historyHeader: some View {
-        if history.isLoading || waitingForPage {
-            LoadingLabel("Loading activity…")
-        } else if let error = history.error {
-            VStack(alignment: .leading, spacing: PbRadius.Metrics.spacing6) {
-                Text(error).font(.pb(.secondary)).foregroundStyle(Color.secondaryText)
-                Button("Retry older activity") { requestPage(retry: true) }.buttonStyle(.link)
-            }
-        } else if !history.hasMore, ActivityFeedWindow.firstIndex(ids: ids, retainedID: state.retainedFirstID) == 0, !rows.isEmpty {
-            Text("Beginning of activity").font(.pb(.secondary)).foregroundStyle(Color.secondaryText)
-        }
-    }
-
-    @ViewBuilder private func rowView(_ row: ActivityRow) -> some View {
-        switch row {
-        case .toolGroup(let group):
-            ToolGroupCardView(group: group, start: start, isExpanded: state.expandedGroups.contains(group.id)) {
-                defer { bindIntendedListSnapshot() }
-                shortFillBudget.replenish()
-                beginRestoration(cause: .disclosure)
-                withAnimation(PbMotion.disclosure(reduceMotion: reduceMotion)) {
-                    if !state.expandedGroups.insert(group.id).inserted { state.expandedGroups.remove(group.id) }
-                }
-            }
-        case .single(let row):
-            switch row.kind {
-            case .separator(let text): TurnSeparatorRow(text: text, timestamp: row.timestamp)
-            case .item(let item): TimelineRow(model: TimelineRowModel(item: item, start: start, live: row.live, showsPromptBubble: showsPromptBubble))
-            }
-        }
-    }
+    private var hasTailContent: Bool { tailPresentation.isVisible(with: tailValue) }
+    private var effectiveTailPresentation: ActivityFeedTailPresentation { hasTailContent ? tailPresentation : .absent }
 
     private var currentWidthFrames: [String: CGRect] {
         position.discardStaleFrames(nativeIdentity: nativeIdentity)
@@ -309,30 +272,32 @@ struct ActivityFeedView<Tail: View>: View {
     @discardableResult
     private func captureAnchor() -> Bool {
         guard !(position.referenceRestoration?.cancelled == true && position.referenceRestoration?.pagePending == true) else { return false }
-        guard pendingReadingCapture || state.followLive.isFollowing || state.anchor == nil else { return false }
+        guard position.pendingReadingCapture || state.followLive.isFollowing || state.anchor == nil else { return false }
         guard let anchor = ParallelVerticalAnchor.capture(ids: shown.map(\.id), frames: currentWidthFrames,
             viewportHeight: position.viewport, offset: position.offset) else { return false }
         state.anchor = anchor
-        pendingReadingCapture = false
+        position.pendingReadingCapture = false
         return true
     }
 
     private func observeViewport(_ size: CGSize, outerWidth: CGFloat) {
-        let outerWidthChanged = outerScrollWidth.map { abs(outerWidth - $0) > 0.5 } ?? false
-        outerScrollWidth = outerWidth
+        let previousSize = position.nativeViewportSize
+        let outerWidthChanged = position.nativeOuterWidth.map { abs(outerWidth - $0) > 0.5 } ?? false
+        position.nativeViewportSize = size
+        position.nativeOuterWidth = outerWidth
         defer { bindIntendedListSnapshot() }
-        guard size != viewportSize || outerWidthChanged else { return }
-        let needsMeasuredResize = outerWidthChanged || abs(size.height - viewportSize.height) > 0.5
-        let clipWidthChanged = viewportSize.width > 0 && abs(size.width - viewportSize.width) > 0.5
+        guard size != previousSize || outerWidthChanged else { return }
+        let needsMeasuredResize = outerWidthChanged || abs(size.height - previousSize.height) > 0.5
+        let clipWidthChanged = previousSize.width > 0 && abs(size.width - previousSize.width) > 0.5
         if positioned, !state.followLive.isFollowing {
-            if !needsMeasuredResize, clipWidthChanged, let anchor = state.anchor,
+            if !needsMeasuredResize, clipWidthChanged, !position.pendingReadingCapture, let anchor = state.anchor,
                position.referenceRestoration?.isActive != true, position.referenceRestoration?.cancelled != true {
                 let pagePending = waitingForPage || position.referenceRestoration?.pagePending == true
                 position.openReferenceRestoration(anchor: anchor, shownIDs: shown.map(\.id),
                                                   nativeIdentity: nativeIdentity, generation: measurementGeneration,
                                                   awaitingPagePublication: pagePending)
                 restoring = true
-                pendingReadingCapture = false
+                position.pendingReadingCapture = false
                 targetOffset = nil
                 state.viewportPositioned = false
             }
@@ -341,14 +306,14 @@ struct ActivityFeedView<Tail: View>: View {
                     measuredWidth: position.expectedRowWidth(
                         for: state.anchor?.id, viewportWidth: size.width, nativeIdentity: nativeIdentity
                     ),
-                    previousViewportWidth: viewportSize.width, viewportWidth: size.width, restoring: restoring
+                    previousViewportWidth: previousSize.width, viewportWidth: size.width, restoring: restoring
                 )
             }
             // Legacy scroller appearance changes only clip width; keep the native lease
             // eligible while updating row-width acceptance from the actual clip geometry.
             if needsMeasuredResize { beginRestoration(cause: .resize) }
         }
-        if state.followLive.isFollowing, size != viewportSize { followingLayout = true }
+        if state.followLive.isFollowing, size != previousSize { followingLayout = true }
         viewportSize = size
     }
 
@@ -366,7 +331,7 @@ struct ActivityFeedView<Tail: View>: View {
             if !positioned || followingLayout {
                 proxy.scrollTo(Self.bottomID, anchor: .bottom)
                 await Task.yield()
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, state.followLive.isFollowing else { return }
             }
             followingLayout = true
             targetOffset = max(0, position.content - position.viewport)
@@ -400,7 +365,7 @@ struct ActivityFeedView<Tail: View>: View {
         state.scrollOffset = position.offset
         captureAnchor()
         let wasFollowing = state.followLive.isFollowing
-        if !shown.isEmpty {
+        if wasFollowing, !shown.isEmpty {
             state.followLive.observe(offset: position.offset, contentHeight: position.content, viewportHeight: position.viewport)
         }
         if wasFollowing, !state.followLive.isFollowing, state.retainedFirstID == nil {
@@ -422,9 +387,9 @@ struct ActivityFeedView<Tail: View>: View {
             if !shown.isEmpty {
                 guard let anchor = ParallelVerticalAnchor.capture(ids: shown.map(\.id), frames: currentWidthFrames,
                     viewportHeight: position.viewport, offset: position.offset) else { return }
-                if pendingReadingCapture || state.followLive.isFollowing || state.anchor == nil {
+                if position.pendingReadingCapture || state.followLive.isFollowing || state.anchor == nil {
                     state.anchor = anchor
-                    pendingReadingCapture = false
+                    position.pendingReadingCapture = false
                 }
             }
             maybeLoadOlder()
@@ -491,7 +456,7 @@ private extension ActivityFeedView {
             position.pagingTask = nil
             restoring = false
             restorationWidth.finish(restoring: false)
-            pendingReadingCapture = true
+            position.pendingReadingCapture = true
         }
         state.scrollOffset = position.offset
         state.anchor = position.captureNativeReadingAnchor(shownIDs: shown.map(\.id), nativeIdentity: nativeIdentity)
@@ -500,7 +465,7 @@ private extension ActivityFeedView {
             position.openReferenceRestoration(anchor: state.anchor, shownIDs: shown.map(\.id),
                                               nativeIdentity: nativeIdentity, generation: measurementGeneration,
                                               awaitingPagePublication: true)
-            pendingReadingCapture = false
+            position.pendingReadingCapture = false
             restoring = true
             bindIntendedListSnapshot()
         } else if transaction.pageCommitted {
@@ -595,7 +560,7 @@ private extension ActivityFeedView {
         }
         restorationTiming = MonitorMetrics.begin()
         state.followLive.suspend()
-        pendingReadingCapture = false
+        position.pendingReadingCapture = false
         position.pagingTask?.cancel()
         measurementGeneration &+= 1
         if let transaction = position.referenceRestoration, transaction.isActive {
@@ -632,7 +597,7 @@ private extension ActivityFeedView {
         followingLayout = false
         if state.retainedFirstID == nil { state.retainedFirstID = shown.first?.id }
         targetOffset = nil
-        pendingReadingCapture = true
+        position.pendingReadingCapture = true
     }
 
     private func replenishShortFill() {

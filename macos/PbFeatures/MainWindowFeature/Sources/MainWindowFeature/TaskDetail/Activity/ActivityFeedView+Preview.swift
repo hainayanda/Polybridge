@@ -11,9 +11,8 @@ private func activityFeedPreview() -> some View {
     let liveStep = LiveStep(rows: [], isRunning: true)
     return ActivityFeedView(rows: rows, start: .now.addingTimeInterval(-600), history: EventHistoryState(),
                             isLoading: false, tailValue: ActivityFeedTail(liveStep: liveStep), emptyText: nil,
-                            state: ParallelColumnUIState(), onLoadMore: nil) {
-        LiveStepLineView(text: "Running the login tests…", indicator: .threeDots)
-    }
+                            state: ParallelColumnUIState(), onLoadMore: nil,
+                            tailPresentation: .standard(.init(liveStep: .init(text: "Running the login tests…", indicator: .threeDots))))
     .frame(width: PbRadius.Metrics.timelinePanePreviewWidth, height: PbRadius.Metrics.taskDetailPreviewHeight)
     .background(Color.windowBG)
 }

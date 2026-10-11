@@ -49,6 +49,10 @@ final class ActivityFeedPosition {
     var offset: CGFloat = 0
     var content: CGFloat = 0
     var viewport: CGFloat = 0
+    var nativeViewportSize: CGSize = .zero
+    var nativeOuterWidth: CGFloat?
+    var pendingReadingCapture = true
+    private weak var viewportScrollView: NSScrollView?
     var frames: [String: CGRect] = [:]
     var pairedViewportWidths: [String: CGFloat] = [:]
     /// The document height and native row count each recorded frame was sampled with, keyed by
@@ -64,6 +68,16 @@ final class ActivityFeedPosition {
     var referenceRestoration: ActivityFeedReferenceRestoration?
     /// Opt-in native restoration trace for bounded test diagnostics.
     var restorationDiagnostic: ((String) -> Void)?
+
+    /// Reset before a different identity adopts and synchronously reports its geometry.
+    /// Nil delivery detaches observation while preserving the weak last scroll and baseline,
+    /// so reattaching the same live scroll still detects any resize while it was off-window.
+    func adoptViewportIdentity(_ scrollView: NSScrollView?) {
+        guard let scrollView, viewportScrollView !== scrollView else { return }
+        viewportScrollView = scrollView
+        nativeViewportSize = .zero
+        nativeOuterWidth = nil
+    }
 
     func clearFrames() {
         frames.removeAll(keepingCapacity: true)
