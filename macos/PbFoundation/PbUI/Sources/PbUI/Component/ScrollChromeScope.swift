@@ -39,8 +39,9 @@
 //  own NSScrollView, or nil. The two markers report independently into one relay that aggregates
 //  them: an identity survives while either live marker still reports it, nil is delivered only
 //  once every live marker reports nothing (a churning marker never unseats its peer's scope), an
-//  identical NSScrollView is never redelivered, and delivery is deferred to the main queue with a
-//  generation guard so no identity is published during layout and only the newest knowledge ever
+//  identical NSScrollView with an unchanged document is never redelivered, and delivery is deferred
+//  to the main queue with a generation guard so no identity is published during layout and only
+//  the newest knowledge ever
 //  publishes. Every reference — markers, scroll views, the delivered identity — is weak, so a
 //  deallocated candidate is absent at the next report delivery, fail closed; weak zeroing alone
 //  does not schedule delivery. The handler changes no chrome behaviour; the
@@ -76,8 +77,9 @@ public typealias ScrollChromeScopeNativeIdentityHandler = @MainActor (NSScrollVi
 ///
 /// Delivery rules: an identity is live while ANY live marker still reports it; nil publishes only
 /// once every live marker reports nothing, so one marker churning (conditional replacement, sheet
-/// re-presentation) never unseats its peer's scope. An identical NSScrollView is never
-/// redelivered. Delivery is deferred one main-queue hop with a generation guard: a block publishes
+/// re-presentation) never unseats its peer's scope. An identical NSScrollView with an unchanged
+/// document is never redelivered; a document replacement is disclosed on the next marker report.
+/// Delivery is deferred one main-queue hop with a generation guard: a block publishes
 /// only when it carries the newest report generation, so coalesced bursts publish once and no
 /// handler runs during layout. Every reference — markers, candidates, the last delivered identity
 /// — is weak, so a deallocated candidate is absent at the next report delivery (fail closed)
@@ -95,6 +97,9 @@ final class ScrollChromeScopeIdentityRelay {
     private var identities: [ObjectIdentifier: MarkerIdentity] = [:]
     private var onIdentity: ScrollChromeScopeNativeIdentityHandler?
     private weak var lastDelivered: NSScrollView?
+    private weak var lastDeliveredDocument: NSView?
+    /// Retains the delivered nil state even after a weak document reference zeroes.
+    private var lastDeliveredDocumentWasNil = true
     private var lastDeliveryWasNil = true
     /// Bumped by every marker report; a deferred block publishes only under the newest generation.
     private var generation = 0
@@ -120,14 +125,19 @@ final class ScrollChromeScopeIdentityRelay {
     /// The deferred publish point: publishes only under the newest report generation, purges dead
     /// markers, reads the CURRENT aggregated state (so a replacement that arrived after
     /// scheduling is what publishes, never a stale identity), deduplicates an unchanged scroll
-    /// view, and delivers nil exactly on the all-markers-detached transition.
+    /// view and current document pair, and delivers nil exactly on the all-markers-detached
+    /// transition. Document changes are read here when marker reports drive delivery.
     private func deliver(generation scheduled: Int) {
         guard scheduled == generation else { return }
         identities = identities.filter { $0.value.marker != nil }
         let aggregated = identities.values.compactMap(\.scrollView).first
-        let changed = aggregated.map { $0 !== lastDelivered } ?? !lastDeliveryWasNil
+        let document = aggregated?.documentView
+        let documentChanged = (document == nil) != lastDeliveredDocumentWasNil || document !== lastDeliveredDocument
+        let changed = aggregated.map { $0 !== lastDelivered || documentChanged } ?? !lastDeliveryWasNil
         guard changed else { return }
         lastDelivered = aggregated
+        lastDeliveredDocument = document
+        lastDeliveredDocumentWasNil = document == nil
         lastDeliveryWasNil = aggregated == nil
         onIdentity?(aggregated)
     }
@@ -462,7 +472,9 @@ extension View {
     /// When `onNativeScrollView` is supplied, the same bounded discovery additionally discloses
     /// the scoped container's own NSScrollView identity to that handler — the discovery result
     /// itself, or nil once every live marker isolates nothing. Delivery is deferred off layout,
-    /// coalesced and deduplicated, weakly referenced on both ends (a deallocated candidate is
+    /// coalesced and deduplicated by scroll view and current document identity. Document replacement
+    /// is disclosed on the next marker report; document changes alone do not schedule delivery.
+    /// References are weak on both ends (a deallocated candidate is
     /// absent at the next reconciliation/report delivery), and never a broader search.
     /// Weak zeroing alone does not schedule delivery. Chrome ownership is unchanged either way, and
     /// omitting the handler keeps the scope's exact prior shape.
