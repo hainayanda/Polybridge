@@ -99,6 +99,12 @@ final class ParallelScrollNativeIdentity {
         return changed
     }
 
+    /// A cancellation may retire a newer owner generation only through its live scoped binding.
+    func isCurrentBinding(observer: ParallelScrollObservationView, scrollView: NSScrollView) -> Bool {
+        observationView === observer && knownScrollView === scrollView
+            && knownDocument != nil && knownDocument === scrollView.documentView
+    }
+
     /// Identity matching for cached native measurements: whether the document view a sample was
     /// measured in is the one the scoped relay currently discloses. A sample that fails this
     /// check belongs to a replaced (or already deallocated) native target and must be rejected,

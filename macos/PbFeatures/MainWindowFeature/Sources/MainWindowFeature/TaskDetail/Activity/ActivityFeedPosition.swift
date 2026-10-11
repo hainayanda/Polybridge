@@ -52,6 +52,7 @@ final class ActivityFeedPosition {
     var nativeViewportSize: CGSize = .zero
     var nativeOuterWidth: CGFloat?
     var pendingReadingCapture = true
+    var cancelledSinceBegin = false
     private weak var viewportScrollView: NSScrollView?
     var frames: [String: CGRect] = [:]
     var pairedViewportWidths: [String: CGFloat] = [:]
@@ -77,6 +78,12 @@ final class ActivityFeedPosition {
         viewportScrollView = scrollView
         nativeViewportSize = .zero
         nativeOuterWidth = nil
+    }
+
+    var nativeReadingOffset: CGFloat? {
+        guard let scroll = viewportScrollView, let document = scroll.documentView else { return nil }
+        let visible = scroll.documentVisibleRect
+        return document.isFlipped ? visible.minY : document.bounds.maxY - visible.maxY
     }
 
     func clearFrames() {

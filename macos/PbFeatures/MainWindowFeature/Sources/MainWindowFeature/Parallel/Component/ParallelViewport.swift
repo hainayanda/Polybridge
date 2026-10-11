@@ -3,107 +3,12 @@ import Combine
 import MonitorCore
 import SwiftUI
 
-// MARK: - ParallelColumnUIState
-
-/// Lightweight interaction state survives eviction of a conversation's activity view.
-@Observable
-@MainActor
-final class ParallelColumnUIState {
-    var expandedGroups: Set<String> = []
-    @ObservationIgnored private var followState = FollowLiveScrollState()
-    private var followsLive = true
-    var followLive: FollowLiveScrollState {
-        get { _ = followsLive; return followState }
-        set {
-            followState = newValue
-            if followsLive != newValue.isFollowing { followsLive = newValue.isFollowing }
-        }
-    }
-
-    var retainedFirstID: String?
-    var recentFirstID: String?
-    @ObservationIgnored var anchor: ParallelVerticalAnchor?
-    @ObservationIgnored var scrollOffset: CGFloat = 0
-    @ObservationIgnored var viewportPositioned = false
-    @ObservationIgnored var activityMembers: Set<String> = []
-    @ObservationIgnored var oldestSequences: [String: Int] = [:]
-    @ObservationIgnored var paginationRevision = 0
-    @ObservationIgnored var inventoryMembers: [String: TaskInfo] = [:]
-    @ObservationIgnored var inventorySession: String?
-    @ObservationIgnored var inventoryCursor: String?
-    @ObservationIgnored var inventoryComplete = false
-}
-
-// MARK: - ParallelVerticalAnchor
-
-struct ParallelVerticalAnchor: Equatable {
-    let id: String
-    let index: Int
-    let relativeOffset: CGFloat
-
-    static func capture(ids: [String], frames: [String: CGRect], viewportHeight: CGFloat, offset: CGFloat = 0) -> Self? {
-        var lower = 0
-        var upper = ids.count
-        while lower < upper {
-            let middle = lower + (upper - lower) / 2
-            guard let frame = frames[ids[middle]] else {
-                return captureMeasured(ids: ids, frames: frames, viewportHeight: viewportHeight, offset: offset)
-            }
-            if frame.maxY <= offset { lower = middle + 1 } else { upper = middle }
-        }
-        guard lower < ids.count, let frame = frames[ids[lower]],
-              frame.minY < offset + viewportHeight else { return nil }
-        return Self(id: ids[lower], index: lower, relativeOffset: frame.minY - offset)
-    }
-
-    private static func captureMeasured(ids: [String], frames: [String: CGRect], viewportHeight: CGFloat, offset: CGFloat) -> Self? {
-        let visible = frames.filter { $0.value.maxY > offset && $0.value.minY < offset + viewportHeight }
-        guard let first = visible.min(by: { $0.value.minY < $1.value.minY }),
-              let index = ids.firstIndex(of: first.key) else { return nil }
-        return Self(id: first.key, index: index, relativeOffset: first.value.minY - offset)
-    }
-
-    func offset(in frame: CGRect) -> CGFloat {
-        // Reflow can shorten a row past its saved intra-row reading position.
-        // Keep that row visible rather than restoring an offset inside its successor.
-        max(0, frame.minY - max(relativeOffset, -max(0, frame.height - 1)))
-    }
-
-    func resolvedID(in ids: [String]) -> String? {
-        if ids.contains(id) { return id }
-        guard !ids.isEmpty else { return nil }
-        return ids[min(index, ids.count - 1)]
-    }
-}
-
-// MARK: - ParallelHorizontalAnchor
-
-struct ParallelHorizontalAnchor: Equatable {
-    let id: String
-    let index: Int
-    let relativeOffset: CGFloat
-    let previousIDs: [String]
-
-    static func capture(ids: [String], stride: CGFloat, offset: CGFloat) -> Self? {
-        guard !ids.isEmpty, stride > 0 else { return nil }
-        let index = min(ids.count - 1, max(0, Int(floor(max(0, offset) / stride))))
-        return Self(id: ids[index], index: index, relativeOffset: offset - CGFloat(index) * stride, previousIDs: ids)
-    }
-
-    func offset(ids: [String], stride: CGFloat) -> CGFloat {
-        guard !ids.isEmpty else { return 0 }
-        let positions = Dictionary(ids.enumerated().map { ($0.element, $0.offset) }, uniquingKeysWith: { first, _ in first })
-        var position = positions[id]
-        if position == nil {
-            for distance in 1 ... max(1, previousIDs.count) {
-                let next = index + distance
-                let previous = index - distance
-                if next < previousIDs.count, let survivor = positions[previousIDs[next]] { position = survivor; break }
-                if previous >= 0, let survivor = positions[previousIDs[previous]] { position = survivor; break }
-            }
-        }
-        return CGFloat(position ?? min(index, ids.count - 1)) * stride + min(relativeOffset, max(0, stride - 1))
-    }
+/// A synchronous cancellation handoff tied to the observer's current scoped native binding.
+struct ParallelScrollRestorationCancellation {
+    let observer: ParallelScrollObservationView
+    let scrollView: NSScrollView
+    let generation: Int
+    let isUpward: Bool
 }
 
 // MARK: - ParallelScrollObserver
@@ -116,6 +21,9 @@ struct ParallelScrollObserver: NSViewRepresentable {
     var columnStride: CGFloat = 0
     var restorationOffset: CGFloat?
     var restorationActive = false
+    var restorationGeneration = 0
+    var followsLive = false
+    var onRestorationCancelled: ((ParallelScrollRestorationCancellation) -> Int?)?
     var onViewportSize: ((CGSize) -> Void)?
     /// Native vertical geometry separates the clip viewport from scrollbar-independent outer width.
     var onNativeViewportGeometry: ((CGSize, CGFloat) -> Void)?
@@ -150,11 +58,13 @@ struct ParallelScrollObserver: NSViewRepresentable {
         view.onViewportSize = onViewportSize
         view.onNativeViewportGeometry = onNativeViewportGeometry
         view.onUpwardIntent = onUpwardIntent
+        view.followsLive = followsLive
+        view.onRestorationCancelled = onRestorationCancelled
         if let nativeIdentity {
             view.anchorProvider = nativeIdentity.resolvedAnchorProvider(fallback: anchorProvider)
         } else { view.anchorProvider = anchorProvider }
         view.updateWheelMonitor()
-        view.configure(ids: columnIDs, stride: columnStride, restorationOffset: restorationOffset, restorationActive: restorationActive)
+        view.configure(ids: columnIDs, stride: columnStride, restorationOffset: restorationOffset, restorationActive: restorationActive, generation: restorationGeneration)
         view.bindNativeIdentity(nativeIdentity)
     }
 }
@@ -186,6 +96,10 @@ final class ParallelScrollObservationView: NSView {
     /// The reading-anchor provider of the adopted native target, held weakly: it dies with the
     /// lease that created it. Nil for every default observer.
     weak var anchorProvider: ParallelScrollAnchorProvider?
+    var followsLive = false
+    var onRestorationCancelled: ((ParallelScrollRestorationCancellation) -> Int?)?
+    private var restorationGeneration = 0
+    private var cancelledGeneration: Int?
     private var wheelMonitor: Any?
     private var liveUserScroll = false
     private var reevaluatingRestoration = false
@@ -233,6 +147,7 @@ final class ParallelScrollObservationView: NSView {
     /// monitor and fails closed; a repeated identical target only reports.
     func adoptNativeIdentity(_ scrollView: NSScrollView?) {
         guard usesNativeIdentity, !isTornDown else { return }
+        if nativeTarget !== scrollView { cancelledGeneration = nil }
         nativeTarget = scrollView
         applyNativeIdentity(scrollView)
     }
@@ -265,7 +180,7 @@ final class ParallelScrollObservationView: NSView {
                     lastReported = nil
                     report(documentGeometryChanged: true)
                 } else {
-                    cancelAnchorReference()
+                    cancelLegacyAnchorReference()
                     documentSubscription = nil
                     observedDocument = nil
                 }
@@ -355,12 +270,15 @@ final class ParallelScrollObservationView: NSView {
         scroll.contentInsets = backup.insets
     }
 
-    func configure(ids: [String], stride: CGFloat, restorationOffset: CGFloat?, restorationActive: Bool) {
+    func configure(ids: [String], stride: CGFloat, restorationOffset: CGFloat?, restorationActive: Bool, generation: Int = 0) {
+        let generationChanged = generation != restorationGeneration
+        restorationGeneration = generation
+        let suppressed = usesNativeIdentity && axis == .vertical && cancelledGeneration.map { generation <= $0 } == true
         diagnose("configure entry incomingActive=\(restorationActive) incomingOffset=\(String(describing: restorationOffset))")
-        let restorationOffset = anchorProvider?.isAnchorRestorationActive == false ? nil : restorationOffset
-        let restorationActive = anchorProvider?.isAnchorRestorationActive == false ? false : restorationActive
+        let restorationOffset = (suppressed || anchorProvider?.isAnchorRestorationActive == false) ? nil : restorationOffset
+        let restorationActive = (suppressed || anchorProvider?.isAnchorRestorationActive == false) ? false : restorationActive
         let geometryChanged = configuredAxis != axis || ids != self.ids || stride != self.stride
-        guard geometryChanged || restorationOffset != requestedOffset || restorationActive != self.restorationActive else { return }
+        guard generationChanged || geometryChanged || restorationOffset != requestedOffset || restorationActive != self.restorationActive else { return }
         if !restorationActive { pendingPositionAcknowledgement = false }
         if restorationActive, restorationOffset != nil,
            restorationOffset != requestedOffset || restorationActive != self.restorationActive {
@@ -374,7 +292,7 @@ final class ParallelScrollObservationView: NSView {
         }
         self.ids = ids
         self.stride = stride
-        if restorationOffset != requestedOffset {
+        if generationChanged || restorationOffset != requestedOffset {
             requestedOffset = restorationOffset
             if let restorationOffset { pendingOffset = restorationOffset } else if axis == .vertical { pendingOffset = nil }
         }
@@ -502,7 +420,7 @@ final class ParallelScrollObservationView: NSView {
         // Continued wheel movement in either direction is real user intent: it ends an armed
         // anchor provider's reference before the next correction can fight the reader's own
         // position.
-        if event.scrollingDeltaY != 0 { cancelAnchorReference() }
+        if event.scrollingDeltaY != 0 { cancelAnchorReference(isUpward: event.scrollingDeltaY > 0) }
         if event.scrollingDeltaY > 0, event.phase.isEmpty || event.phase.contains(.began) { signalUpwardIntent() }
     }
 
@@ -536,10 +454,32 @@ final class ParallelScrollObservationView: NSView {
         }
     }
 
-    /// Ends an armed anchor provider's reference and clears this observer's own queued
-    /// restoration targets, so no stale numeric target lands after the user's own move. A nil
-    /// or inactive provider leaves the observer untouched.
-    private func cancelAnchorReference() {
+    /// User input retires the entire native restoration generation before any callback.
+    private func cancelAnchorReference(isUpward: Bool = false) {
+        guard usesNativeIdentity, axis == .vertical else {
+            cancelLegacyAnchorReference()
+            return
+        }
+        let providerActive = anchorProvider?.isAnchorRestorationActive == true
+        guard isUpward || !followsLive || providerActive else { return }
+        let hadWork = restorationActive || pendingOffset != nil || nativeAnchorTarget != nil || providerActive
+        cancelledGeneration = max(cancelledGeneration ?? restorationGeneration, restorationGeneration)
+        pendingOffset = nil
+        requestedOffset = nil
+        nativeAnchorTarget = nil
+        nativeAnchorTargetProvider = nil
+        restorationActive = false
+        pendingPositionAcknowledgement = false
+        anchorProvider?.cancelAnchorRestoration()
+        if hadWork, let scrollView = observedScrollView,
+           let acceptedGeneration = onRestorationCancelled?(ParallelScrollRestorationCancellation(
+               observer: self, scrollView: scrollView, generation: restorationGeneration, isUpward: isUpward
+           )), observedScrollView === scrollView {
+            cancelledGeneration = max(cancelledGeneration ?? restorationGeneration, acceptedGeneration)
+        }
+    }
+
+    private func cancelLegacyAnchorReference() {
         guard let anchorProvider else { return }
         anchorProvider.cancelAnchorRestoration()
         restorationActive = false
@@ -549,12 +489,7 @@ final class ParallelScrollObservationView: NSView {
     }
 
     private func signalUpwardIntent() {
-        if usesNativeIdentity {
-            pendingOffset = nil
-            requestedOffset = nil
-            restorationActive = false
-            anchorProvider?.cancelAnchorRestoration()
-        }
+        cancelAnchorReference(isUpward: true)
         onUpwardIntent?()
     }
 
