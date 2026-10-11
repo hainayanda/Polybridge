@@ -180,10 +180,30 @@ import Testing
         let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 420, height: 450), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false; window.contentView = host; window.orderFront(nil)
         defer { window.contentView = nil; window.close() }
-        await waitUntil { host.layoutSubtreeIfNeeded(); return state.anchor != nil && state.scrollOffset > 500 }
+        await waitUntil {
+            host.layoutSubtreeIfNeeded()
+            return state.anchor != nil && state.viewportPositioned && state.scrollOffset > 500
+        }
         let scroll = try #require(descendants(host).compactMap { $0 as? NSScrollView }.first)
+        NotificationCenter.default.post(name: NSScrollView.willStartLiveScrollNotification, object: scroll)
         scroll.contentView.scroll(to: CGPoint(x: 0, y: 400)); scroll.reflectScrolledClipView(scroll.contentView)
         await waitUntil { abs(state.scrollOffset - 400) < 2 && !state.followLive.isFollowing }
+        NotificationCenter.default.post(name: NSScrollView.didEndLiveScrollNotification, object: scroll)
+        var settledAnchor: ParallelVerticalAnchor?
+        var stableSamples = 0
+        await waitUntil {
+            host.layoutSubtreeIfNeeded()
+            let current = state.anchor
+            if current == settledAnchor {
+                stableSamples += 1
+            } else {
+                settledAnchor = current
+                stableSamples = 0
+            }
+            return stableSamples >= 2 && current != nil && !state.followLive.isFollowing
+        }
+        try #require(state.anchor != nil && !state.followLive.isFollowing,
+                     "The reading anchor must settle while the feed is paused before replacing history")
         #expect(state.anchor != nil)
         host.rootView = ActivityFeedView(rows: [], start: nil, history: EventHistoryState(), isLoading: false,
             state: state, onLoadMore: nil) { EmptyView() }.frame(width: 420, height: 450)
