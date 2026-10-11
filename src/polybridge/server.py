@@ -1228,6 +1228,10 @@ async def delete_workflow(name: str) -> dict[str, Any]:
 async def workflow_builder(name: str, prompt: str, repo_path: str | None = None, agent: dict[str, Any] | None = None, fallbacks: list[dict[str, Any]] | None = None, definition: dict[str, Any] | None = None, source: dict[str, Any] | None = None) -> dict[str, Any]:
     """Generate a workflow, or refine the current canvas into an unsaved validated proposal.
 
+    Write prompt in plain prose: preserve spaces and word boundaries rather than
+    concatenating words to save tokens. The caller's prompt is retained unchanged
+    before builder input assembly.
+
     Layout uses top-left logical point coordinates with x/y >= 0 and a 10-point dot grid.
     Agent nodes are 200 x 92 points (reserve 20 x 10 grid cells); Start/End are 72 x 72
     (reserve 8 x 8 cells). Leave at least 40 points (4 cells) between node edges and avoid
@@ -1256,7 +1260,11 @@ async def workflow_builder(name: str, prompt: str, repo_path: str | None = None,
 
 @mcp.tool()
 async def followup_workflow_builder(run_id: str, prompt: str) -> dict[str, Any]:
-    """Queue a message in the same workflow-builder conversation without saving its draft."""
+    """Queue a message in the same workflow-builder conversation without saving its draft.
+
+    Preserve spaces and word boundaries in prompt rather than compressing natural
+    prose; the caller's source text is retained unchanged before builder input assembly.
+    """
     return await _workflow_call("builder_followup", run_id=run_id, prompt=prompt)
 
 
@@ -1479,7 +1487,11 @@ async def inspect_workflow_node(workflow_run_id: str, execution_id: str, task_id
 
 @mcp.tool()
 async def recover_workflow(workflow_run_id: str, reason: str, additional_attempts: int = 0) -> dict[str, Any]:
-    """Explicitly recover a failed settled run; retain completed work and supply a reason."""
+    """Explicitly recover a failed settled run; retain completed work and supply a reason.
+
+    Preserve spaces and word boundaries in reason rather than compressing natural
+    prose; the caller's source text is retained unchanged before workflow input assembly.
+    """
     if not reason or not reason.strip():
         raise MCPError(INVALID_PARAMS, "Recovery reason must be nonempty")
     from .workflow_responses import compact
