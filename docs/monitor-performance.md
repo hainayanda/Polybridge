@@ -954,3 +954,6 @@ All four affected tests passed locally again; no assertions or deadlines were re
 Activity feeds retain List's native table sizing to avoid first-load scroll oscillation.
 Cards have a slightly larger horizontal inset; restoring the prior inset remains follow-up work.
 Paused reading restoration uses the measured row width when the viewport resizes.
+Upward adjustments within the existing 24-point follow zone return to the latest content immediately.
+This includes selection, focus or accessibility scrolling that sends no separate user-intent signal.
+A paused reader moving down into this zone keeps the chosen offset until the next content change.

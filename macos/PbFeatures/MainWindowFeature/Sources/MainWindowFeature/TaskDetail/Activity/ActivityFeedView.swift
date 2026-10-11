@@ -159,8 +159,13 @@ struct ActivityFeedView<Tail: View>: View {
                 if offset < position.offset { shortFillBudget.replenish() }
             }
             if positioned, !restoring, !followingLayout, abs(content - position.content) < 0.5, position.viewport == viewport, offset < position.offset - 0.5 {
+                let wasFollowing = state.followLive.isFollowing
                 state.followLive.observe(offset: offset, contentHeight: content, viewportHeight: viewport)
                 if !state.followLive.isFollowing { targetOffset = nil }
+                // Within the 24pt follow threshold, return to bottom without waiting for another render.
+                if wasFollowing, state.followLive.isFollowing, max(0, content - viewport) - offset > 1 {
+                    followingLayout = true
+                }
             }
             if state.followLive.isFollowing, position.content != content || position.viewport != viewport { followingLayout = true }
             position.measurements.scheduleMeasurements()
