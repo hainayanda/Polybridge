@@ -45,6 +45,66 @@ import Testing
         #expect(viewportSizes.count > beforeResize)
     }
 
+    @Test func givenNativeVerticalObserver_whenOuterAndClipGeometryChangeSeparately_thenEachPairPublishesOnce() async throws {
+        _ = NSApplication.shared
+        let harness = try NativeIdentityHarness()
+        defer { harness.close() }
+        let identity = ParallelScrollNativeIdentity()
+        let view = harness.makeObserver()
+        var geometries: [(clip: CGSize, outerWidth: CGFloat)] = []
+        view.usesNativeIdentity = true
+        view.axis = .vertical
+        view.onNativeViewportGeometry = { clip, outerWidth in
+            geometries.append((clip, outerWidth))
+        }
+        identity.register(view)
+        identity.deliver(harness.targetA)
+        await waitUntil(timeout: 2) { !geometries.isEmpty }
+        let initial = try #require(geometries.last)
+        // Suppress AppKit's automatic tiling notifications while preparing each geometry, then
+        // deliver one real frame notification at a time. This proves the two subscriptions and
+        // makes identical-notification deduplication deterministic.
+        harness.targetA.postsFrameChangedNotifications = false
+        harness.targetA.postsBoundsChangedNotifications = false
+        harness.targetA.contentView.postsFrameChangedNotifications = false
+        harness.targetA.contentView.postsBoundsChangedNotifications = false
+        var outerFrame = harness.targetA.frame
+        outerFrame.size.width += 20
+        harness.targetA.setFrameSize(outerFrame.size)
+        harness.targetA.contentView.setFrameSize(NSSize(width: initial.clip.width,
+                                                        height: harness.targetA.contentView.bounds.height))
+        let prepared = geometries.count
+        harness.targetA.postsFrameChangedNotifications = true
+        NotificationCenter.default.post(name: NSView.frameDidChangeNotification,
+                                        object: harness.targetA)
+        #expect(geometries.count == prepared + 1)
+        let outerChange = try #require(geometries.last)
+        #expect(abs(outerChange.outerWidth - (initial.outerWidth + 20)) < 1)
+        let afterOuter = geometries.count
+        NotificationCenter.default.post(name: NSView.frameDidChangeNotification,
+                                        object: harness.targetA)
+        #expect(geometries.count == afterOuter)
+
+        // A later clip-width change with the same outer frame is distinct, while repeating the
+        // same notification remains deduplicated synchronously.
+        harness.targetA.postsFrameChangedNotifications = false
+        harness.targetA.contentView.postsFrameChangedNotifications = false
+        harness.targetA.contentView.postsBoundsChangedNotifications = false
+        harness.targetA.contentView.setFrameSize(NSSize(width: initial.clip.width - 12,
+                                                        height: harness.targetA.contentView.bounds.height))
+        harness.targetA.contentView.postsFrameChangedNotifications = true
+        NotificationCenter.default.post(name: NSView.frameDidChangeNotification,
+                                        object: harness.targetA.contentView)
+        #expect(geometries.count == afterOuter + 1)
+        let clipChange = try #require(geometries.last)
+        #expect(abs(clipChange.outerWidth - outerChange.outerWidth) < 1)
+        #expect(abs(clipChange.clip.width - (initial.clip.width - 12)) < 1)
+        let afterClip = geometries.count
+        NotificationCenter.default.post(name: NSView.frameDidChangeNotification,
+                                        object: harness.targetA.contentView)
+        #expect(geometries.count == afterClip)
+    }
+
     @Test func givenRestorationQueuedBeforeNativeDiscovery_whenTargetArrives_thenPendingOffsetIsApplied() async throws {
         // given
         _ = NSApplication.shared

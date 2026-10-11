@@ -9,6 +9,14 @@ import Testing
 
 extension ActivityFeedReadingGeometryTests {
     @Test func givenPausedFeedNearOlderPageBoundary_whenOlderRowsLoad_thenReadingViewportDoesNotJumpDuringRealization() async throws {
+        try await runOlderPageRegression(forceLegacyScroller: false)
+    }
+
+    @Test func givenPausedFeedNearOlderPageBoundary_whenLegacyScrollerConsumesClipWidth_thenReadingViewportDoesNotJumpDuringRealization() async throws {
+        try await runOlderPageRegression(forceLegacyScroller: true)
+    }
+
+    private func runOlderPageRegression(forceLegacyScroller: Bool) async throws {
         _ = NSApplication.shared
         let state = ParallelColumnUIState()
         let requests = PageRequests()
@@ -36,6 +44,11 @@ extension ActivityFeedReadingGeometryTests {
         try #require(!state.followLive.isFollowing && state.anchor != nil
                          && scroll.documentVisibleRect.minY <= 200)
         let anchor = try #require(state.anchor)
+        await waitUntil(timeout: 5) { @MainActor in
+            captureMountedAnchor(id: anchor.id, host: host, scroll: scroll) != nil
+        }
+        try #require(captureMountedAnchor(id: anchor.id, host: host, scroll: scroll) != nil,
+                     "The retained row must be mounted before recording paired native width")
         let recorder = AnchorTraceRecorder(host: host, scroll: scroll, anchorID: anchor.id,
                                            rowIDs: current.map(\.id))
         recorder.capture()
@@ -43,9 +56,29 @@ extension ActivityFeedReadingGeometryTests {
         let diagnostics = try BoundedRestorationDiagnosticTrace(host: host)
         defer { diagnostics.detach() }
 
+        let outerWidth = forceLegacyScroller
+            ? try applyLegacyChrome(host: host, scroll: scroll, anchor: anchor, diagnostics: diagnostics)
+            : 0
+
         host.rootView = feed(older + current, state: state,
             history: EventHistoryState(hasMore: false), onLoadMore: { requests.total += 1; return true })
         recorder.rowIDs = (older + current).map(\.id)
+        let trace = try await finishOlderPagePublication(state: state, recorder: recorder)
+        let restoration = diagnostics.messages.joined(separator: " | ")
+        let excursion = recorder.samples.map { abs($0.relativeOffset - anchor.relativeOffset) }.max() ?? 0
+        #expect(excursion < 4,
+                "Loading older rows must not visibly jump the retained cell: \(trace) restoration=\(restoration)")
+        if forceLegacyScroller {
+            #expect(abs(scroll.bounds.width - outerWidth) < 1)
+            #expect(!diagnostics.messages.contains { $0.contains("target measured-resize") },
+                    "Chrome-only pagination must never enter measured-resize: \(diagnostics.messages)")
+        }
+    }
+
+    private func finishOlderPagePublication(
+        state: ParallelColumnUIState,
+        recorder: AnchorTraceRecorder
+    ) async throws -> String {
         for _ in 0 ..< 30 {
             recorder.capture()
             try await Task.sleep(for: .milliseconds(25))
@@ -54,20 +87,38 @@ extension ActivityFeedReadingGeometryTests {
             state.viewportPositioned && !state.followLive.isFollowing && state.anchor != nil
         }
         recorder.capture()
-        let trace = recorder.samples
-.map {
+        try #require(recorder.samples.count >= 4)
+        return formatTrace(recorder.samples)
+    }
+
+    private func applyLegacyChrome(host: NSView, scroll: NSScrollView,
+                                   anchor: ParallelVerticalAnchor,
+                                   diagnostics: BoundedRestorationDiagnosticTrace) throws -> CGFloat {
+        let outerWidth = scroll.bounds.width
+        let overlayClipWidth = scroll.contentView.bounds.width
+        scroll.autohidesScrollers = false
+        scroll.scrollerStyle = .legacy
+        scroll.layoutSubtreeIfNeeded()
+        try #require(abs(scroll.bounds.width - outerWidth) < 1,
+                     "The paging fixture must keep the outer scroll frame fixed")
+        try #require(scroll.contentView.bounds.width < overlayClipWidth - 1,
+                     "Legacy vertical chrome must reduce the native clip width")
+        try #require(!diagnostics.messages.contains { $0.contains("target measured-resize") },
+                     "A fixed-outer-width chrome transition must not be classified as measured-resize: \(diagnostics.messages)")
+        let chromeAnchor = try #require(captureMountedAnchor(id: anchor.id, host: host, scroll: scroll))
+        try #require(abs(chromeAnchor.relativeOffset - anchor.relativeOffset) < 4,
+                     "Legacy chrome must not move the retained row before pagination")
+        return outerWidth
+    }
+
+    private func formatTrace(_ samples: [AnchorTraceRecorder.Sample]) -> String {
+        samples.map {
             String(format: "t=%.3f off=%.1f doc=%.1f rows=%d target=%d native=(%.1f,%.1f,%.1f,%.1f) measured=%.1f",
                    $0.timestamp, $0.offset, $0.documentHeight, $0.tableRows, $0.targetRow,
                    $0.nativeFrame.minX, $0.nativeFrame.minY, $0.nativeFrame.width, $0.nativeFrame.height,
                    $0.relativeOffset)
         }
 .joined(separator: " | ")
-        let restoration = diagnostics.messages.joined(separator: " | ")
-        try #require(recorder.samples.count >= 4)
-        try #require(recorder.samples.count > 1)
-        let excursion = recorder.samples.map { abs($0.relativeOffset - anchor.relativeOffset) }.max() ?? 0
-        #expect(excursion < 4,
-                "Loading older rows must not visibly jump the retained cell: \(trace) restoration=\(restoration)")
     }
 
     @MainActor
@@ -102,6 +153,22 @@ extension ActivityFeedReadingGeometryTests {
             messages.append(String(format: "t=%.3f %@",
                                         ProcessInfo.processInfo.systemUptime, message))
         }
+    }
+
+    /// Captures the exact retained row instead of selecting whichever realized row is nearest
+    /// the viewport edge. That distinction matters when a scrollbar transition changes which
+    /// row is first visible: the regression must keep the original semantic identity.
+    func captureMountedAnchor(id: String, host: NSView, scroll: NSScrollView) -> MountedFeedAnchor? {
+        guard let document = scroll.documentView,
+              let table = document as? NSTableView else { return nil }
+        guard let view = descendants(host)
+.compactMap({ $0 as? ActivityRowGeometry.MeasurementView })
+            .first(where: { $0.stableID == id && table.row(for: $0) >= 0 }) else { return nil }
+        let frame = view.convert(view.bounds, to: document)
+        guard frame.width > 0, frame.height > 0,
+              frame.maxY > scroll.documentVisibleRect.minY,
+              frame.minY < scroll.documentVisibleRect.maxY else { return nil }
+        return MountedFeedAnchor(id: id, relativeOffset: frame.minY - scroll.documentVisibleRect.minY)
     }
 
     @Test func givenPausedFeedWithUnrealizedRetainedAnchor_whenOlderRowsLoad_thenProxyFallbackRestoresThatAnchor() async throws {
@@ -151,9 +218,13 @@ extension ActivityFeedReadingGeometryTests {
         try await exerciseContinuedWheel(direction: .down)
     }
 
-    func verifyPublishedHistory(host: NSView, state: ParallelColumnUIState,
-                               scroll: NSScrollView, pausedAnchor: ParallelVerticalAnchor,
-                               generationBeforePublication: Int) async throws {
+    func verifyPublishedHistory(
+        host: NSView,
+        state: ParallelColumnUIState,
+        scroll: NSScrollView,
+        pausedAnchor: ParallelVerticalAnchor,
+        generationBeforePublication: Int
+    ) async throws {
         await waitUntil(timeout: 5) {
             @MainActor in measurementGeneration(in: host) > generationBeforePublication
                 && state.viewportPositioned && !state.followLive.isFollowing
