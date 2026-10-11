@@ -26,7 +26,7 @@ struct TaskStatusLabel: View {
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 StatusBadge(
                     status: task.status,
-                    elapsedText: Format.clock(task.elapsed(now: context.date)),
+                    elapsedText: task.elapsed(now: context.date).map(Format.clock),
                     isTakenOver: task.takenOver
                 )
             }
