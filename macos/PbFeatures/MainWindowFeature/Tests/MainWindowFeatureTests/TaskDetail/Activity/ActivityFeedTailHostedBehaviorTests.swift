@@ -80,7 +80,8 @@ import Testing
         try #require(ready, "Tail-only list must expose exactly tail plus sentinel: \(table.numberOfRows)")
         let tail = table.rect(ofRow: 0)
         let sentinel = table.rect(ofRow: 1)
-        let tailScreen = table.convert(tail, to: nil)
+        let tailWindow = table.convert(tail, to: nil)
+        let tailScreen = try #require(table.window?.convertToScreen(tailWindow))
         let tailContent = try #require(accessibilityTree(host).compactMap(accessibilityFrame).first { frame in
             frame.height >= 10 && frame.height < tail.height && frame.intersects(tailScreen)
         })

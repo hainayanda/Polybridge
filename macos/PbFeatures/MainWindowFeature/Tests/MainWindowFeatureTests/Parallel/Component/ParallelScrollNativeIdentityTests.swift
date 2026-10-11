@@ -589,7 +589,7 @@ private func insetsEqual(_ lhs: NSEdgeInsets, _ rhs: NSEdgeInsets) -> Bool {
 
 // MARK: - Fixture
 
-@MainActor private final class NativeIdentityHarness {
+@MainActor final class NativeIdentityHarness {
     let root: NSView
     let window: NSWindow
     let targetA: NSScrollView
