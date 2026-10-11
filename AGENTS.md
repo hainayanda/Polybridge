@@ -17,6 +17,12 @@ Keep the README concise and link to detailed guides. Update affected tool docstr
 when their contracts change, verify documentation examples and links, and remove resolved draft
 notes once their implemented behavior is covered by maintained documentation.
 
+Caller handoffs — prompts, follow-ups, live messages and workflow answers — are the caller's prose:
+polybridge stores and delivers them verbatim, and the tool docstrings and caller guides say so,
+telling callers to preserve spaces and word boundaries rather than concatenating words to save
+tokens. The one deliberate whitespace collapse, `recent_activity`'s one-line summaries, is
+display-only and documented as such.
+
 ## Commands
 
 ```bash

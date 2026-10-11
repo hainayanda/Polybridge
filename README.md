@@ -33,7 +33,9 @@ explain when to move forward or return for fixes.
 ## How it works
 
 The **orchestrator** owns your original request, workflow context, and checklist. It chooses among
-valid next steps and writes a focused assignment for each worker.
+valid next steps and writes a focused assignment for each worker. Assignments and answers travel
+verbatim — write them in plain prose with spaces and word boundaries intact, never compressed to
+save tokens; see [context delivery](docs/workflows.md#context-delivery).
 
 **Worker nodes** receive their own instructions, the assignment, and relevant results. Planning
 returns both a technical plan and tasks; implementation, review, and test steps return structured

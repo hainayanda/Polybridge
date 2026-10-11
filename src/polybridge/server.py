@@ -313,7 +313,11 @@ async def start_task(
     """Dispatch a coding task to a headless agent and return immediately.
 
     Args:
-        prompt: Instructions for the agent. Be specific about the desired end state.
+        prompt: Instructions for the agent. Be specific about the desired end state. Write it in
+            plain prose: preserve spaces and word boundaries, and never concatenate words or strip
+            whitespace to shrink the payload — polybridge stores and delivers the text exactly as
+            submitted, so compressed text reaches the agent exactly as garbled. Blank or
+            all-whitespace prompts are rejected rather than trimmed into shape.
         repo_path: Absolute path to a git repository; the agent's working directory.
         backend: Which agent to use — "claude", "codex", "opencode", "vibe" or "antigravity". See
             list_backends.
@@ -432,9 +436,11 @@ async def get_task_status(
     Returns the task's status, summary, enforcement, and `recent_activity` — a list of ≤ 5 one-line
     strings describing the most recent meaningful events (tool calls, failed tool results, assistant
     messages, notices). For running tasks this gives a live summary without the bulk of the
-    raw stream. `total_cost_usd` is null for backends that do not report cost — Codex, vibe and
-    Antigravity report tokens only or nothing (vibe reports neither cost nor tokens nor a turn
-    count).
+    raw stream. These lines deliberately collapse whitespace and truncate to stay short — they are
+    a summary only; the stored event log (see get_task_events) and every stored or delivered
+    message keep their original text intact. `total_cost_usd` is null for backends that do not
+    report cost — Codex, vibe and Antigravity report tokens only or nothing (vibe reports neither
+    cost nor tokens nor a turn count).
 
     `enforcement` states what the run's restrictions actually amounted to, and `mcp_servers` (where
     the backend reports them) shows what the agent loaded. Tasks started by an earlier polybridge
@@ -612,7 +618,11 @@ async def resume_task(
 
     Args:
         task_id: A task that has finished; its session is the one resumed.
-        followup_prompt: What the agent should do next, with the prior context intact.
+        followup_prompt: What the agent should do next, with the prior context intact. Write it
+            in plain prose, as with start_task's prompt: preserve spaces and word boundaries and
+            never concatenate words to shrink the payload — the text is stored and delivered
+            exactly as submitted. Blank or all-whitespace follow-ups are rejected rather than
+            trimmed into shape.
         max_turns: Cap on agent turns, where the backend supports one.
         network: Optional boolean overriding the parent run's network setting for this run only:
             None (the default) inherits what the parent was dispatched with — which is also the
@@ -934,7 +944,9 @@ async def send_message(task_id: str, text: str) -> dict[str, Any]:
     Args:
         task_id: A running task whose `live_input` is true (claude started without `max_turns`,
             or any antigravity task).
-        text: The message.
+        text: The message, stored and delivered exactly as submitted — keep plain prose intact,
+            as with start_task's prompt: spaces and word boundaries preserved, never words
+            concatenated to save tokens. Blank or all-whitespace messages are rejected.
 
     Returns `status: "queued"` — never "delivered". The task's input pump writes the message to the
     agent: on claude, a message arriving while a turn is running is folded into that turn, and one
@@ -1290,6 +1302,9 @@ async def preview_workflow_run(name: str, repo_path: str, overrides: dict[str, A
 async def start_workflow(name: str, prompt: str, repo_path: str, overrides: dict[str, Any] | None = None, freedom: str | None = None, network: StrictBool | None = None, expected_preview_hash: str | None = None) -> dict[str, Any]:
     """Start a durable workflow run; returns workflow_run_id rather than task_id.
 
+    Preserve spaces and word boundaries in prompt rather than compressing natural prose;
+    the caller's source text is stored unchanged before workflow input assembly.
+
     The complete dependency tree of any Run workflow node is resolved and pinned
     before the run is created, so later edits or deletes never reinterpret the
     run. Children are linked runs that share the root's harness-turn budget;
@@ -1400,6 +1415,9 @@ async def pause_workflow(workflow_run_id: str) -> dict[str, Any]:
 @mcp.tool()
 async def resume_workflow(workflow_run_id: str, instructions: str | None = None, additional_attempts: int = 0, decision_id: str | None = None, allow_optional_review_skip: StrictBool = False) -> dict[str, Any]:
     """Resume a caller-owned run with instructions and optional explicit attempt grants.
+
+    Preserve spaces and word boundaries in instructions rather than compressing natural
+    prose; the caller's source text is retained unchanged before workflow input assembly.
 
     For needs_input, supply its current input_decision_id as decision_id and a nonempty answer
     in instructions. Stale answers and live/uncertain dispatches are refused. When the root
