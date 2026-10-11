@@ -377,14 +377,14 @@ import Testing
         return measured
     }
 
-    private func feed(_ rows: [ActivityRow], state: ParallelColumnUIState,
+    func feed(_ rows: [ActivityRow], state: ParallelColumnUIState,
                       history: EventHistoryState = EventHistoryState(),
                       onLoadMore: (() -> Bool)? = nil) -> some View {
         ActivityFeedView(rows: rows, start: nil, history: history, isLoading: false,
                          horizontalPadding: 24, state: state, onLoadMore: onLoadMore) { EmptyView() }.readingColumn()
     }
 
-    private final class PageRequests { var total = 0 }
+    final class PageRequests { var total = 0 }
 
     private func rows(prepending: Bool) -> [ActivityRow] {
         let before = ConversationTimelineRow(id: "before", taskID: "synthetic", timestamp: nil,
@@ -401,9 +401,146 @@ import Testing
         return ActivityRowsBuilder.build(from: [before] + calls + [after])
     }
 
-    private func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
+    func pagedRows(prefix: String, count: Int, sequence: Int) -> [ActivityRow] {
+        let timeline = (0 ..< count).map { index in
+            ConversationTimelineRow(id: "\(prefix)-\(index)", taskID: "synthetic", timestamp: nil,
+                kind: .item(PreviewFixtures.textItem(
+                    String(repeating: "History row \(index) varies in height so lazy List realization is observable.\n\n",
+                                   count: 1 + (index % 4)), seq: sequence + index)), live: false)
+        }
+        return ActivityRowsBuilder.build(from: timeline)
+    }
 
-    private func firstVisibleMeasurementFrame(in host: NSView, scroll: NSScrollView) -> CGRect? {
+    func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
+
+    func mountedMeasurementFrame(forNativeRow row: Int, host: NSView,
+                                         table: NSTableView, scroll: NSScrollView) -> CGRect? {
+        guard let document = scroll.documentView else { return nil }
+        guard let view = descendants(host)
+.compactMap({ $0 as? ActivityRowGeometry.MeasurementView })
+            .first(where: { table.row(for: $0) == row }) else { return nil }
+        let frame = view.convert(view.bounds, to: document)
+        return frame.intersects(scroll.documentVisibleRect) ? frame : nil
+    }
+
+    enum ContinuedWheelDirection: Equatable {
+        case up, down
+
+        var deltaY: Int32 { self == .up ? 8 : -8 }
+        var offsetDelta: CGFloat { self == .up ? -30 : 30 }
+    }
+
+    func exerciseContinuedWheel(direction: ContinuedWheelDirection) async throws {
+        _ = NSApplication.shared
+        let state = ParallelColumnUIState()
+        let requests = PageRequests()
+        let current = pagedRows(prefix: "wheel-current", count: 100, sequence: 100)
+        let older = pagedRows(prefix: "wheel-older", count: 100, sequence: 0)
+        let host = NSHostingView(rootView: feed(current, state: state,
+            history: EventHistoryState(hasMore: true), onLoadMore: { requests.total += 1; return true }))
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 420, height: 450),
+                              styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        window.makeKeyAndOrderFront(nil)
+        defer { window.contentView = nil; window.close() }
+        await waitUntil(timeout: 5) { @MainActor in state.viewportPositioned && state.followLive.isFollowing }
+        try #require(state.viewportPositioned && state.followLive.isFollowing)
+        let scroll = try #require(descendants(host).compactMap { $0 as? NSScrollView }.first { $0.hasVerticalScroller })
+        // Enter the pending-page state through the same native wheel path as the user. The
+        // subsequent direction-specific wheel below is the continued input being protected.
+        let initialPhase = dispatchScrollWheel(8, phase: .began, in: scroll)
+        try #require(initialPhase?.contains(.began) == true,
+                     "The initial wheel event must be delivered with began phase; actual phase raw value: \(initialPhase?.rawValue ?? 0)")
+        scroll.contentView.scroll(to: CGPoint(x: scroll.contentView.bounds.minX, y: 150))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        await waitUntil(timeout: 5) { @MainActor in requests.total > 0 && !state.followLive.isFollowing }
+        try #require(requests.total == 1 && !state.followLive.isFollowing)
+        let desiredOffset = 150 + direction.offsetDelta
+
+        NotificationCenter.default.post(name: NSScrollView.willStartLiveScrollNotification, object: scroll)
+        let continuedPhase = dispatchScrollWheel(direction.deltaY, phase: .changed, in: scroll)
+        try #require(continuedPhase?.contains(.changed) == true,
+                     "The continued wheel event must be delivered with changed phase; actual phase raw value: \(continuedPhase?.rawValue ?? 0)")
+        scroll.contentView.scroll(to: CGPoint(x: scroll.contentView.bounds.minX, y: desiredOffset))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        NotificationCenter.default.post(name: NSScrollView.didEndLiveScrollNotification, object: scroll)
+        await waitUntil(timeout: 2) { @MainActor in
+            abs(scroll.documentVisibleRect.minY - desiredOffset) < 3
+        }
+        try #require(abs(scroll.documentVisibleRect.minY - desiredOffset) < 3,
+                     "The continued wheel movement must reach the native viewport before publication")
+        let beforeAnchor = try #require(captureMountedAnchor(host: host, scroll: scroll, rowIDs: current.map(\.id)),
+                                        "The latest wheel position must have a mounted semantic anchor")
+
+        host.rootView = feed(older + current, state: state,
+            history: EventHistoryState(hasMore: false), onLoadMore: { requests.total += 1; return true })
+        await waitUntil(timeout: 5) { @MainActor in
+            guard let table = scroll.documentView as? NSTableView else { return false }
+            return state.viewportPositioned && !state.followLive.isFollowing && table.numberOfRows >= 200
+        }
+        let finalAnchor = try #require(captureMountedAnchor(host: host, scroll: scroll,
+                                                             rowIDs: (older + current).map(\.id)),
+                                       "The latest semantic anchor must remain mounted after publication")
+        #expect(finalAnchor.id == beforeAnchor.id,
+                "Continued wheel input must win over the stale restoration target")
+        #expect(abs(finalAnchor.relativeOffset - beforeAnchor.relativeOffset) < 4,
+                "The latest semantic anchor must retain the user's position")
+        #expect(requests.total == 1, "The same pending page must not rearm after continued input")
+    }
+
+    func dispatchScrollWheel(_ deltaY: Int32, phase: NSEvent.Phase,
+                                     in scroll: NSScrollView) -> NSEvent.Phase? {
+        guard let window = scroll.window else { return nil }
+        let point = scroll.convert(NSPoint(x: scroll.bounds.midX, y: scroll.bounds.midY), to: nil)
+        guard let event = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1,
+                                  wheel1: deltaY, wheel2: 0, wheel3: 0) else { return nil }
+        // CGScrollPhase uses consecutive values (began=1, changed=2), while NSEvent.Phase
+        // reserves a bit for stationary (began=1, changed=4). Passing phase.rawValue directly
+        // therefore turns a continued CG wheel into a stationary AppKit event.
+        let cgPhase: Int64 = phase.contains(.began) ? 1
+            : phase.contains(.changed) ? 2
+            : phase.contains(.ended) ? 4
+            : phase.contains(.cancelled) ? 8
+            : 0
+        event.setIntegerValueField(.scrollWheelEventScrollPhase, value: cgPhase)
+        event.location = window.convertPoint(toScreen: point)
+        guard let nsEvent = NSEvent(cgEvent: event) else { return nil }
+        NSApp.sendEvent(nsEvent)
+        return nsEvent.phase
+    }
+
+    struct MountedFeedAnchor {
+        let id: String
+        let relativeOffset: CGFloat
+    }
+
+    func captureMountedAnchor(host: NSView, scroll: NSScrollView,
+                                      rowIDs: [String]) -> MountedFeedAnchor? {
+        guard let table = scroll.documentView as? NSTableView,
+              let document = scroll.documentView else { return nil }
+        let headerOffset = table.numberOfRows - rowIDs.count - 1
+        let visible = descendants(host)
+.compactMap { $0 as? ActivityRowGeometry.MeasurementView }
+            .compactMap { view -> (Int, CGRect)? in
+                let tableRow = table.row(for: view)
+                let index = tableRow - headerOffset
+                guard index >= 0, index < rowIDs.count else { return nil }
+                let frame = view.convert(view.bounds, to: document)
+                guard frame.width > 0, frame.height > 0,
+                      frame.maxY > scroll.documentVisibleRect.minY,
+                      frame.minY < scroll.documentVisibleRect.maxY else { return nil }
+                return (index, frame)
+            }
+        guard let candidate = visible.min(by: { lhs, rhs in
+            abs(lhs.1.minY - scroll.documentVisibleRect.minY)
+                < abs(rhs.1.minY - scroll.documentVisibleRect.minY)
+        }) else { return nil }
+        return MountedFeedAnchor(id: rowIDs[candidate.0],
+                                 relativeOffset: candidate.1.minY - scroll.documentVisibleRect.minY)
+    }
+
+    func firstVisibleMeasurementFrame(in host: NSView, scroll: NSScrollView) -> CGRect? {
         guard let document = scroll.documentView else { return nil }
         return descendants(host)
             .compactMap { $0 as? ActivityRowGeometry.MeasurementView }
@@ -433,36 +570,7 @@ import Testing
             .forEach { $0.invalidateMeasurement() }
     }
 
-    private func verifyPublishedHistory(host: NSView, state: ParallelColumnUIState,
-                                        scroll: NSScrollView, pausedAnchor: ParallelVerticalAnchor,
-                                        generationBeforePublication: Int) async throws {
-        await waitUntil(timeout: 5) {
-            @MainActor in measurementGeneration(in: host) > generationBeforePublication
-                && state.viewportPositioned && !state.followLive.isFollowing
-                && state.anchor?.id == pausedAnchor.id
-                && firstVisibleMeasurementFrame(in: host, scroll: scroll).map {
-                    abs($0.minY - scroll.documentVisibleRect.minY - pausedAnchor.relativeOffset) < 3
-                } == true
-                && abs(state.scrollOffset - scroll.documentVisibleRect.minY) < 2
-        }
-
-        try #require(measurementGeneration(in: host) > generationBeforePublication,
-                     "The prepended snapshot must update mounted row measurements")
-        #expect(state.viewportPositioned)
-        #expect(!state.followLive.isFollowing)
-        let restoredAnchor = try #require(state.anchor)
-        #expect(restoredAnchor.id == pausedAnchor.id)
-        let restoredViewport = scroll.documentVisibleRect
-        let restoredRowFrame = try #require(firstVisibleMeasurementFrame(in: host, scroll: scroll),
-                                           "The restored anchor must have a mounted row measurement")
-        #expect(abs(restoredRowFrame.minY - restoredViewport.minY - pausedAnchor.relativeOffset) < 3,
-                "Prepending history must preserve the anchor's position within its row")
-        #expect(abs(restoredAnchor.relativeOffset - pausedAnchor.relativeOffset) < 3,
-                "Prepending history must preserve the semantic reading anchor")
-        #expect(abs(state.scrollOffset - scroll.documentVisibleRect.minY) < 2)
-    }
-
-    private func measurementGeneration(in view: NSView) -> Int {
+    func measurementGeneration(in view: NSView) -> Int {
         descendants(view)
 .compactMap { $0 as? ActivityRowGeometry.MeasurementView }
             .map(\.generation)
