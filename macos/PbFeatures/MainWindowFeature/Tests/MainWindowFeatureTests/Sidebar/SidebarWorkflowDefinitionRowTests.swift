@@ -75,6 +75,7 @@ import Testing
     }
 
     private func render(_ view: some View, scheme: ColorScheme, emphasized: Bool) throws -> RenderedImage {
+        _ = NSApplication.shared
         let fixture = view
             .font(.pb(.body, weight: .medium))
             .frame(minHeight: PbRadius.Metrics.formRowHeight)
@@ -137,6 +138,7 @@ private struct RenderedImage: Equatable {
                 && rgba[offset + 3] == other.rgba[offset + 3]
         }
     }
+
 }
 
 // MARK: - HostedRow
