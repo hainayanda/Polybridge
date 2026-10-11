@@ -1,19 +1,7 @@
+import AppKit
 import MonitorCore
 import PbUI
 import SwiftUI
-
-// MARK: - ActivityFeedPosition
-
-@MainActor
-private final class ActivityFeedPosition {
-    var offset: CGFloat = 0
-    var content: CGFloat = 0
-    var viewport: CGFloat = 0
-    /// Measurements support reading restoration without invalidating the lazy feed's view graph.
-    var frames: [String: CGRect] = [:]
-    let measurements = ActivityRowMeasurements()
-    var pagingTask: Task<Void, Never>?
-}
 
 // MARK: - ActivityFeedKey
 
@@ -72,7 +60,7 @@ struct ActivityFeedView<Tail: View>: View {
     @State private var followingLayout = true
     @State private var restoring = true
     @State private var targetOffset: CGFloat?
-    @State private var restorationRowWidth: CGFloat?
+    @State private var restorationWidth = ActivityRowWidthRestoration()
     @State private var restorationTiming: UInt64?
     @State private var shortFillBudget = ActivityShortFillBudget()
     @State private var waitingForPage = false
@@ -124,6 +112,7 @@ struct ActivityFeedView<Tail: View>: View {
                         if !next.isLoading, sawLoading || next.error != nil || !next.hasMore {
                             waitingForPage = false
                             restoring = !state.followLive.isFollowing
+                            restorationWidth.finish(restoring: restoring)
                         }
                     }
                 }
@@ -152,7 +141,12 @@ struct ActivityFeedView<Tail: View>: View {
         // AppKit requires a positive default height; every explicit feed row exceeds this.
         .environment(\.defaultMinListRowHeight, PbRadius.Metrics.hairlineStroke)
         .scrollContentBackground(.hidden)
-        .scrollChromeScope(onNativeScrollView: { identity in nativeIdentity.deliver(identity) })
+        .scrollChromeScope(onNativeScrollView: { identity in
+            if nativeIdentity.deliver(identity) {
+                position.discardStaleFrames(nativeIdentity: nativeIdentity)
+                position.measurements.invalidateMeasurements()
+            }
+        })
         // Outside the scope's marker pair: in native-identity mode this observation view never
         // attaches to its own enclosingScrollView — an outer parallel lane is never a target.
         .background(ParallelScrollObserver(
@@ -240,10 +234,9 @@ struct ActivityFeedView<Tail: View>: View {
             .background(ActivityRowGeometry(
                 generation: measurementGeneration,
                 measurements: position.measurements
-            ) { [generation = measurementGeneration] frame in
+            ) { [generation = measurementGeneration] sample in
                 guard generation == measurementGeneration else { return }
-                guard position.frames[row.id] != frame else { return }
-                position.frames[row.id] = frame
+                guard position.record(sample, for: row.id, nativeIdentity: nativeIdentity) else { return }
                 if row.id == shown.last?.id, realizedLastRowID != row.id { realizedLastRowID = row.id }
                 scheduleReadingUpdate()
             })
@@ -317,6 +310,7 @@ struct ActivityFeedView<Tail: View>: View {
     }
 
     private var currentWidthFrames: [String: CGRect] {
+        position.discardStaleFrames(nativeIdentity: nativeIdentity)
         guard let anchor = state.anchor, let measuredWidth = position.frames[anchor.id]?.width else { return position.frames }
         return position.frames.filter { abs($0.value.width - measuredWidth) < 1 }
     }
@@ -334,9 +328,12 @@ struct ActivityFeedView<Tail: View>: View {
         guard size != viewportSize else { return }
         if positioned, !state.followLive.isFollowing {
             if viewportSize.width > 0, abs(size.width - viewportSize.width) > 0.5 {
-                restorationRowWidth = max(0, size.width - 2 * horizontalPadding)
-                let width = restorationRowWidth ?? 0
-                position.frames = position.frames.filter { $0.key == state.anchor?.id || abs($0.value.width - width) < 1 }
+                restorationWidth.resize(
+                    measuredWidth: position.expectedRowWidth(
+                        for: state.anchor?.id, viewportWidth: size.width, nativeIdentity: nativeIdentity
+                    ),
+                    previousViewportWidth: viewportSize.width, viewportWidth: size.width, restoring: restoring
+                )
             }
             beginRestoration()
         }
@@ -346,6 +343,7 @@ struct ActivityFeedView<Tail: View>: View {
 
     private func settle(_ proxy: ScrollViewProxy) async {
         await Task.yield()
+        position.discardStaleFrames(nativeIdentity: nativeIdentity)
         guard !Task.isCancelled, !isLoading, position.viewport > 0 else { return }
         if state.followLive.isFollowing {
             // Realize actual content before trusting the lazy document's estimated height.
@@ -363,7 +361,7 @@ struct ActivityFeedView<Tail: View>: View {
             targetOffset = max(0, position.content - position.viewport)
         } else if restoring {
             if let anchor = state.anchor, let id = anchor.resolvedID(in: shown.map(\.id)) {
-                let staleWidth = restorationRowWidth.map { abs((position.frames[id]?.width ?? -1) - $0) > 1 } ?? false
+                let staleWidth = !restorationWidth.accepts(rowWidth: position.frames[id]?.width)
                 if position.frames[id] == nil || staleWidth {
                     proxy.scrollTo(id, anchor: .top)
                     await Task.yield()
@@ -418,7 +416,9 @@ struct ActivityFeedView<Tail: View>: View {
     }
 
     private func finishRestoration() {
+        position.discardStaleFrames(nativeIdentity: nativeIdentity)
         defer {
+            restorationWidth.finish(restoring: restoring)
             state.viewportPositioned = positioned && !restoring && !followingLayout
         }
         if !state.followLive.isFollowing { followingLayout = false }
@@ -438,7 +438,6 @@ struct ActivityFeedView<Tail: View>: View {
             } else if let targetOffset,
                       abs(position.offset - min(max(0, targetOffset), max(0, position.content - position.viewport))) < 1 {
                 positioned = true; restoring = false
-                restorationRowWidth = nil
             }
         }
     }
@@ -449,7 +448,7 @@ struct ActivityFeedView<Tail: View>: View {
         pendingReadingCapture = false
         position.pagingTask?.cancel()
         measurementGeneration &+= 1
-        position.frames.removeAll(keepingCapacity: true)
+        position.clearFrames()
         position.measurements.invalidateMeasurements()
         restoring = true
         state.viewportPositioned = false
@@ -457,15 +456,16 @@ struct ActivityFeedView<Tail: View>: View {
     }
 
     private func restoreAnchor() {
+        position.discardStaleFrames(nativeIdentity: nativeIdentity)
         guard !state.followLive.isFollowing else { return }
         if shown.isEmpty {
             state.anchor = nil
             state.retainedFirstID = nil
-            position.frames.removeAll()
-            restorationRowWidth = nil
+            position.clearFrames()
+            restorationWidth.clear()
             targetOffset = 0
         } else if let anchor = state.anchor, let id = anchor.resolvedID(in: shown.map(\.id)), let frame = position.frames[id] {
-            if let restorationRowWidth, abs(frame.width - restorationRowWidth) > 1 { return }
+            guard restorationWidth.accepts(rowWidth: frame.width) else { return }
             targetOffset = anchor.offset(in: frame)
         } else if state.anchor == nil { targetOffset = state.scrollOffset }
         finishRestoration()
@@ -479,7 +479,7 @@ struct ActivityFeedView<Tail: View>: View {
     }
 
     private func pauseLayoutFollowingForUserIntent() {
-        guard positioned, !restoring, followingLayout, state.followLive.isFollowing else { return }
+        guard positioned, !restoring, state.followLive.isFollowing else { return }
         state.followLive.suspend()
         followingLayout = false
         if state.retainedFirstID == nil { state.retainedFirstID = shown.first?.id }

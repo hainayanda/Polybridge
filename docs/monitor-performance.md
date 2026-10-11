@@ -948,3 +948,9 @@ weakening the App Nap hypothesis. Heartbeat timers now request strict 50 ms deli
 failure messages report independent timer-handler firing counts alongside main-actor pulses.
 This is a controlled measurement correction; timer coalescing is not established as the cause.
 All four affected tests passed locally again; no assertions or deadlines were relaxed.
+
+### Initial Activity layout stability
+
+Activity feeds retain List's native table sizing to avoid first-load scroll oscillation.
+Cards have a slightly larger horizontal inset; restoring the prior inset remains follow-up work.
+Paused reading restoration uses the measured row width when the viewport resizes.

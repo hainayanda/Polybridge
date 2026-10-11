@@ -169,6 +169,7 @@ final class ParallelScrollNativeIdentity {
     /// The last identity the scope relay delivered — weak, so a scoped scroll view that
     /// deallocated reads as nil on the observation view's next registration.
     private weak var knownScrollView: NSScrollView?
+    private weak var knownDocument: NSView?
 
     /// Registers the observation view — also re-registering it after a representable remount —
     /// and immediately delivers the last known identity, so a scroll view disclosed before the
@@ -189,9 +190,22 @@ final class ParallelScrollNativeIdentity {
     /// held observation view — direct adoption that bypasses `configure`'s unchanged-input early
     /// return, so a discovered or replaced target attaches and reports even when nothing else
     /// changed.
-    func deliver(_ scrollView: NSScrollView?) {
+    @discardableResult
+    func deliver(_ scrollView: NSScrollView?) -> Bool {
+        let changed = knownScrollView !== scrollView || knownDocument !== scrollView?.documentView
         knownScrollView = scrollView
+        knownDocument = scrollView?.documentView
         observationView?.adoptNativeIdentity(scrollView)
+        return changed
+    }
+
+    /// Identity matching for cached native measurements: whether the document view a sample was
+    /// measured in is the one the scoped relay currently discloses. A sample that fails this
+    /// check belongs to a replaced (or already deallocated) native target and must be rejected,
+    /// never scaled onto a new viewport.
+    func isCurrentDocument(_ document: NSView?) -> Bool {
+        guard let document else { return false }
+        return knownScrollView?.documentView === document
     }
 }
 
@@ -240,15 +254,9 @@ final class ParallelScrollObservationView: NSView {
     /// The borrowed insets state of the currently adopted native target, restored on replacement
     /// or detach while the target is still on a window.
     private var nativeInsetBackup: NativeInsetBackup?
-    private var nativeTableSpacingBackup: NativeTableSpacingBackup?
-
-    private struct NativeTableSpacingBackup {
-        weak var table: NSTableView?
-        let spacing: NSSize
-    }
 
     /// The inset state this observer explicitly zeroes on an adopted native target so the feed's
-    /// own document spacing is the only spacing — see `enforceNativeInsets(on:)`.
+    /// document keeps plain zero scroll-view content insets — see `enforceNativeInsets(on:)`.
     private struct NativeInsetBackup {
         weak var scrollView: NSScrollView?
         var automaticallyAdjusts: Bool
@@ -318,12 +326,15 @@ final class ParallelScrollObservationView: NSView {
         observedScrollView = nil
     }
 
-    /// A List-backed feed expresses its whole spacing contract inside its own document (row
-    /// padding and explicit gap logic), so the adopted native target's insets are explicitly
-    /// owned: automatic native adjustment is disabled and the insets zeroed on adoption and
-    /// re-asserted on every report — keeping this observer's geometry in plain document
-    /// coordinates across later resize and layout passes. The pre-adoption state is captured
-    /// once per target and restored while the target still has a window.
+    /// A List-backed feed owns its document's vertical spacing (row padding and explicit gap
+    /// logic inside row content), so the adopted native target's scroll-view insets are
+    /// explicitly owned: automatic native adjustment is disabled and the insets zeroed on
+    /// adoption and re-asserted on every report — keeping this observer's geometry in plain
+    /// document coordinates across later resize and layout passes. The pre-adoption state is
+    /// captured once per target and restored while the target still has a window.
+    ///
+    /// Leave native table spacing and sizing to SwiftUI. Mutating them during scroll reports
+    /// can repeatedly change row heights and cause visible oscillation on first mount.
     private func enforceNativeInsets(on scroll: NSScrollView) {
         if nativeInsetBackup?.scrollView !== scroll {
             nativeInsetBackup = NativeInsetBackup(
@@ -337,42 +348,11 @@ final class ParallelScrollObservationView: NSView {
         if insets.top != 0 || insets.left != 0 || insets.bottom != 0 || insets.right != 0 {
             scroll.contentInsets = NSEdgeInsetsZero
         }
-        // SwiftUI's List can use horizontal intercell spacing even with plain table style.
-        // The feed supplies its own horizontal padding; retain native vertical spacing.
-        if let table = scroll.documentView as? NSTableView {
-            if nativeTableSpacingBackup?.table !== table {
-                nativeTableSpacingBackup = NativeTableSpacingBackup(table: table, spacing: table.intercellSpacing)
-            }
-            if table.intercellSpacing.width != 0 {
-                table.intercellSpacing = NSSize(width: 0, height: table.intercellSpacing.height)
-                // Retile the native table after the property change: already-realized cells
-                // otherwise retain their old frames until recycling or a window resize.
-                table.needsLayout = true
-                DispatchQueue.main.async { [weak self, weak table] in
-                    guard let self, !self.isTornDown, let table,
-                          observedScrollView?.documentView === table,
-                          table.intercellSpacing.width == 0 else { return }
-                    if table.tableColumns.count == 1 { table.sizeLastColumnToFit() }
-                    table.tile()
-                    table.needsLayout = true
-                    table.layoutSubtreeIfNeeded()
-                }
-            }
-        }
     }
 
     /// Restores the borrowed insets of the last adopted target, capturing nothing new; an
     /// off-window target is released without writes, mirroring the shared chrome owner's rule.
     private func restoreNativeInsets() {
-        if let backup = nativeTableSpacingBackup {
-            nativeTableSpacingBackup = nil
-            if let table = backup.table, table.window != nil {
-                table.intercellSpacing = backup.spacing
-                if table.tableColumns.count == 1 { table.sizeLastColumnToFit() }
-                table.tile()
-                table.needsLayout = true
-            }
-        }
         guard let backup = nativeInsetBackup else { return }
         nativeInsetBackup = nil
         guard let scroll = backup.scrollView, scroll.window != nil else { return }
@@ -553,7 +533,8 @@ final class ParallelScrollObservationView: NSView {
         }
         let length = axis == .horizontal ? document.bounds.width : document.bounds.height
         let viewport = axis == .horizontal ? viewportSize.width : viewportSize.height
-        if observeExternalMovement, !applyingRestoration {
+        // A queued layout report can precede the bounds notification for a user move.
+        if observeExternalMovement || liveUserScroll, !applyingRestoration {
             observeExternalUpwardScroll(visible: visible, document: document, length: length, viewport: viewport)
         }
         let horizontalLayoutReady = axis != .horizontal || abs(length - CGFloat(ids.count) * stride) < 2
