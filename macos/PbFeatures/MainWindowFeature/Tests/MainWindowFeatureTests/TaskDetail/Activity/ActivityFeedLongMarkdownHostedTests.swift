@@ -27,22 +27,7 @@ import Testing
                               styleMask: [.titled, .resizable], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentViewController = controller
-        var notificationOffsets: [CGFloat] = []
-        var notificationHeights: [CGFloat] = []
-        var notificationFrames: [[CGRect]] = []
-        let boundsObserver = NotificationCenter.default.addObserver(
-            forName: NSView.boundsDidChangeNotification, object: nil, queue: .main
-        ) { _ in
-            guard let scroll = activityScroll(in: controller.view), let document = scroll.documentView,
-                  document is NSTableView else { return }
-            notificationOffsets.append(scroll.documentVisibleRect.minY)
-            notificationHeights.append(document.bounds.height)
-            notificationFrames.append(descendants(document)
-                .compactMap { $0 as? ActivityRowGeometry.MeasurementView }
-                .map { $0.convert($0.bounds, to: document) }
-                .filter { $0.intersects(scroll.documentVisibleRect) })
-        }
-        defer { NotificationCenter.default.removeObserver(boundsObserver) }
+        let recorder = FirstMountRecorder(controller: controller)
         // when — mount through the normal run loop and wait for the native table to settle.
         window.orderFront(nil)
         defer { harness.sut.didDisappear(); window.contentViewController = nil; window.close() }
@@ -55,25 +40,38 @@ import Testing
         let document = try #require(scroll.documentView)
         let table = try #require(document as? NSTableView)
         scroll.contentView.postsBoundsChangedNotifications = true
-        await waitUntil(timeout: 5) { document.bounds.maxY - scroll.documentVisibleRect.maxY <= 3 }
+        await waitUntil(timeout: 5) {
+            !recorder.validSamples.isEmpty && table.numberOfRows >= 5
+                && document.bounds.height > scroll.contentView.bounds.height
+        }
+        try #require(!recorder.validSamples.isEmpty,
+                     "The first valid bottom sample must include materialized overflow rows")
         // Keep a bounded observation window: after the first settle, the test measures whether
         // any residual first-mount motion reverses direction or repeatedly changes height.
         try await Task.sleep(for: .milliseconds(500))
+        // Capture a terminal sample even when the settled table emits no further bounds change.
+        recorder.captureCurrent(controller: controller)
         // then — the feed reaches bottom with visible rows and no oscillating geometry.
-        let metrics = firstMountMetrics(offsets: notificationOffsets, heights: notificationHeights,
-                                        frames: notificationFrames)
+        let metrics = firstMountMetrics(samples: recorder.validSamples)
+        let trace = recorder.mountTrace.map(\.logLine).joined(separator: " | ")
+        try #require(recorder.validSamples.count >= 2,
+                     "The bounded observation must compare an initial and terminal valid sample")
         print(
-            "synthetic-first-mount rows=\(table.numberOfRows) notifications=\(notificationOffsets.count) "
+            "synthetic-first-mount rows=\(table.numberOfRows) notifications=\(recorder.mountTrace.count) "
                 + "reversals=\(metrics.reversals) heightTransitions=\(metrics.heightTransitions) "
-                + "frames=\(metrics.visibleFrames.count)"
+                + "validSamples=\(recorder.validSamples.count) stableIDs=\(metrics.stableIDs) "
+                + "stableGeometry=\(metrics.stableGeometry) trace=\(trace)"
         )
         #expect(table.numberOfRows >= 5)
         #expect(document.bounds.height > scroll.contentView.bounds.height)
         #expect(document.bounds.maxY - scroll.documentVisibleRect.maxY <= 3)
-        #expect(!notificationOffsets.isEmpty, "The mounted table must publish bounds notifications")
-        #expect(!metrics.visibleFrames.isEmpty, "Notifications must include actual visible row geometry")
+        #expect(!recorder.mountTrace.isEmpty, "The mounted table must publish bounds notifications")
+        #expect(!metrics.comparisonFrames.isEmpty,
+                "The stability comparison must include an oversized or fully visible row")
         #expect(metrics.reversals == 0)
         #expect(metrics.heightTransitions < 3)
+        #expect(metrics.stableIDs, "The valid bottom samples must retain the same realized row identities")
+        #expect(metrics.stableGeometry, "The valid bottom samples must retain viewport-relative row geometry")
     }
 
     @Test func givenTwoLatestRowsAndTallMarkdown_whenTaskDetailOpensNarrow_thenVisibleRowsAreMeasured() async throws {
@@ -258,19 +256,147 @@ import Testing
         ]
     }
 
-    private func firstMountMetrics(offsets: [CGFloat], heights: [CGFloat],
-                                   frames: [[CGRect]]) -> (reversals: Int, heightTransitions: Int,
-                                                            visibleFrames: [[CGRect]]) {
+    private func firstMountMetrics(samples: [FirstMountSample]) -> (
+        reversals: Int, heightTransitions: Int, comparisonFrames: [[CGRect]], stableIDs: Bool,
+        stableGeometry: Bool
+    ) {
+        let offsets = samples.map(\.offset)
+        let heights = samples.map(\.documentHeight)
         let directions = zip(offsets, offsets.dropFirst()).compactMap { pair -> Int? in
             let movement = pair.1 - pair.0
             guard abs(movement) > 5 else { return nil }
             return movement > 0 ? 1 : -1
         }
+        let first = samples.first
+        let stableIDs = samples.dropFirst().allSatisfy { sample in
+            guard let first else { return false }
+            return !first.comparisonRowIDs.isEmpty
+                && first.comparisonRowIDs.allSatisfy(sample.comparisonRowIDs.contains)
+        }
+        let stableGeometry = samples.dropFirst().allSatisfy { sample in
+            guard let first else { return false }
+            let firstByID = Dictionary(uniqueKeysWithValues: zip(first.comparisonRowIDs, first.comparisonFrames))
+            let sampleByID = Dictionary(uniqueKeysWithValues: zip(sample.comparisonRowIDs, sample.comparisonFrames))
+            return firstByID.allSatisfy { id, frame in
+                guard let current = sampleByID[id] else { return false }
+                return abs((frame.minY - first.offset) - (current.minY - sample.offset)) < 3
+            }
+        }
         return (
             zip(directions, directions.dropFirst()).filter { $0 != $1 }.count,
             zip(heights, heights.dropFirst()).filter { abs($1 - $0) > 1 }.count,
-            frames.filter { !$0.isEmpty }
+            samples.map(\.comparisonFrames).filter { !$0.isEmpty },
+            stableIDs,
+            stableGeometry
         )
+    }
+
+    private final class FirstMountRecorder: @unchecked Sendable {
+        var mountTrace: [FirstMountSample] = []
+        var validSamples: [FirstMountSample] = []
+        private var observer: NSObjectProtocol?
+
+        init(controller: NSViewController) {
+            self.observer = NotificationCenter.default.addObserver(
+                forName: NSView.boundsDidChangeNotification, object: nil, queue: .main
+            ) { [weak self, weak controller] notification in
+                guard let self, let controller else { return }
+                guard let object = notification.object as? NSView else { return }
+                let objectID = ObjectIdentifier(object)
+                MainActor.assumeIsolated {
+                    self.record(objectID: objectID, in: controller)
+                }
+            }
+        }
+
+        deinit {
+            if let observer { NotificationCenter.default.removeObserver(observer) }
+        }
+
+        @MainActor private func record(objectID: ObjectIdentifier, in controller: NSViewController) {
+            guard let scroll = Self.activityScroll(in: controller.view), let document = scroll.documentView,
+                  document is NSTableView, ObjectIdentifier(scroll.contentView) == objectID else { return }
+            let visible = Self.descendants(document)
+                .compactMap { $0 as? ActivityRowGeometry.MeasurementView }
+                .compactMap { view -> (ObjectIdentifier, CGRect)? in
+                    let frame = view.convert(view.bounds, to: document)
+                    return frame.intersects(scroll.documentVisibleRect)
+                        ? (ObjectIdentifier(view), frame) : nil
+                }
+            let fullyVisible = visible.filter { $0.1.minY >= scroll.documentVisibleRect.minY
+                && $0.1.maxY <= scroll.documentVisibleRect.maxY
+            }
+            let midpoint = scroll.documentVisibleRect.midY
+            let comparison: [(ObjectIdentifier, CGRect)] = if !fullyVisible.isEmpty {
+                fullyVisible
+            } else if let midpointRow = visible.first(where: {
+                $0.1.contains(CGPoint(x: $0.1.midX, y: midpoint))
+            }) {
+                [midpointRow]
+            } else {
+                visible.max { lhs, rhs in
+                    lhs.1.intersection(scroll.documentVisibleRect).height
+                        < rhs.1.intersection(scroll.documentVisibleRect).height
+                }
+.map { [$0] } ?? []
+            }
+            let sample = FirstMountSample(
+                timestamp: ProcessInfo.processInfo.systemUptime,
+                offset: scroll.documentVisibleRect.minY,
+                documentHeight: document.bounds.height,
+                viewportHeight: scroll.contentView.bounds.height,
+                insets: scroll.contentInsets,
+                rowIDs: visible.map(\.0),
+                rowFrames: visible.map(\.1),
+                comparisonRowIDs: comparison.map(\.0),
+                comparisonFrames: comparison.map(\.1)
+            )
+            mountTrace.append(sample)
+            let hasOverflow = sample.documentHeight > sample.viewportHeight
+            let hasMaterializedRows = !sample.rowFrames.isEmpty
+            let isBottom = sample.documentHeight - sample.offset - sample.viewportHeight <= 3
+            if validSamples.isEmpty, ((document as? NSTableView)?.numberOfRows ?? 0) >= 5,
+               hasOverflow, hasMaterializedRows, isBottom {
+                validSamples.append(sample)
+            } else if !validSamples.isEmpty {
+                validSamples.append(sample)
+            }
+        }
+
+        @MainActor func captureCurrent(controller: NSViewController) {
+            guard let scroll = Self.activityScroll(in: controller.view) else { return }
+            record(objectID: ObjectIdentifier(scroll.contentView), in: controller)
+        }
+
+        @MainActor private static func descendants(_ view: NSView) -> [NSView] {
+            [view] + view.subviews.flatMap(descendants)
+        }
+
+        @MainActor private static func activityScroll(in view: NSView) -> NSScrollView? {
+            descendants(view).compactMap { $0 as? NSScrollView }.first(where: { $0.hasVerticalScroller })
+        }
+    }
+
+    private struct FirstMountSample {
+        let timestamp: TimeInterval
+        let offset: CGFloat
+        let documentHeight: CGFloat
+        let viewportHeight: CGFloat
+        let insets: NSEdgeInsets
+        let rowIDs: [ObjectIdentifier]
+        let rowFrames: [CGRect]
+        let comparisonRowIDs: [ObjectIdentifier]
+        let comparisonFrames: [CGRect]
+
+        var logLine: String {
+            let frames = rowFrames.map { "(\($0.minX),\($0.minY),\($0.width),\($0.height))" }
+                .joined(separator: ",")
+            return String(
+                format: "t=%.3f offset=%.1f doc=%.1f viewport=%.1f insets=(%.1f,%.1f,%.1f,%.1f) rows=%d frames=[%@]",
+                timestamp, offset, documentHeight, viewportHeight, insets.top, insets.left,
+                insets.bottom, insets.right, rowIDs.count, frames
+            )
+        }
     }
 
     /// The real failing snapshot contains folded runs of adjacent tool calls interspersed with
