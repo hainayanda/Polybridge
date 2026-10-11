@@ -232,7 +232,10 @@ final class ParallelScrollObservationView: NSView {
     private var wheelMonitor: Any?
     private var liveUserScroll = false
     private weak var observedScrollView: NSScrollView?
+    /// The document currently observed; a scroll view can replace it without changing identity.
+    private weak var observedDocument: NSView?
     private var subscriptions = Set<AnyCancellable>()
+    private var documentSubscription: AnyCancellable?
     private var ids: [String] = []
     private var stride: CGFloat = 0
     private var pendingOffset: CGFloat?
@@ -281,17 +284,29 @@ final class ParallelScrollObservationView: NSView {
         if usesNativeIdentity { applyNativeIdentity(nativeTarget) } else { attach() }
     }
 
-    /// The single native attach/detach decision: an identical live target only reports; a new
-    /// target detaches the old one's notifications, wheel monitor and borrowed insets before
-    /// attaching; a target without a document view yet is left pending for the lifecycle retry;
-    /// nil detaches everything and fails closed.
+    /// An unchanged target reports; document replacement rebinds frame observation while
+    /// preserving insets, wheel monitoring, live gestures and pending restoration.
+    /// A temporarily absent document drops only its frame subscription for lifecycle retry.
+    /// A different scroll view fully detaches the previous target; nil fails closed.
     private func applyNativeIdentity(_ scrollView: NSScrollView?) {
         guard let scrollView else {
             if observedScrollView != nil { detachNativeTarget() }
             return
         }
         if scrollView === observedScrollView {
-            report()
+            let document = scrollView.documentView
+            if document !== observedDocument {
+                if document != nil {
+                    attachDocumentNotifications(for: document)
+                    lastReported = nil
+                    report()
+                } else {
+                    documentSubscription = nil
+                    observedDocument = nil
+                }
+            } else {
+                report()
+            }
             return
         }
         detachNativeTarget()
@@ -308,10 +323,12 @@ final class ParallelScrollObservationView: NSView {
     /// survives — replacement and initial attachment must still land a pending restoration.
     private func detachNativeTarget() {
         subscriptions.removeAll()
+        documentSubscription = nil
         removeWheelMonitor()
         liveUserScroll = false
         restoreNativeInsets()
         observedScrollView = nil
+        observedDocument = nil
         lastReported = nil
     }
 
@@ -321,9 +338,11 @@ final class ParallelScrollObservationView: NSView {
         isTornDown = true
         liveUserScroll = false
         subscriptions.removeAll()
+        documentSubscription = nil
         removeWheelMonitor()
         restoreNativeInsets()
         observedScrollView = nil
+        observedDocument = nil
     }
 
     /// A List-backed feed owns its document's vertical spacing (row padding and explicit gap
@@ -388,9 +407,11 @@ final class ParallelScrollObservationView: NSView {
         if window == nil {
             liveUserScroll = false
             subscriptions.removeAll()
+            documentSubscription = nil
             removeWheelMonitor()
             restoreNativeInsets()
             observedScrollView = nil
+            observedDocument = nil
             lastReported = nil
             lastViewportSize = nil
         } else { DispatchQueue.main.async { [weak self] in self?.reattach() } }
@@ -407,6 +428,7 @@ final class ParallelScrollObservationView: NSView {
         guard !usesNativeIdentity, window != nil, let scroll = enclosingScrollView, scroll !== observedScrollView,
               scroll.documentView != nil else { return }
         subscriptions.removeAll()
+        documentSubscription = nil
         removeWheelMonitor()
         observedScrollView = scroll
         updateWheelMonitor()
@@ -415,17 +437,16 @@ final class ParallelScrollObservationView: NSView {
     }
 
     /// Subscribes the native bounds/frame notifications of one adopted scroll view and its
-    /// document — the shared body of both attachment paths.
+    /// document — the shared body of both attachment paths — and records the subscribed
+    /// document so a same-scroll replacement can be detected later.
     private func attachNotifications(for scroll: NSScrollView) {
         guard let document = scroll.documentView else { return }
         subscriptions.removeAll()
         scroll.contentView.postsBoundsChangedNotifications = true
         scroll.contentView.postsFrameChangedNotifications = true
-        document.postsFrameChangedNotifications = true
         for (name, object) in [
             (NSView.boundsDidChangeNotification, scroll.contentView),
-            (NSView.frameDidChangeNotification, scroll.contentView),
-            (NSView.frameDidChangeNotification, document)
+            (NSView.frameDidChangeNotification, scroll.contentView)
         ] {
             NotificationCenter.default
                 .publisher(for: name, object: object)
@@ -442,6 +463,19 @@ final class ParallelScrollObservationView: NSView {
                 .sink { [weak self] _ in self?.liveUserScroll = false }
                 .store(in: &subscriptions)
         }
+        attachDocumentNotifications(for: document)
+    }
+
+    /// Moves only the document frame observer; scroll and live-gesture notifications survive
+    /// a same-scroll document replacement, including a temporary nil document.
+    private func attachDocumentNotifications(for document: NSView?) {
+        documentSubscription = nil
+        observedDocument = document
+        guard let document else { return }
+        document.postsFrameChangedNotifications = true
+        documentSubscription = NotificationCenter.default
+            .publisher(for: NSView.frameDidChangeNotification, object: document)
+            .sink { [weak self] _ in self?.report() }
     }
 
     func updateWheelMonitor() {

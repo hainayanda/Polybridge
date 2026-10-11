@@ -98,6 +98,127 @@ import Testing
         #expect(positions.contains { abs($0 - 90) < 2 })
     }
 
+    @Test func givenSameNativeScroll_whenDocumentIsReplaced_thenOnlyReplacementDocumentPublishes() async throws {
+        // given — the scoped identity remains the same NSScrollView while List replaces its
+        // document view. Keep both documents alive so notifications from the retired one can be
+        // distinguished from notifications on the replacement.
+        _ = NSApplication.shared
+        let harness = try NativeIdentityHarness()
+        defer { harness.close() }
+        let identity = ParallelScrollNativeIdentity()
+        let view = harness.makeObserver()
+        var positions: [(offset: CGFloat, length: CGFloat, viewport: CGFloat)] = []
+        view.onPosition = { offset, length, viewport in positions.append((offset, length, viewport)) }
+        view.usesNativeIdentity = true
+        identity.register(view)
+        identity.deliver(harness.targetA)
+        await waitUntil(timeout: 2) { !positions.isEmpty }
+
+        let retiredDocument = try #require(harness.targetA.documentView)
+        let replacementDocument = NSView(frame: NSRect(x: 0, y: 0, width: 220, height: 760))
+        harness.targetA.documentView = replacementDocument
+        positions.removeAll()
+
+        // when — the relay re-delivers the same scroll identity after its document changes.
+        identity.deliver(harness.targetA)
+        await waitUntil(timeout: 2) { !positions.isEmpty }
+        let replacementBaseline = try #require(positions.last)
+        #expect(replacementBaseline.length == 760)
+        await Task.yield()
+        positions.removeAll()
+
+        // Change B without posting its frame notification first. A stale subscription to A must
+        // not report B's changed geometry when A later emits a notification.
+        replacementDocument.postsBoundsChangedNotifications = false
+        replacementDocument.setBoundsSize(NSSize(width: 220, height: 820))
+        NotificationCenter.default.post(name: NSView.frameDidChangeNotification, object: retiredDocument)
+        await Task.yield()
+        #expect(positions.isEmpty)
+
+        replacementDocument.postsBoundsChangedNotifications = true
+        NotificationCenter.default.post(name: NSView.frameDidChangeNotification, object: replacementDocument)
+        await waitUntil(timeout: 2) { !positions.isEmpty }
+
+        // then — the callback is sourced from B, with its new document height, rather than A's.
+        #expect(positions.count == 1)
+        let sample = try #require(positions.last)
+        #expect(sample.length == 820)
+
+        // Repeating B's notification without changing its geometry must remain deduplicated.
+        NotificationCenter.default.post(name: NSView.frameDidChangeNotification, object: replacementDocument)
+        await Task.yield()
+        #expect(positions.count == 1)
+    }
+
+    @Test func givenPendingRestorationDuringSameScrollNilGap_whenReplacementArrives_thenOffsetSurvives() async throws {
+        // given — the scroll identity remains adopted while its document is temporarily absent.
+        _ = NSApplication.shared
+        let harness = try NativeIdentityHarness()
+        defer { harness.close() }
+        let identity = ParallelScrollNativeIdentity()
+        let view = harness.makeObserver()
+        var offsets: [CGFloat] = []
+        view.onPosition = { offset, _, _ in offsets.append(offset) }
+        view.usesNativeIdentity = true
+        identity.register(view)
+        identity.deliver(harness.targetA)
+        await waitUntil(timeout: 2) { !offsets.isEmpty }
+
+        // when — request restoration while A is absent, then install B on the same scroll view.
+        harness.targetA.documentView = nil
+        identity.deliver(harness.targetA)
+        view.configure(ids: [], stride: 0, restorationOffset: 400, restorationActive: true)
+        let replacementDocument = NSView(frame: NSRect(x: 0, y: 0, width: 220, height: 1600))
+        harness.targetA.documentView = replacementDocument
+        identity.deliver(harness.targetA)
+        await waitUntil(timeout: 2) { offsets.contains { abs($0 - 400) < 2 } }
+
+        // then — the request survives the nil-document interval and lands on B.
+        #expect(offsets.contains { abs($0 - 400) < 2 })
+    }
+
+    @Test func givenLiveScrollEndsDuringSameDocumentNilGap_whenReplacementReattaches_thenLayoutMoveDoesNotSignalIntent() async throws {
+        // given — the scoped scroll remains the same while its document is temporarily absent;
+        // the live-scroll lifecycle must remain subscribed across that document gap.
+        _ = NSApplication.shared
+        let harness = try NativeIdentityHarness()
+        defer { harness.close() }
+        let identity = ParallelScrollNativeIdentity()
+        let view = harness.makeObserver()
+        var offsets: [CGFloat] = []
+        var intents = 0
+        view.onPosition = { offset, _, _ in offsets.append(offset) }
+        view.onUpwardIntent = { intents += 1 }
+        view.usesNativeIdentity = true
+        identity.register(view)
+        identity.deliver(harness.targetA)
+        await waitUntil(timeout: 2) { !offsets.isEmpty }
+
+        // when — a live scroll starts before A disappears, then ends while the same scroll has
+        // no document, and B is installed before an upward layout movement occurs.
+        NotificationCenter.default.post(name: NSScrollView.willStartLiveScrollNotification, object: harness.targetA)
+        harness.targetA.documentView = nil
+        identity.deliver(harness.targetA)
+        NotificationCenter.default.post(name: NSScrollView.didEndLiveScrollNotification, object: harness.targetA)
+        let replacementDocument = NSView(frame: NSRect(x: 0, y: 0, width: 220, height: 1600))
+        harness.targetA.documentView = replacementDocument
+        identity.deliver(harness.targetA)
+        await waitUntil(timeout: 2) { offsets.count > 1 }
+
+        // Move the native clip view upward as a layout change. If didEnd was lost in the nil gap,
+        // this movement is misread as intent.
+        harness.move(harness.targetA, to: 940)
+        await waitUntil(timeout: 2) { offsets.count > 2 }
+        let intentsBeforeLayout = intents
+        let callbacksBeforeLayout = offsets.count
+        harness.move(harness.targetA, to: 1040)
+        await waitUntil(timeout: 2) { offsets.count > callbacksBeforeLayout }
+        try #require(offsets.count > callbacksBeforeLayout, "The upward layout movement must be observed")
+
+        // then — the ended live scroll remains ended, so the layout movement produces no intent.
+        #expect(intents == intentsBeforeLayout)
+    }
+
     @Test func givenOwnNativeLiveScroll_whenEnded_thenLaterLayoutMovementDoesNotPauseFeed() async throws {
         _ = NSApplication.shared
         let harness = try NativeIdentityHarness()
