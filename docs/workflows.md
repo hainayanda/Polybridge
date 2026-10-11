@@ -1290,7 +1290,10 @@ state stay attached to the conversation.
 
 Long workflow details stay within the window's available space. Run diagnostics and the
 inspector scroll independently so updates do not push the header, sidebar or canvas outside
-the window; split-pane dividers remain adjustable.
+the window; split-pane dividers remain adjustable. Scrollable Monitor surfaces with their own
+native scroll view present thin app-local overlay scrollbars that fade at rest, even when the
+system scrollbar preference is legacy; native hover expansion is unchanged. Sidebar selection
+uses the theme's pale highlight; scrolling, selection and keyboard behaviour are unchanged.
 
 Child workflow shortcuts sit beneath their parent workflow, alongside its task nodes. Each child
 also keeps its own workflow entry with its actual nodes; both entries select the same real child run. Both entries reflect the child workflow's current status, so a completed

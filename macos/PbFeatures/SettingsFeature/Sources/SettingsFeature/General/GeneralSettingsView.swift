@@ -86,6 +86,10 @@ struct GeneralSettingsView<VM: GeneralSettingsViewModel>: View {
                 )
             }
         }
+        // Bounded scope (§6.7): the grouped Form's own native scroll view, when one exists —
+        // a Form that creates none stays a quiet no-op, and the window's outer scrollers are
+        // untouched.
+        .scrollChromeScope()
         .formStyle(.grouped)
         .onAppear { viewModel.didAppear() }
         .onDisappear { viewModel.didDisappear() }

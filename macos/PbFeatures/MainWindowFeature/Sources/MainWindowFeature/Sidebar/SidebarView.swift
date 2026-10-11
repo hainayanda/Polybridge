@@ -99,13 +99,20 @@ struct SidebarView<VM: SidebarViewModel>: View {
     // MARK: - State
     
     @State var viewModel: VM
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @Environment(\.pbReduceMotionOverride) private var reduceMotionOverride
     @Environment(\.defaultMinListRowHeight) private var minimumRowHeight
     @State private var seenRowIDs: Set<String> = []
     @State private var displayedSections: [SidebarSection]?
     @State private var fadingRowIDs: Set<String> = []
     @State private var disclosureTask: Task<Void, Never>?
+    @State private var transitionRelay = SidebarNativeTransitionRelay()
+    @State private var transitionEpoch = 0
     @State private var workflowsExpanded = true
+
+    private var reduceMotion: Bool {
+        PbMotion.reduceMotion(override: reduceMotionOverride, system: systemReduceMotion)
+    }
     
     // MARK: - Init
     
@@ -235,132 +242,53 @@ struct SidebarView<VM: SidebarViewModel>: View {
         return tab.isNotFound ? "\(name) (not found on PATH)" : name
     }
 
-    /// One source's history surface (SPEC §4): the blocked/partial-history diagnostics, the
-    /// loading indicator, the error with its retry, and — only while more history actually exists
-    /// — the manual "Load older" control. The exhausted end-of-history row is gone: history that
-    /// has nothing left to show or retry renders nothing at all.
-    private func historyControl(_ source: String, state: HistoryLoadingState, action: @escaping () -> Void) -> some View {
-        VStack(alignment: .leading, spacing: PbRadius.Metrics.spacing4) {
-            if state.catalogState.status == .blocked {
-                Text(state.catalogState.reason ?? "History indexing is blocked. Resolve the reported record issue, then retry.")
-                    .font(.pb(.caption))
-                    .foregroundStyle(Color.warningFG)
-            } else if state.authorityIncomplete {
-                Text("History is blocked by a large legacy record. Inspect a known task directly to restore access.")
-                    .font(.pb(.caption))
-                    .foregroundStyle(Color.secondaryText)
-            } else if state.historyIncomplete {
-                Text("Some large legacy records need direct inspection; history ordering is incomplete.")
-                    .font(.pb(.caption))
-                    .foregroundStyle(Color.secondaryText)
-            }
-            if state.isLoading {
-                LoadingLabel("Loading \(source.lowercased())…")
-            } else if let error = state.error {
-                Text(error.message).font(.pb(.caption)).foregroundStyle(Color.failedRed)
-                Button("Retry \(source.lowercased())", action: action)
-            } else if state.authorityIncomplete || state.catalogState.status == .blocked {
-                Button("Retry \(source.lowercased())", action: action)
-            } else if state.bootstrapPending {
-                Text("Preparing \(source.lowercased()) history…").font(.pb(.caption))
-                Button("Retry \(source.lowercased())", action: action)
-            } else if state.hasMore {
-                Button("Load older \(source.lowercased())", action: action)
-            }
-        }.frame(minHeight: max(PbRadius.Metrics.sidebarHistoryMinimumHeight, minimumRowHeight), alignment: .leading)
-    }
-
-    /// Whether a source still owes the person anything: a diagnostic, a retry, a load in flight, or
-    /// a further page. Settled, exhausted history renders no rows and no header at all.
-    private func needsPresentation(_ state: HistoryLoadingState) -> Bool {
-        state.catalogState.status == .blocked || state.authorityIncomplete || state.historyIncomplete
-            || state.isLoading || state.error != nil || state.bootstrapPending || state.hasMore
-    }
-
     private var list: some View {
-        List(selection: Binding(get: { viewModel.selection }, set: { destination in
-            viewModel.didSelect(destination)
-        })) {
-            workflowDefinitions
-            if let bannerModel = viewModel.installBannerModel {
-                Section {
-                    InstallBanner(
-                        model: bannerModel,
-                        onPrimary: { viewModel.didTapInstallBannerPrimary() },
-                        onSecondary: { viewModel.didTapInstallBannerSecondary() },
-                        onDismiss: { viewModel.didTapInstallBannerDismiss() }
-                    )
+        SidebarNativeList(
+            presentation: SidebarListPresentation(
+                sections: displayedSections ?? viewModel.sections,
+                workflowTitles: viewModel.savedWorkflows.map(\.id),
+                workflowsExpanded: workflowsExpanded,
+                banner: viewModel.installBannerModel.map(SidebarBannerPresentation.init),
+                listError: viewModel.listErrorMessage,
+                skeleton: viewModel.showsLoadingSkeleton,
+                taskHistory: viewModel.taskHistoryState,
+                workflowHistory: viewModel.workflowHistoryState,
+                emptyMessage: viewModel.emptyStateMessage,
+                fadingIDs: fadingRowIDs,
+                minimumRowHeight: minimumRowHeight,
+                historyRevision: viewModel.historyPresentationRevision,
+                historyToken: historyLayoutToken,
+                transitionEpoch: transitionEpoch
+            ),
+            selection: viewModel.selection,
+            seenIDs: seenRowIDs,
+            configureActions: { actions in
+                actions.select = viewModel.didSelect
+                actions.toggle = toggleExpansion
+                actions.toggleWorkflows = {
+                    withAnimation(PbMotion.disclosure(reduceMotion: reduceMotion)) { workflowsExpanded.toggle() }
                 }
-            } else if let error = viewModel.listErrorMessage {
-                Section {
-                    Text(error).font(.pb(.secondary)).foregroundStyle(Color.failedRed).textSelection(.enabled)
+                actions.newWorkflow = viewModel.didTapNewWorkflow
+                actions.primary = viewModel.didTapInstallBannerPrimary
+                actions.secondary = viewModel.didTapInstallBannerSecondary
+                actions.dismiss = viewModel.didTapInstallBannerDismiss
+                actions.loadTasks = viewModel.didTapLoadMoreTasks
+                actions.loadWorkflows = viewModel.didTapLoadMoreWorkflows
+                actions.move = { direction in
+                    withAnimation(PbMotion.disclosure(reduceMotion: reduceMotion)) { viewModel.didPressMoveCommand(direction) }
                 }
-            }
-            if viewModel.showsLoadingSkeleton {
-                Section { SkeletonRows() }
-            } else {
-                ForEach(displayedSections ?? viewModel.sections) { section in
-                    Section {
-                        ForEach(section.items) { item in
-                            SidebarDisclosureRow(isVisible: !fadingRowIDs.contains(item.id), animate: !seenRowIDs.contains(item.id), minimumHeight: minimumRowHeight) {
-                                itemView(item)
-                            }
-                                .transition(.identity)
-                                .allowsHitTesting(!fadingRowIDs.contains(item.id))
-                                .accessibilityHidden(fadingRowIDs.contains(item.id))
-                                .onAppear { seenRowIDs.insert(item.id) }
-                                .listRowInsets(EdgeInsets(
-                                    top: PbRadius.Metrics.zero, leading: PbRadius.Metrics.sidebarRowInsetHorizontal,
-                                    bottom: PbRadius.Metrics.zero, trailing: PbRadius.Metrics.sidebarRowInsetHorizontal
-                                ))
-                        }
-                    } header: {
-                        SidebarSectionHeading(text: section.title)
-                    }
+                actions.mounted = { ids in
+                    let new = ids.subtracting(seenRowIDs)
+                    if !new.isEmpty { seenRowIDs.formUnion(new) }
                 }
-                if needsPresentation(viewModel.taskHistoryState) || needsPresentation(viewModel.workflowHistoryState) {
-                    Section {
-                        if needsPresentation(viewModel.taskHistoryState) {
-                            historyControl("Tasks", state: viewModel.taskHistoryState, action: viewModel.didTapLoadMoreTasks)
-                        }
-                        if needsPresentation(viewModel.workflowHistoryState) {
-                            historyControl("Workflows", state: viewModel.workflowHistoryState, action: viewModel.didTapLoadMoreWorkflows)
-                        }
-                    } header: {
-                        SidebarSectionHeading(text: "History")
-                    }
+                actions.history = { visible, revision in
+                    viewModel.didChangeHistoryBottomVisibility(visible, revision: revision)
                 }
-                if let message = viewModel.emptyStateMessage {
-                    Text(message)
-                        .font(.pb(.body))
-                        .foregroundStyle(Color.secondaryText)
-                        .lineLimit(nil)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                Color.clear
-.frame(height: PbRadius.Metrics.hairlineStroke)
-                    .background(GeometryReader { geometry in
-                        Color.clear.preference(key: SidebarHistoryViewportKey.self,
-                            value: SidebarHistoryViewport(bottom: geometry.frame(in: .global),
-                                token: historyLayoutToken, revision: viewModel.historyPresentationRevision))
-                    })
-                    .listRowInsets(EdgeInsets())
-                    .accessibilityHidden(true)
-            }
-        }
-        .background(GeometryReader { geometry in
-            Color.clear.preference(key: SidebarHistoryViewportKey.self,
-                value: SidebarHistoryViewport(viewport: geometry.frame(in: .global)))
-        })
-        .onPreferenceChange(SidebarHistoryViewportKey.self) { geometry in
-            viewModel.didChangeHistoryBottomVisibility(geometry.isBottomVisible, revision: geometry.revision)
-        }
-        .listStyle(.sidebar)
-        // The first section header ("Running" whenever anything runs) otherwise sits flush against
-        // the list's top edge and is clipped under the filter row.
+            },
+            relay: transitionRelay
+        )
+        .scrollChromeScope()
         .padding(.top, PbRadius.Metrics.spacing8)
-        // Native List otherwise keeps closed rows at its minimum height until deletion.
         .environment(\.defaultMinListRowHeight, 0)
         .animation(PbMotion.disclosure(reduceMotion: reduceMotion), value: expansionToken)
         .pbFadeIn()
@@ -369,9 +297,6 @@ struct SidebarView<VM: SidebarViewModel>: View {
             disclosureTask?.cancel()
             displayedSections = nil
             fadingRowIDs = []
-        }
-        .onMoveCommand { direction in
-            withAnimation(PbMotion.disclosure(reduceMotion: reduceMotion)) { viewModel.didPressMoveCommand(direction) }
         }
     }
 
@@ -384,44 +309,6 @@ struct SidebarView<VM: SidebarViewModel>: View {
         let workflowCursor = viewModel.workflowHistoryState.nextCursor ?? ""
         return "\(rowCount):\(lastRow):\(taskCursor):\(workflowCursor)"
             + ":\(viewModel.taskHistoryState.isLoading):\(viewModel.workflowHistoryState.isLoading)"
-    }
-
-    @ViewBuilder
-    private func itemView(_ item: SidebarItem) -> some View {
-        switch item {
-        case .task(let row):
-            TaskRow(model: row, onToggleExpansion: row.hasChildren ? { toggleExpansion(row.id) } : nil, sidebarAppearance: SidebarRowAppearance())
-                .tag(MonitorDestination.task(row.id))
-        case .group(let group):
-            HStack(spacing: PbRadius.Metrics.rowItemSpacing) {
-                GroupRow(group: group.group, conversations: group.conversations, sidebarAppearance: SidebarRowAppearance())
-                if group.conversations.count > 1 {
-                    Button { toggleExpansion(group.id) } label: {
-                        SidebarGroupDisclosure(isExpanded: group.isExpanded, reduceMotion: reduceMotion)
-                    }
-                    .buttonStyle(.borderless)
-                    .accessibilityLabel("Expand or collapse \(group.name)")
-                    .accessibilityValue(group.isExpanded ? "Expanded" : "Collapsed")
-                }
-            }.tag(MonitorDestination.group(group.name))
-        case .workflow(let row):
-            // A workflow run's duplicate alias fill: `selectedRow` where the old accent tint was,
-            // still painted below the native selection NSOutlineView draws above it. The row's
-            // timestamps render secondary there — tertiary misses 4.5:1 on this fill in dark.
-            TaskRow(
-                model: row,
-                onToggleExpansion: row.hasChildren ? { toggleExpansion("workflow:\(row.id)") } : nil,
-                sidebarAppearance: SidebarRowAppearance(isSelectedFill: item.isSelected(viewModel.selection))
-            )
-                .tag(item.destination)
-                .listRowBackground(RoundedRectangle(cornerRadius: PbRadius.row)
-                    .fill(item.isSelected(viewModel.selection) ? Color.selectedRow : Color.clear))
-        case .workflowShortcut(let row, _):
-            TaskRow(model: row, sidebarAppearance: SidebarRowAppearance(isSelectedFill: item.isSelected(viewModel.selection)))
-                .tag(item.destination)
-                .listRowBackground(RoundedRectangle(cornerRadius: PbRadius.row)
-                    .fill(item.isSelected(viewModel.selection) ? Color.selectedRow : Color.clear))
-        }
     }
 
     private var expansionToken: [String] {
@@ -440,50 +327,33 @@ struct SidebarView<VM: SidebarViewModel>: View {
         let newIDs = Set(new.flatMap(\.items).map(\.id))
         let current = displayedSections ?? old
         let removed = Set(current.flatMap(\.items).map(\.id)).subtracting(newIDs)
+        let restored = fadingRowIDs.intersection(newIDs)
+        let newlyFading = removed.subtracting(fadingRowIDs)
         seenRowIDs.formIntersection(newIDs)
         // List retains outgoing cells during its deletion animation. Keep their closed
         // presentation until that identity is explicitly reintroduced by a new snapshot.
         fadingRowIDs.formUnion(removed)
         fadingRowIDs.subtract(newIDs)
         displayedSections = SidebarSection.retainingRemovedRows(from: current, in: new)
+        if !newlyFading.isEmpty || !restored.isEmpty {
+            transitionEpoch += 1
+            transitionRelay.publish(fading: newlyFading, restored: restored, epoch: transitionEpoch)
+        }
         guard !removed.isEmpty else { return }
         // Native List removal is immediate. Keep outgoing cells while their disclosure closes,
         // then remove them; a newer snapshot cancels this pending removal.
         disclosureTask = Task { @MainActor in
             do { try await Task.sleep(for: .milliseconds(reduceMotion ? 180 : 200)) } catch { return }
-            withAnimation(PbMotion.disclosure(reduceMotion: reduceMotion)) { displayedSections = new }
+            withAnimation(PbMotion.disclosure(reduceMotion: reduceMotion)) {
+                transitionEpoch += 1
+                transitionRelay.end(removed, epoch: transitionEpoch)
+                displayedSections = new
+            }
         }
     }
 
     private func toggleExpansion(_ id: String) {
         withAnimation(PbMotion.disclosure(reduceMotion: reduceMotion)) { viewModel.didToggleExpansion(taskID: id) }
-    }
-
-    private var workflowDefinitions: some View {
-        Section(isExpanded: $workflowsExpanded.animation(PbMotion.disclosure(reduceMotion: reduceMotion))) {
-                ForEach(viewModel.savedWorkflows) { workflow in
-                    SidebarWorkflowDefinitionRow(title: workflow.id)
-                        .font(.pb(.body, weight: .medium))
-                        .frame(minHeight: minimumRowHeight)
-                        .tag(MonitorDestination.workflow(workflow.id))
-                        .pbFadeIn()
-                }
-
-        } header: {
-            HStack(spacing: PbRadius.Metrics.spacing8) {
-                Button { withAnimation(PbMotion.disclosure(reduceMotion: reduceMotion)) { workflowsExpanded.toggle() } } label: {
-                    SidebarSectionHeading(text: "Workflows")
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(workflowsExpanded ? "Collapse workflows" : "Expand workflows")
-                Button { viewModel.didTapNewWorkflow() } label: { Image(systemName: "plus") }
-                    .buttonStyle(.plain)
-                    .font(.pb(.caption, weight: .semibold))
-                    .foregroundStyle(Color.secondaryText)
-                    .accessibilityLabel("New workflow")
-                Spacer()
-            }
-        }
     }
 
     private var footer: some View {
@@ -532,24 +402,3 @@ private struct SidebarSectionHeading: View {
     SidebarSectionHeading(text: "Running").padding(PbRadius.Metrics.spacing8).preferredColorScheme(.dark)
 }
 #endif
-
-/// List may construct rows before they enter the viewport. Geometry, not onAppear, gates paging.
-private struct SidebarHistoryViewport: Equatable, Sendable {
-    var viewport: CGRect = .null
-    var bottom: CGRect = .null
-    var token = ""
-    var revision = -1
-    var isBottomVisible: Bool {
-        !viewport.isNull && !bottom.isNull && viewport.height > 0
-            && bottom.maxY >= viewport.minY && bottom.minY <= viewport.maxY
-    }
-}
-
-private struct SidebarHistoryViewportKey: PreferenceKey {
-    static let defaultValue = SidebarHistoryViewport()
-    static func reduce(value: inout SidebarHistoryViewport, nextValue: () -> SidebarHistoryViewport) {
-        let next = nextValue()
-        if !next.viewport.isNull { value.viewport = next.viewport }
-        if !next.bottom.isNull { value.bottom = next.bottom; value.token = next.token; value.revision = next.revision }
-    }
-}

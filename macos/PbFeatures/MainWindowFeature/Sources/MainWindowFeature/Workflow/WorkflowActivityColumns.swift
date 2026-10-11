@@ -116,21 +116,26 @@ struct WorkflowActivityColumns: View {
         GeometryReader { proxy in
             ScrollViewReader { scroll in
                 ScrollView(.horizontal) {
-                    if columns.isEmpty {
-                        if showsPrestartPlaceholder {
-                            Text("Agent activity appears here when a step starts.")
+                    Group {
+                        if columns.isEmpty {
+                            if showsPrestartPlaceholder {
+                                Text("Agent activity appears here when a step starts.")
 .font(.pb(.body))
 .foregroundStyle(Color.tertiaryText)
                                 .frame(width: proxy.size.width, height: proxy.size.height)
-                        } else {
-                            Color.cardFill
+                            } else {
+                                Color.cardFill
 .opacity(0)
-                                .frame(width: proxy.size.width, height: proxy.size.height)
+                                    .frame(width: proxy.size.width, height: proxy.size.height)
+                            }
+                        } else {
+                            ParallelColumnsContent(columns: columns, availableSize: proxy.size,
+                                                   stateForColumn: stateForColumn, onViewport: onViewport)
                         }
-                    } else {
-                        ParallelColumnsContent(columns: columns, availableSize: proxy.size,
-                                               stateForColumn: stateForColumn, onViewport: onViewport)
                     }
+                    // The document probe (§6.4): inside the activity lane's own document, so it
+                    // can only ever target this horizontal scroll view, empty or populated.
+                    .background(ScrollChrome())
                 }
                 .onChange(of: selectedTaskID) { _, id in if let id {
                     scroll.scrollTo(columns.first { $0.memberTaskIDs.contains(id) || $0.task.taskID == id }?.id ?? id, anchor: .leading)
@@ -145,6 +150,14 @@ struct WorkflowActivityColumns: View {
     WorkflowActivityColumns(columns: ParallelViewModelMock().columns, selectedTaskID: nil)
         .frame(width: PbRadius.Metrics.foundationWidth,
                 height: PbRadius.Metrics.workflowInspectorMaximumWidth)
+        .preferredColorScheme(.light)
+}
+
+#Preview("Workflow activity uses Parallel - dark") {
+    WorkflowActivityColumns(columns: ParallelViewModelMock().columns, selectedTaskID: nil)
+        .frame(width: PbRadius.Metrics.foundationWidth,
+                height: PbRadius.Metrics.workflowInspectorMaximumWidth)
+        .preferredColorScheme(.dark)
 }
 
 #Preview("Workflow activity - proven prestart, light") {

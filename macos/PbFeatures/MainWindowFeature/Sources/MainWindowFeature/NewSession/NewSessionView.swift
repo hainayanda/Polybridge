@@ -99,6 +99,9 @@ struct NewSessionView<VM: NewSessionViewModel>: View {
                 .padding(.horizontal, PbRadius.Metrics.spacing28)
                 .padding(.top, PbRadius.Metrics.spacing24)
                 .padding(.bottom, PbRadius.Metrics.spacing16)
+                // The document probe (§6.6): inside the fallback scroll's own document, so it can
+                // only ever target this outer scroll view — never the prompt editor's.
+                .background(ScrollChrome())
             }
             if let errorText = viewModel.errorText {
                 Text(errorText)
@@ -150,6 +153,9 @@ struct NewSessionView<VM: NewSessionViewModel>: View {
     private var promptEditor: some View {
         TextEditor(text: binding(\.message, viewModel.didChangeMessage))
             .font(.pb(.body))
+            // Bounded scope (§6.6): the task editor's own scroll view, if one exists; a quiet
+            // no-op otherwise, with the shared field editor never targeted.
+            .scrollChromeScope()
             .scrollContentBackground(.hidden)
             .focused($isPromptFocused)
             .padding(.horizontal, PbRadius.Metrics.spacing8)

@@ -59,6 +59,9 @@ struct MCPAllowlistView<VM: MCPAllowlistViewModel>: View {
                     }
                 }
             }
+            // Bounded scope (§6.7): the approvals List's own scroll view, independent of row
+            // presence — an empty or repopulated list keeps its chrome.
+            .scrollChromeScope()
             .frame(minHeight: PbRadius.Metrics.mcpAllowlistMinimumHeight, maxHeight: PbRadius.Metrics.mcpAllowlistMaximumHeight)
             Text(viewModel.entryHelp).font(.pb(.caption)).foregroundStyle(Color.secondaryText)
             HStack {

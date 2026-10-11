@@ -1,6 +1,7 @@
 import AppKit
 @testable import MainWindowFeature
 import MonitorCore
+import PbTestUtilities
 import PbUI
 import SwiftUI
 import Testing
@@ -45,5 +46,50 @@ import Testing
         #expect(metadataFrame.maxX <= outputFrame.midX - WorkflowCanvasGeometry.portOuterRadius)
         #expect(!metadataFrame.intersects(detailFrame), "Model metadata must not cover the retained node detail")
         #expect(fixture.string(metadata, "accessibilityHelp") == model, "The complete truncated model remains available in help")
+    }
+
+    @Test func givenLegacyCanvasChrome_whenHosted_thenBothNativeAxesBecomeOverlaySmallAndVisibleRectIsFresh() async throws {
+        // given
+        let nodes = [
+            WorkflowNodeModel(raw: ["id": .string("start"), "type": .string("start"),
+                                    "position": .object(["x": .number(50), "y": .number(50)])]),
+            WorkflowNodeModel(raw: ["id": .string("end"), "type": .string("end"),
+                                    "position": .object(["x": .number(1350), "y": .number(690)])])
+        ]
+        let fixture = RedesignHost(
+            WorkflowCanvas(nodes: nodes, edges: [], selectedNodeID: nil, selectedEdgeID: nil, isEditable: false,
+                           status: { _ in "completed" }, attempt: { _ in 0 }, onSelectNode: { _ in }, onSelectEdge: { _ in },
+                           onMove: { _, _ in }, onConnect: { _ in }, onDrop: { _, _ in })
+                .frame(width: 600, height: 420), size: CGSize(width: 600, height: 420)
+        )
+        defer { fixture.close() }
+        await fixture.settle {
+            guard let probe = fixture.descendants.compactMap({ $0 as? WorkflowCanvasScrollProbe }).first,
+                  let scroll = probe.enclosingScrollView
+            else { return false }
+            return scroll.hasVerticalScroller && scroll.hasHorizontalScroller && probe.controller?.visibleRect != .zero
+        }
+        let probe = try #require(fixture.descendants.compactMap { $0 as? WorkflowCanvasScrollProbe }.first)
+        let scroll = try #require(probe.enclosingScrollView)
+        let controller = try #require(probe.controller)
+        let document = try #require(scroll.documentView)
+        let originalOrigin = scroll.contentView.bounds.origin
+        // when — simulate AppKit applying the preferred legacy style, then notify the presentation
+        // owner through the same public preference-change event it observes natively.
+        scroll.scrollerStyle = .legacy
+        NotificationCenter.default.post(name: NSScroller.preferredScrollerStyleDidChangeNotification, object: nil)
+        await waitUntil(timeout: 5) {
+            fixture.host.layoutSubtreeIfNeeded()
+            return scroll.scrollerStyle == .overlay
+        }
+        // then
+        #expect(scroll.scrollerStyle == .overlay)
+        #expect(scroll.hasVerticalScroller && scroll.hasHorizontalScroller)
+        #expect(scroll.verticalScroller?.controlSize == .small)
+        #expect(scroll.horizontalScroller?.controlSize == .small)
+        #expect(scroll.documentView === document)
+        #expect(scroll.contentView.bounds.origin == originalOrigin)
+        let expectedVisible = probe.convert(scroll.contentView.bounds, from: scroll.contentView)
+        #expect(controller.visibleRect == expectedVisible)
     }
 }

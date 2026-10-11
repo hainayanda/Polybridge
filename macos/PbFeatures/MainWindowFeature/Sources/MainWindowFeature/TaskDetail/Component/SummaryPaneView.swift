@@ -284,6 +284,9 @@ struct SummaryPaneView: View {
             }
             .padding(PbRadius.Metrics.spacing24)
             .readingColumn()
+            // The document probe (§6.2): inside the summary pane's own document, so it can only
+            // ever target this scroll view.
+            .background(ScrollChrome())
         }
     }
 

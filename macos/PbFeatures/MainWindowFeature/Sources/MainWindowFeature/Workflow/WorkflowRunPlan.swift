@@ -57,6 +57,8 @@ struct WorkflowRunPlan: View {
                 }
 .frame(maxWidth: .infinity, alignment: .leading)
 .padding(.vertical, PbRadius.Metrics.spacing6)
+                // The document probe (§6.4): inside the checklist's own document.
+                .background(ScrollChrome())
             }.frame(maxHeight: PbRadius.Metrics.workflowRunActivityMinimumHeight)
         } label: {
             // The existing completed/total projection, tabular, with the design's 4 pt progress

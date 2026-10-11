@@ -19,6 +19,9 @@ struct WorkflowRecoveryEditor: View {
     var body: some View {
         TextEditor(text: $text)
             .font(.pb(.body))
+            // Bounded scope (§6.3): the recovery instructions editor's own scroll view, if one
+            // exists — the growing-height measurement and focus contract are unchanged.
+            .scrollChromeScope()
             .focused($isFocused)
             .frame(height: min(PbRadius.Metrics.recoveryEditorMaximumHeight,
                                max(PbRadius.Metrics.recoveryEditorMinimumHeight, measuredHeight)))

@@ -93,6 +93,9 @@ struct HarnessesView<VM: HarnessesViewModel>: View {
                     onAllowlist: { allowlistRow = row }
                 )
             }
+            // Bounded scope (§6.7): the native List's own scroll view carries thin overlay
+            // chrome, independent of row presence — empty and repopulated lists keep it.
+            .scrollChromeScope()
         }
         .padding(PbRadius.Metrics.spacing16)
         .sheet(item: $allowlistRow) { row in

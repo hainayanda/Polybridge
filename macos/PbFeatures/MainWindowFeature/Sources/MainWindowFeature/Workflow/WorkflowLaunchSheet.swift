@@ -43,6 +43,9 @@ struct WorkflowLaunchSheet<VM: WorkflowViewModel>: View {
                         SectionLabel(text: isGenerating ? (viewModel.isRefining ? "Describe the changes" : "Describe the workflow") : "Task")
                         TextEditor(text: Binding(get: { viewModel.prompt }, set: { viewModel.prompt = $0 }))
 .font(.pb(.body))
+                            // Bounded scope (§6.3): the prompt editor's own scroll view, if one
+                            // exists; a quiet no-op otherwise.
+                            .scrollChromeScope()
 .frame(minHeight: PbRadius.Metrics.sidebarSearchMinimumWidth)
                             .overlay(RoundedRectangle(cornerRadius: PbRadius.row).stroke(Color.cardBorder))
                             .accessibilityLabel(isGenerating ? "Workflow request" : "Workflow task")
@@ -85,7 +88,11 @@ struct WorkflowLaunchSheet<VM: WorkflowViewModel>: View {
                             Text("Saved fallback agents remain in effect.").font(.pb(.caption)).foregroundStyle(Color.secondaryText)
                         }
                     }
-                }.padding(PbRadius.Metrics.spacing28)
+                }
+.padding(PbRadius.Metrics.spacing28)
+                // The document probe (§6.3): inside the sheet's own document, so it can only ever
+                // target this outer scroll view — never the prompt editor's.
+                .background(ScrollChrome())
             }
             if let error = viewModel.errorText {
                 Text(error)

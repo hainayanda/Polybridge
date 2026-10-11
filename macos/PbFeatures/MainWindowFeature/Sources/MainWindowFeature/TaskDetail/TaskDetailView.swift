@@ -446,6 +446,9 @@ struct TaskDetailView<VM: TaskDetailViewModel>: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(PbRadius.Metrics.spacing24)
                     .readingColumn()
+                    // The document probe (§6.2): inside the prompt pane's own document, so it
+                    // can only ever target this scroll view.
+                    .background(ScrollChrome())
             }
         }
     }

@@ -123,6 +123,8 @@ struct WorkflowLoadingActivity: View {
                         Divider()
                     }
                 }
+                // The document probe (§6.4): inside the loading activity lane's own document.
+                .background(ScrollChrome())
             }
         }
     }

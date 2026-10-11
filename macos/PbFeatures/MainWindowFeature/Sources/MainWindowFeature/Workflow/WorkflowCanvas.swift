@@ -185,6 +185,11 @@ struct WorkflowCanvas: View {
             .frame(width: contentSize.width * zoom, height: contentSize.height * zoom, alignment: .topLeading)
             .contentShape(Rectangle())
             .coordinateSpace(name: "workflow-canvas")
+            // The document probe (§6.3): inside the canvas's own document, so both of ITS axes
+            // carry thin overlay chrome — never an outer lane's or the inspector's. Presentation
+            // only: the controller, document size, offsets, zoom, geometry, snapping and callbacks
+            // are unchanged.
+            .background(ScrollChrome())
             .background(WorkflowCanvasScrollBridge(controller: scrollController))
             .onContinuousHover(coordinateSpace: .named("workflow-canvas")) { phase in
                 switch phase {

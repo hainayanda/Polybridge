@@ -1,9 +1,9 @@
 import AppKit
-@testable import MainWindowFeature
 import PbTestUtilities
+@testable import PbUI
 import Testing
 
-@MainActor @Suite(.serialized) struct ActivityScrollChromeTests {
+@MainActor @Suite(.serialized) struct ScrollChromeRegressionTests {
     @Test func givenLegacyChrome_whenAnActivityFeedAttaches_thenNativeOverlayChromeIsAppliedAndRestored() throws {
         // given
         let harness = try makeHarness()
@@ -13,34 +13,32 @@ import Testing
         scroll.autohidesScrollers = false
         scroll.verticalScroller?.controlSize = .regular
         scroll.horizontalScroller?.controlSize = .regular
-        let horizontalControlSize = scroll.horizontalScroller?.controlSize
         let document = try #require(scroll.documentView)
         let content = scroll.contentView
 
         // when
-        let token = ActivityScrollChromeOwner.attach(to: scroll)
+        let token = ScrollChromeOwner.attach(to: scroll)
 
         // then — only native presentation fields change; the feed's document, clip view and
         // scrolling capability remain the same.
         #expect(scroll.scrollerStyle == .overlay)
         #expect(scroll.autohidesScrollers)
         #expect(scroll.verticalScroller?.controlSize == .small)
-        // The amendment scopes the thin chrome to the activity feed's INNER VERTICAL scroller;
-        // horizontal lane/canvas chrome remains untouched.
-        #expect(scroll.horizontalScroller?.controlSize == horizontalControlSize)
+        // The monitor-wide amendment sizes both already-enabled native axes.
+        #expect(scroll.horizontalScroller?.controlSize == .small)
         #expect(scroll.hasVerticalScroller)
         #expect(scroll.hasHorizontalScroller)
         #expect(scroll.documentView === document)
         #expect(scroll.contentView === content)
 
         // when
-        ActivityScrollChromeOwner.detach(token)
+        ScrollChromeOwner.detach(token)
 
         // then
         #expect(scroll.scrollerStyle == .legacy)
         #expect(!scroll.autohidesScrollers)
         #expect(scroll.verticalScroller?.controlSize == .regular)
-        #expect(scroll.horizontalScroller?.controlSize == horizontalControlSize)
+        #expect(scroll.horizontalScroller?.controlSize == .regular)
     }
 
     @Test func givenOverlappingFeedAttachments_whenOneDetaches_thenTheRemainingOwnerKeepsOverlayChrome() throws {
@@ -51,25 +49,25 @@ import Testing
         scroll.scrollerStyle = .legacy
         scroll.autohidesScrollers = false
 
-        let first = ActivityScrollChromeOwner.attach(to: scroll)
-        let second = ActivityScrollChromeOwner.attach(to: scroll)
+        let first = ScrollChromeOwner.attach(to: scroll)
+        let second = ScrollChromeOwner.attach(to: scroll)
 
         // when
-        ActivityScrollChromeOwner.detach(first)
+        ScrollChromeOwner.detach(first)
 
         // then — an overlapping representable must not restore the legacy gutter underneath the
         // still-mounted feed attachment.
         #expect(scroll.scrollerStyle == .overlay)
         #expect(scroll.autohidesScrollers)
-        #expect(ActivityScrollChromeRegistry.registry.object(forKey: scroll) != nil)
+        #expect(ScrollChromeRegistry.registry.object(forKey: scroll) != nil)
 
         // when
-        ActivityScrollChromeOwner.detach(second)
+        ScrollChromeOwner.detach(second)
 
         // then
         #expect(scroll.scrollerStyle == .legacy)
         #expect(!scroll.autohidesScrollers)
-        #expect(ActivityScrollChromeRegistry.registry.object(forKey: scroll) == nil)
+        #expect(ScrollChromeRegistry.registry.object(forKey: scroll) == nil)
     }
 
     @Test func givenTheSameAttachmentTokenIsDetachedTwice_whenAnotherAttachmentRemains_thenOverlayOwnershipStaysLive() throws {
@@ -80,20 +78,20 @@ import Testing
         scroll.scrollerStyle = .legacy
         scroll.autohidesScrollers = false
 
-        let first = ActivityScrollChromeOwner.attach(to: scroll)
-        let second = ActivityScrollChromeOwner.attach(to: scroll)
+        let first = ScrollChromeOwner.attach(to: scroll)
+        let second = ScrollChromeOwner.attach(to: scroll)
 
         // when — a stale cleanup callback repeats the first token
-        ActivityScrollChromeOwner.detach(first)
-        ActivityScrollChromeOwner.detach(first)
+        ScrollChromeOwner.detach(first)
+        ScrollChromeOwner.detach(first)
 
         // then — the second live attachment still owns the native presentation
         #expect(scroll.scrollerStyle == .overlay)
         #expect(scroll.autohidesScrollers)
-        #expect(ActivityScrollChromeRegistry.registry.object(forKey: scroll) != nil)
+        #expect(ScrollChromeRegistry.registry.object(forKey: scroll) != nil)
 
         // when
-        ActivityScrollChromeOwner.detach(second)
+        ScrollChromeOwner.detach(second)
 
         // then
         #expect(scroll.scrollerStyle == .legacy)
@@ -107,14 +105,14 @@ import Testing
         let scroll = harness.scroll
         scroll.scrollerStyle = .legacy
         scroll.autohidesScrollers = false
-        let token = ActivityScrollChromeOwner.attach(to: scroll)
+        let token = ScrollChromeOwner.attach(to: scroll)
 
         // when — AppKit normally changes the preferred style before the owner reasserts the
         // activity-feed overlay. Simulate that sequence without changing a global preference.
         scroll.scrollerStyle = .legacy
         NotificationCenter.default.post(name: NSScroller.preferredScrollerStyleDidChangeNotification, object: nil)
         await waitUntil { scroll.scrollerStyle == .overlay }
-        ActivityScrollChromeOwner.detach(token)
+        ScrollChromeOwner.detach(token)
 
         // then — this test only pins that the current preferred style is used after notification;
         // it never mutates or assumes the machine's global scrollbar preference.
@@ -128,19 +126,19 @@ import Testing
         let scroll = harness.scroll
         scroll.scrollerStyle = .legacy
         scroll.autohidesScrollers = false
-        let token = ActivityScrollChromeOwner.attach(to: scroll)
+        let token = ScrollChromeOwner.attach(to: scroll)
         harness.window.contentView = nil
         scroll.scrollerStyle = .overlay
         scroll.autohidesScrollers = true
 
         // when
-        ActivityScrollChromeOwner.detach(token)
+        ScrollChromeOwner.detach(token)
 
         // then — no visible consumer exists, so teardown must not trigger a reflow write into the
         // retained feed. A later attachment captures this current state afresh.
         #expect(scroll.scrollerStyle == .overlay)
         #expect(scroll.autohidesScrollers)
-        #expect(ActivityScrollChromeRegistry.registry.object(forKey: scroll) == nil)
+        #expect(ScrollChromeRegistry.registry.object(forKey: scroll) == nil)
     }
 
     private func makeHarness() throws -> Harness {

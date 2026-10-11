@@ -55,6 +55,9 @@ struct WorkflowRecoveryOverlayHost<VM: WorkflowViewModel>: View {
                     onClose: dismissExplicitly
                 )
                 .fixedSize(horizontal: false, vertical: true)
+                // The document probe (§6.3): inside the recovery panel's own document — the
+                // panel's bounds, geometry measurement and Escape handling are unchanged.
+                .background(ScrollChrome())
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
                     if height.isFinite, height > PbRadius.Metrics.zero, contentHeight != height { contentHeight = height }
                 }

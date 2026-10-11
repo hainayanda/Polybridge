@@ -12,7 +12,9 @@ struct WorkflowInspector<VM: WorkflowViewModel>: View {
     var body: some View {
         Group {
             if isScrollable {
-                ScrollView { content }
+                // The document probe (§6.3): inside the inspector's own document, so it can only
+                // ever target this outer scroll view — never a nested editor's.
+                ScrollView { content.background(ScrollChrome()) }
             } else {
                 content
             }
@@ -72,6 +74,9 @@ struct WorkflowInspector<VM: WorkflowViewModel>: View {
                 }),
                 axis: .vertical
             )
+                // Bounded scope (§6.3): the multiline description's own dedicated scroll view,
+                // when one exists; a quiet no-op otherwise, the shared field editor untouched.
+                .scrollChromeScope()
                 .textFieldStyle(.roundedBorder)
             if let start = WorkflowJSON.objects(inspectorDefinition["nodes"]).first(where: { $0["type"]?.stringValue == "start" }),
                let startID = start["id"]?.stringValue {
@@ -83,6 +88,8 @@ struct WorkflowInspector<VM: WorkflowViewModel>: View {
                     viewModel.updateNode(startID, key: "prompt", value: .string($0))
                 }))
                     .font(.pb(.body))
+                    // Bounded scope (§6.3): the prompt editor's own scroll view, when one exists.
+                    .scrollChromeScope()
                     .frame(minHeight: PbRadius.Metrics.recoveryEditorMaximumHeight)
                     .overlay(alignment: .topLeading) {
                         // The existing helper text becomes the empty editor's overlay and the
@@ -210,6 +217,8 @@ struct WorkflowInspector<VM: WorkflowViewModel>: View {
             SectionLabel(text: "Assignment guidance")
             TextEditor(text: nodeString(node, "instructions"))
                 .font(.pb(.body))
+                // Bounded scope (§6.3): the instructions editor's own scroll view, if one exists.
+                .scrollChromeScope()
 .frame(minHeight: PbRadius.Metrics.recoveryEditorMaximumHeight)
                 .overlay(RoundedRectangle(cornerRadius: PbRadius.row).stroke(Color.cardBorder))
                 .accessibilityLabel("Assignment guidance")
@@ -275,6 +284,8 @@ struct WorkflowInspector<VM: WorkflowViewModel>: View {
                 SectionLabel(text: "Instructions")
                 TextEditor(text: nodeString(node, "instructions"))
 .font(.pb(.body))
+                    // Bounded scope (§6.3): the instructions editor's own scroll view, if one exists.
+                    .scrollChromeScope()
 .frame(minHeight: PbRadius.Metrics.recoveryEditorMaximumHeight)
                     .overlay(RoundedRectangle(cornerRadius: PbRadius.row).stroke(Color.cardBorder))
                     .accessibilityLabel("Step instructions")
@@ -401,6 +412,8 @@ struct WorkflowInspector<VM: WorkflowViewModel>: View {
                 viewModel.updateEdge(edge.id, key: "condition", value: .string($0))
             }))
 .font(.pb(.body))
+                // Bounded scope (§6.3): the condition editor's own scroll view, if one exists.
+                .scrollChromeScope()
 .frame(minHeight: PbRadius.Metrics.taskSkeletonStatusWidth)
                 .overlay(RoundedRectangle(cornerRadius: PbRadius.row).stroke(Color.cardBorder))
                 .accessibilityLabel("Connection condition")
@@ -476,6 +489,39 @@ struct WorkflowInspector<VM: WorkflowViewModel>: View {
     let vm = WorkflowPreview.make()
     vm.selectedEdgeID = vm.edges.first?.id
     return WorkflowInspector(viewModel: vm)
+        .frame(width: PbRadius.Metrics.formPreviewWidth,
+                height: PbRadius.Metrics.workflowInspectorPreviewHeight)
+        .preferredColorScheme(.dark)
+}
+
+/// A parallel boundary pair selected: the branch-selection editor (and its scoped guidance
+/// editor) render inside the parallel panel. Dummy preview data only.
+@MainActor
+private func makeParallelBoundaryPreviewVM() -> WorkflowVM {
+    let vm = WorkflowPreview.make()
+    var nodes = WorkflowJSON.objects(vm.definition["nodes"])
+    nodes.append([
+        "id": .string("preview-parallel-start"), "title": .string("Parallel"),
+        "type": .string("parallel_start"), "parallel_group_id": .string("preview-group")
+    ])
+    nodes.append([
+        "id": .string("preview-parallel-end"), "title": .string("Parallel"),
+        "type": .string("parallel_end"), "parallel_group_id": .string("preview-group")
+    ])
+    vm.definition["nodes"] = .array(nodes.map(JSONValue.object))
+    vm.selectedNodeID = "preview-parallel-start"
+    return vm
+}
+
+#Preview("Workflow inspector - parallel branch selection - light") {
+    WorkflowInspector(viewModel: makeParallelBoundaryPreviewVM())
+        .frame(width: PbRadius.Metrics.formPreviewWidth,
+                height: PbRadius.Metrics.workflowInspectorPreviewHeight)
+        .preferredColorScheme(.light)
+}
+
+#Preview("Workflow inspector - parallel branch selection - dark") {
+    WorkflowInspector(viewModel: makeParallelBoundaryPreviewVM())
         .frame(width: PbRadius.Metrics.formPreviewWidth,
                 height: PbRadius.Metrics.workflowInspectorPreviewHeight)
         .preferredColorScheme(.dark)

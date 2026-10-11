@@ -42,6 +42,8 @@ struct TaskLoadingSkeleton: View {
                     .padding(.horizontal, PbRadius.Metrics.spacing24)
                     .padding(.top, PbRadius.Metrics.spacing12)
                     .readingColumn()
+                    // The document probe (§6.2): inside the skeleton feed's own document.
+                    .background(ScrollChrome())
             }
             .frame(minHeight: PbRadius.Metrics.zero, maxHeight: .infinity, alignment: .top)
             composer

@@ -105,7 +105,11 @@ show recovery guidance and Retry; damaged derivative catalogs are rebuilt before
 New activity panels
 fade into place, and actionable workflow loading errors appear in a dismissible top notification
 with retained details. Long workflow details scroll within the window without displacing its
-header or sidebar. See [Monitor history and notifications](docs/workflows.md#monitor-history-and-notifications).
+header or sidebar. Scrollable Monitor surfaces with their own native scroll view — sidebar, task
+and workflow panes, editors, sheets, Settings and the menu-bar popover — present thin app-local
+overlay scrollbars that fade at rest, even when the system preference is legacy; native hover
+expansion is unchanged. Sidebar selection uses the theme's pale highlight; scrolling, selection
+and keyboard behaviour are unchanged. See [Monitor history and notifications](docs/workflows.md#monitor-history-and-notifications).
 
 Settings → General shows resolved command-line tools. Commit a Location override with Return or
 **Apply**; **Detect** clears that override and refreshes resolution. **Environment details** expands

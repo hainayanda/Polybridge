@@ -124,6 +124,9 @@ struct WorkflowRunStatus<VM: WorkflowViewModel>: View {
 .textSelection(.enabled)
                                 .frame(maxWidth: .infinity, alignment: .leading)
 .padding(PbRadius.Metrics.spacing16)
+                                // The document probe (§6.4): inside the decision popover's own
+                                // document.
+                                .background(ScrollChrome())
                         }.frame(width: PbRadius.Metrics.workflowNarrowPreviewWidth, height: PbRadius.Metrics.activityPreviewWidth)
                     }
             }

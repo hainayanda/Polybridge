@@ -14,7 +14,6 @@ struct WorkflowView<VM: WorkflowViewModel>: View {
     @State private var recoveryOverlay = WorkflowRecoveryOverlayPresentation()
     /// Focus return to the eligible badge after an explicit dismissal only (best effort).
     @FocusState private var recoveryBadgeFocused: Bool
-
     init(_ viewModel: VM, builderTaskView: ((String, String) -> AnyView)? = nil) {
         _viewModel = State(initialValue: viewModel)
         self.builderTaskView = builderTaskView
@@ -470,7 +469,12 @@ struct WorkflowView<VM: WorkflowViewModel>: View {
                 if let assignment = run.raw["prompt"]?.stringValue, !assignment.isEmpty {
                     DisclosureGroup(run.parentRunID == nil ? "Original request" : "Assignment for this child") {
                         ScrollView {
-                            ReadingMarkdownView(text: assignment).frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, PbRadius.Metrics.spacing6)
+                            ReadingMarkdownView(text: assignment)
+.frame(maxWidth: .infinity, alignment: .leading)
+.padding(.vertical, PbRadius.Metrics.spacing6)
+                                // The document probe (§6.4): inside this nested disclosure's own
+                                // document, never the outer run inspector's.
+                                .background(ScrollChrome())
                         }.frame(maxHeight: PbRadius.Metrics.workflowRunActivityMinimumHeight)
                     }
 .font(.pb(.secondary, weight: .medium))
@@ -484,7 +488,12 @@ struct WorkflowView<VM: WorkflowViewModel>: View {
                 if let plan = run.technicalPlan {
                     DisclosureGroup("Technical plan") {
                         ScrollView {
-                            ReadingMarkdownView(text: plan).frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, PbRadius.Metrics.spacing6)
+                            ReadingMarkdownView(text: plan)
+.frame(maxWidth: .infinity, alignment: .leading)
+.padding(.vertical, PbRadius.Metrics.spacing6)
+                                // The document probe (§6.4): inside this nested disclosure's own
+                                // document, never the outer run inspector's.
+                                .background(ScrollChrome())
                         }.frame(maxHeight: PbRadius.Metrics.formPreviewWidth)
                     }
 .font(.pb(.secondary, weight: .medium))
@@ -498,6 +507,9 @@ struct WorkflowView<VM: WorkflowViewModel>: View {
                     Spacer(minLength: PbRadius.Metrics.zero)
                 }
             }
+            // The document probe (§6.4): inside the run inspector's own document, so it can only
+            // ever target this outer scroll view — never a nested disclosure's.
+            .background(ScrollChrome())
             }
 .accessibilityIdentifier("workflow-run-inspector")
 .background(Color.cardFill)
@@ -566,31 +578,4 @@ private extension WorkflowView {
         }
     }
 
-    var selectedTaskID: String? {
-        guard let nodeID = viewModel.selectedNodeID else {
-            return nil
-        }
-        return viewModel.selectedRun?
-.activations
-.last { $0["node_id"]?.stringValue == nodeID && $0["role"]?.stringValue == "node" }?["tasks"]?
-.arrayValue?
-            .last?["task_id"]?
-.stringValue
-    }
-
-    /// The shared recovery-overlay eligibility of the current selected run: the loaded
-    /// non-builder surface plus the unchanged `WorkflowRecoveryPresentation.showsRecovery`.
-    var recoveryEligibleRunID: String? {
-        WorkflowRecoveryOverlayPresentation.eligibleRunID(
-            run: viewModel.selectedRun,
-            initialLoadingKind: viewModel.initialLoadingKind,
-            initialLoadFailed: viewModel.initialLoadFailed)
-    }
-}
-
-// MARK: - WorkflowViewModel defaults
-
-extension WorkflowViewModel {
-    var validationDependencies: [String: JSONValue] { [:] }
-    var branchSelection: WorkflowBranchSelection { WorkflowBranchSelection() }
 }

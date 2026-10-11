@@ -146,6 +146,10 @@ struct MessageBoxView: View {
             .accessibilityElement(children: .combine)
         } else {
             TextField(model.placeholder, text: $text, axis: .vertical)
+                // Bounded scope (§6.2): the multiline composer's own dedicated scroll view, when
+                // one exists, carries thin overlay chrome; a field with none stays a quiet no-op,
+                // and the shared field editor is never targeted. The outer pane is untouched.
+                .scrollChromeScope()
                 .accessibilityHint(model.hint)
                 .lineLimit(1 ... 6)
                 .textFieldStyle(.plain)

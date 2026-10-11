@@ -101,6 +101,9 @@ struct ParallelView<VM: ParallelViewModel>: View {
                         ParallelColumnsContent(columns: viewModel.columns, availableSize: proxy.size,
                                                stateForColumn: viewModel.columnState(for:),
                                                onViewport: { viewModel.updateViewport(offset: $0, width: $1) })
+                            // The document probe (§6.5): inside the real lane's own document, so
+                            // it can only ever target this horizontal scroll view.
+                            .background(ScrollChrome())
                     }
                 }
             }
@@ -205,6 +208,8 @@ struct ParallelView<VM: ParallelViewModel>: View {
                             Divider()
                         }
                     }
+                    // The document probe (§6.5): inside the loading lane's own document.
+                    .background(ScrollChrome())
                 }
             }
         }

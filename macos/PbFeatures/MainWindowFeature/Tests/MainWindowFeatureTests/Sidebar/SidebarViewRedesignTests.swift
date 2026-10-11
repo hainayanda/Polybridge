@@ -129,6 +129,15 @@ import Testing
         outline.rect(ofRow: row).height
     }
 
+    private func settledNativeRows(_ outline: NSOutlineView) -> Bool {
+        guard let coordinator = outline.delegate as? SidebarNativeList.Coordinator else { return false }
+        return coordinator.reconciliation == nil
+            && coordinator.detached == nil
+            && coordinator.pendingInput == nil
+            && coordinator.settledGeneration == coordinator.generation
+            && coordinator.boxesByID.values.allSatisfy { !$0.entry.isFading }
+    }
+
     /// The outline's content rows — the rows the sidebar's own selection tests drive, i.e. the
     /// tagged task/group/workflow rows, never section headers or untagged surfaces.
     private func contentRows(_ outline: NSOutlineView) -> [Int] {
@@ -353,6 +362,13 @@ import Testing
             rootView: TaskRow(model: row, sidebarAppearance: SidebarRowAppearance(isSelectedFill: true)).fixedSize()
         )
         reference.layoutSubtreeIfNeeded()
+        await waitUntil(timeout: 5) {
+            sut.host.layoutSubtreeIfNeeded()
+            guard let currentOutline = outlineView(sut.host), settledNativeRows(currentOutline) else { return false }
+            return contentRows(currentOutline).allSatisfy {
+                rowHeight(currentOutline, $0) >= reference.fittingSize.height - 1
+            }
+        }
 
         // then — both the natively selected row and the alias `selectedRow` fill fit the row's
         // content; the fill never clips the title, meta or trailing age (§1.5).
