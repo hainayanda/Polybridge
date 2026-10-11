@@ -462,8 +462,9 @@ extension View {
     /// When `onNativeScrollView` is supplied, the same bounded discovery additionally discloses
     /// the scoped container's own NSScrollView identity to that handler — the discovery result
     /// itself, or nil once every live marker isolates nothing. Delivery is deferred off layout,
-    /// coalesced and deduplicated, weakly referenced on both ends (a deallocated candidate
-    /// publishes nil), and never a broader search. Chrome ownership is unchanged either way, and
+    /// coalesced and deduplicated, weakly referenced on both ends (a deallocated candidate is
+    /// absent at the next reconciliation/report delivery), and never a broader search.
+    /// Weak zeroing alone does not schedule delivery. Chrome ownership is unchanged either way, and
     /// omitting the handler keeps the scope's exact prior shape.
     public func scrollChromeScope(
         onNativeScrollView: ScrollChromeScopeNativeIdentityHandler? = nil
