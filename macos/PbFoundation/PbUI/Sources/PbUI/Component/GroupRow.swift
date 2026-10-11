@@ -12,6 +12,17 @@ public struct GroupRow: View {
     /// The sidebar's presentation-only appearance (SPEC §6.1), or `nil` for the shared default
     /// rendering every other consumer (MenuBar today) relies on.
     private let sidebarAppearance: SidebarRowAppearance?
+    /// Optional ink for the default rendering's subtitle only (never the title, backend dots,
+    /// progress bar or spinner). Presentation-only view input, not a model field, so it changes
+    /// no equality. Passed only by the menu bar, whose rows sit directly on the MenuBarExtra
+    /// window's native material where the lighter shared inks miss the 4.5:1 floor
+    /// (user-approved glass-ink amendment); `nil` keeps the default subtitle ink everywhere.
+    ///
+    /// Precedence, strongest first: a natively emphasized row (`backgroundProminence == .increased`)
+    /// keeps its `onAccent` subtitle; a sidebar row (`sidebarAppearance != nil`) keeps §6.1's
+    /// sidebar inks regardless of this value; only the default, non-emphasized rendering honors
+    /// the override.
+    private let metadataForeground: Color?
     @Environment(\.backgroundProminence) private var prominence
 
     /// - Parameters:
@@ -19,10 +30,18 @@ public struct GroupRow: View {
     ///   - conversations: the screen's actual-session projection; defaults to the group's own.
     ///   - sidebarAppearance: the sidebar's presentation-only configuration, or `nil` for the
     ///     unchanged default rendering.
-    public init(group: ParallelGroup, conversations: [Conversation]? = nil, sidebarAppearance: SidebarRowAppearance? = nil) {
+    ///   - metadataForeground: optional ink for the default rendering's subtitle only; `nil`
+    ///     keeps the unchanged default.
+    public init(
+        group: ParallelGroup,
+        conversations: [Conversation]? = nil,
+        sidebarAppearance: SidebarRowAppearance? = nil,
+        metadataForeground: Color? = nil
+    ) {
         self.group = group
         self.conversations = conversations ?? group.conversations
         self.sidebarAppearance = sidebarAppearance
+        self.metadataForeground = metadataForeground
     }
 
     private var total: Int { conversations.count }
@@ -54,7 +73,9 @@ public struct GroupRow: View {
     @ViewBuilder
     private var title: some View {
         // The sidebar's title is full-contrast `primaryText` (§6.1); the default keeps no
-        // explicit style so other consumers inherit the system label colour untouched.
+        // explicit style so consumers inherit the surrounding foreground — the system label
+        // colour, except the menu bar's own `primaryText` blanket on its glass (user-approved
+        // glass-ink amendment), which is why the menu needs no title API.
         switch sidebarAppearance {
         case .some:
             Text(group.name)
@@ -106,11 +127,18 @@ public struct GroupRow: View {
         .padding(.vertical, sidebarAppearance == nil ? PbRadius.Metrics.rowPaddingVertical : PbRadius.Metrics.sidebarRowPaddingVertical)
     }
 
+    /// The gated subtitle ink (see `metadataForeground`): non-`nil` only in the default,
+    /// non-emphasized rendering — never on the sidebar's rows and never on an `onAccent` row.
+    private var defaultMetadataColor: Color? {
+        guard sidebarAppearance == nil, prominence != .increased else { return nil }
+        return metadataForeground
+    }
+
     @ViewBuilder
     private var subtitleText: some View {
         let text = Text(Self.subtitle(finished: doneCount, total: total, singleMemberStatus: conversations.first?.current.status))
             .font(.pb(sidebarAppearance == nil ? .caption : .secondary))
-            .foregroundStyle(Color.secondaryText(on: prominence))
+            .foregroundStyle(defaultMetadataColor ?? Color.secondaryText(on: prominence))
             .lineLimit(1)
         if sidebarAppearance == nil { text } else { text.monospacedDigit() }
     }
@@ -210,6 +238,37 @@ private struct GroupRowPreview: View {
             .padding(PbRadius.Metrics.spacing16)
             .frame(width: PbRadius.Metrics.groupPreviewWidth)
             .background(Color.sidebarBG)
+    }
+}
+
+/// The menu bar's group row on native material (user-approved glass ink): `primaryText` subtitle
+/// with the title inheriting the menu's own `primaryText` blanket, because the shared lighter
+/// inks miss the 4.5:1 floor on the MenuBarExtra window's glass. The background is the native
+/// material, not a fabricated flat glass colour.
+#Preview("GroupRow menu glass ink - light") {
+    GroupRowMenuGlassPreview().preferredColorScheme(.light)
+}
+
+#Preview("GroupRow menu glass ink - dark") {
+    GroupRowMenuGlassPreview().preferredColorScheme(.dark)
+}
+
+private struct GroupRowMenuGlassPreview: View {
+    var body: some View {
+        // `ParallelGroup`/`TaskNode` have no public initializer (MonitorCore builds them internally),
+        // so the preview goes through the same public `Lineage.sections` entry point the app uses.
+        let tasks = [
+            TaskInfo(.object([
+                "task_id": .string("abc123"), "backend": .string("claude"), "status": .string("running"),
+                "group": .string("release-notes")
+            ]))!,
+            TaskInfo(.object(["task_id": .string("def456"), "backend": .string("codex"), "status": .string("completed"), "group": .string("release-notes")]))!
+        ]
+        GroupRow(group: Lineage.sections(tasks).parallel.first!, metadataForeground: .primaryText)
+            .foregroundStyle(Color.primaryText)
+            .padding(PbRadius.Metrics.spacing16)
+            .frame(width: PbRadius.Metrics.groupPreviewWidth)
+            .background(.ultraThinMaterial)
     }
 }
 #endif

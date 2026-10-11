@@ -4,12 +4,16 @@ import SwiftUI
 
 /// A rounded, opaque container on `cardFill` with a hairline `cardBorder` (SPEC §5.4), used for
 /// grouped activity. The padded single-content API is unchanged: it owns its 10 × 14 padding, so
-/// a caller supplies one content block. For grouped rows, dividers and edge-to-edge diff bodies,
-/// use `GroupedActivityCard` with the row primitives below.
+/// a caller supplies one content block. The hairline border is overridable — a needs-attention
+/// card (§6.8) passes the palette's 35% warning tone; `nil` (the default) keeps `cardBorder`.
+/// For grouped rows, dividers and edge-to-edge diff bodies, use `GroupedActivityCard` with the row
+/// primitives below.
 public struct ActivityCard<Content: View>: View {
+    private let border: Color?
     private let content: Content
 
-    public init(@ViewBuilder content: () -> Content) {
+    public init(border: Color? = nil, @ViewBuilder content: () -> Content) {
+        self.border = border
         self.content = content()
     }
 
@@ -21,7 +25,7 @@ public struct ActivityCard<Content: View>: View {
             .background(RoundedRectangle(cornerRadius: PbRadius.card).fill(Color.cardFill))
             .overlay(
                 RoundedRectangle(cornerRadius: PbRadius.card)
-                    .stroke(Color.cardBorder, lineWidth: PbRadius.Metrics.hairlineStroke)
+                    .stroke(border ?? Color.cardBorder, lineWidth: PbRadius.Metrics.hairlineStroke)
             )
     }
 }
@@ -155,10 +159,20 @@ public struct ActivityDiffLine: View {
 
 private struct ActivityCardPreview: View {
     var body: some View {
-        ActivityCard {
-            VStack(alignment: .leading, spacing: PbRadius.Metrics.spacing2) {
-                Text("Read 3 files").font(.pb(.body, weight: .medium))
-                Text("00:25 – 01:09").font(.pb(.caption)).foregroundStyle(Color.secondaryText)
+        VStack(alignment: .leading, spacing: PbRadius.Metrics.spacing8) {
+            ActivityCard {
+                VStack(alignment: .leading, spacing: PbRadius.Metrics.spacing2) {
+                    Text("Read 3 files").font(.pb(.body, weight: .medium))
+                    Text("00:25 – 01:09").font(.pb(.caption)).foregroundStyle(Color.secondaryText)
+                }
+            }
+            ActivityCard(border: Color.warningBorder) {
+                VStack(alignment: .leading, spacing: PbRadius.Metrics.spacing2) {
+                    Text("Needs attention").font(.pb(.body, weight: .medium)).foregroundStyle(Color.warningFG)
+                    Text("Implementation reached its attempt limit.")
+                        .font(.pb(.caption))
+.foregroundStyle(Color.secondaryText)
+                }
             }
         }
         .padding()

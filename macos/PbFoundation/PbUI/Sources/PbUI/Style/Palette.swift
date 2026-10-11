@@ -74,6 +74,9 @@ public extension Color {
     static let primaryText = Palette.primaryText.color
     /// Text on an `accentFill` surface: white in both appearances.
     static let onAccent = Palette.onAccent.color
+    /// The ⌘-key hint's ink on an `accentFill` button, composited once so its contrast floor
+    /// stays the palette's to keep (77% white light / 90% dark over the accent fill).
+    static let shortcutHint = Palette.shortcutHint.color
     /// The unfilled sidebar progress track on an emphasized native selection.
     static let sidebarSelectedProgressTrack = Palette.onAccent.color.opacity(0.25)
     /// Ink for the design's 1 pt elevation shadows, black in both appearances.
@@ -82,6 +85,8 @@ public extension Color {
     static let liveDot = Palette.liveDot.color
     /// The recovery panel's floating border: the existing warning ink at its 30% border tone.
     static let recoveryBorder = Palette.recoveryBorder.color
+    /// The needs-attention card's 35% warning border tone (§6.8).
+    static let warningBorder = Palette.warningBorder.color
     /// Floating recovery panel elevation, preserving the black shadow's 12% opacity.
     static let recoveryShadow = Palette.recoveryShadow.color
 }
@@ -140,10 +145,19 @@ enum Palette {
     static let tertiaryText = Entry("tertiaryText", light: 0x686870, dark: 0x909099)
     static let primaryText = Entry("primaryText", light: 0x1C1C1F, dark: 0xF2F2F4)
     static let onAccent = Entry("onAccent", light: 0xFFFFFF, dark: 0xFFFFFF)
+    /// The ⌘-key hint on an `accentFill` button (SPEC §6.8): white precomposited over the accent
+    /// fill at 77% (light) / 90% (dark). The spec's own 75% white fails its §8 floor
+    /// (4.42 light / 3.70 dark); these composites clear ≥ 4.5:1 on `accentFill` in both
+    /// appearances — the plan's approved contrast deviation, kept in the palette so no view
+    /// derives the tone locally.
+    static let shortcutHint = Entry("shortcutHint", light: 0xD0D7F3, dark: 0xEDF0FA)
     static let shadow = Entry("shadow", light: 0x000000, dark: 0x000000)
     /// The recovery panel's border: the existing warning foreground at its 30% border tone,
     /// derived centrally so no view derives it locally and no RGB value changes.
     static let recoveryBorder = Entry("recoveryBorder", deriving: warningFG, opacity: 0.3)
+    /// The needs-attention card's border: the warning foreground at its 35% border tone
+    /// (SPEC §6.8), derived centrally so no view derives it locally and no RGB value changes.
+    static let warningBorder = Entry("warningBorder", deriving: warningFG, opacity: 0.35)
     /// Opaque warning panel elevation ink, derived without changing the existing black RGB.
     static let recoveryShadow = Entry("recoveryShadow", deriving: shadow, opacity: 0.12)
     static let codeFill = Entry("codeFill", light: 0xECECEF, dark: 0x2A2A2E)
@@ -183,8 +197,8 @@ enum Palette {
     static let all: [Entry] = [
         hairline, accentLink, workflowMarqueeFill, accentFill, selectedRow, runningBG, runningFG, liveDot, doneGreen,
         doneBG, warningFG, warningBG, failedRed, dangerFG, dangerBG, cancelledGray, neutralFill,
-        neutralText, secondaryText, accessRadioBorder, tertiaryText, primaryText, onAccent, shadow,
-        recoveryBorder, recoveryShadow, codeFill,
+        neutralText, secondaryText, accessRadioBorder, tertiaryText, primaryText, onAccent, shortcutHint, shadow,
+        recoveryBorder, recoveryShadow, warningBorder, codeFill,
         editPreviewFill, inspectorFill, diffHunkFill, diffAddedFill, diffRemovedFill, claudeBG,
         claudeFG, codexBG, codexFG, opencodeBG, opencodeFG, vibeBG, vibeFG, antigravityBG,
         antigravityFG, otherBackendBG, otherBackendFG,

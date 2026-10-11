@@ -24,13 +24,13 @@ struct MenuBarRunningRowView: View {
                 VStack(alignment: .leading, spacing: PbRadius.Metrics.spacing4) {
                     HStack(spacing: PbRadius.Metrics.spacing8) {
                         RunningSpinner().frame(width: PbRadius.Metrics.statusIconSize, height: PbRadius.Metrics.statusIconSize)
-                        Text(model.title).font(.pb(.body, weight: .medium)).lineLimit(1)
+                        Text(model.title).font(.pb(.body, weight: .semibold)).lineLimit(1)
                         Spacer(minLength: PbRadius.Metrics.spacing4)
                         TimelineView(.periodic(from: .now, by: 1)) { context in
                             Text(Format.clock(elapsed(at: context.date)))
                                 .font(.pb(.caption))
                                 .monospacedDigit()
-                                .foregroundStyle(Color.secondaryText)
+                                .foregroundStyle(Color.tertiaryText)
                         }
                     }
                     HStack(spacing: PbRadius.Metrics.spacing4) {
@@ -94,10 +94,23 @@ private struct MenuBarRunningRowPreview: View {
                 ),
                 onTap: {}
             )
+            // A long monospaced command truncates from the middle; a long title truncates from the tail.
+            MenuBarRunningRowView(
+                model: MenuBarRunningRowModel(
+                    id: "long1", backend: "vibe", title: "Rework the recovery overlay's presentation and lifecycle end to end",
+                    repoName: "polybridge",
+                    startedAt: .now.addingTimeInterval(-125), durationSeconds: nil,
+                    activityLine: "swift test --filter MenuBarViewTests/MenuBarVMTests/WorkflowMenuBarStatusVMTests",
+                    activityIsMonospaced: true
+                ),
+                onTap: {}
+            )
+            // Missing data: no activity, unknown repository, and no start time — the clock falls
+            // back to the recorded duration.
             MenuBarRunningRowView(
                 model: MenuBarRunningRowModel(
                     id: "ghi789", backend: "vibe", title: "Warming up", repoName: "",
-                    startedAt: .now, durationSeconds: nil, activityLine: nil, activityIsMonospaced: false
+                    startedAt: nil, durationSeconds: 75, activityLine: nil, activityIsMonospaced: false
                 ),
                 onTap: {}
             )

@@ -13,8 +13,15 @@
 //  trivial component may take plain values, per the root AGENTS.md's Component Models section).
 //  `nil` falls back to the SF Symbol this view always drew before.
 //
+//  Native-host override (the user's explicit choice, after a real MenuBarExtra.window capture):
+//  the status item draws the template icon (or its SF Symbol fallback), the loading ellipsis while
+//  counts load, and the running count when positive — nothing else. The workflow-active branch and
+//  the attention triangle were removed as visuals (MenuBarExtra flattens extra children anyway);
+//  their counts survive in the aggregate `accessibilityValue` below and in the popover's content.
+//
 
 import AppKit
+import MonitorCore
 import PbUI
 import SwiftUI
 
@@ -52,11 +59,6 @@ struct MenuBarLabelView<VM: MenuBarViewModel>: View {
             }
             if viewModel.taskCountsLoading || viewModel.workflowCountsLoading { Text("…") }
             if viewModel.runningCount > 0 { Text("\(viewModel.runningCount)").monospacedDigit() }
-            if viewModel.workflowActiveCount > 0 {
-                Image(systemName: "arrow.triangle.branch")
-                Text("\(viewModel.workflowActiveCount)").monospacedDigit()
-            }
-            if viewModel.workflowAttentionCount > 0 { Image(systemName: "exclamationmark.circle") }
         }
         .accessibilityLabel("Polybridge Monitor")
         .accessibilityValue(
@@ -73,6 +75,58 @@ struct MenuBarLabelView<VM: MenuBarViewModel>: View {
 }
 
 #if DEBUG
+
+// MARK: - MenuBarLabelPreviewModel
+
+/// Preview-only fixture for the label's states the shared `MenuBarViewModelMock` cannot express
+/// (workflow counts, loading). Every value is explicitly dummy preview data.
+@MainActor
+private final class MenuBarLabelPreviewModel: MenuBarViewModel {
+    var runningRows: [MenuBarRunningRowModel] = []
+    var recentGroups: [ParallelGroup] = []
+    var recentTasks: [TaskRowModel] = []
+    var listErrorMessage: String?
+    var isConnected = true
+    var connectionLine = "connected · polybridge-ctl"
+    var runningCount: Int
+    var taskCountsLoading: Bool
+    var workflowCountsLoading: Bool
+    var workflowActiveCount: Int
+    var workflowAttentionCount: Int
+    var workflowRows: [WorkflowMenuBarRow] = []
+    var workflowStatusError: String?
+    var headerSubline = "polybridge connected"
+    var installBannerModel: InstallBanner.Model?
+
+    init(
+        runningCount: Int = 0,
+        taskCountsLoading: Bool = false,
+        workflowCountsLoading: Bool = false,
+        workflowActiveCount: Int = 0,
+        workflowAttentionCount: Int = 0
+    ) {
+        self.runningCount = runningCount
+        self.taskCountsLoading = taskCountsLoading
+        self.workflowCountsLoading = workflowCountsLoading
+        self.workflowActiveCount = workflowActiveCount
+        self.workflowAttentionCount = workflowAttentionCount
+    }
+
+    func didAppear() {}
+    func didDisappear() {}
+    func didAppearRunningRow(_: String) {}
+    func didDisappearRunningRow(_: String) {}
+    func didSelectRunningTask(_: String) {}
+    func didSelectRecentTask(_: String) {}
+    func didSelectGroup(_: String) {}
+    func didTapOpenMonitor() {}
+    func didTapNewSession() {}
+    func didCaptureWindowOpener(_: @escaping () -> Void) {}
+    func didTapInstallBannerPrimary() {}
+    func didTapInstallBannerSecondary() {}
+    func didTapInstallBannerDismiss() {}
+}
+
 #Preview("P-bridge icon - light") {
     MenuBarLabelView(MenuBarViewModelMock(), icon: NSImage(systemSymbolName: "app.fill", accessibilityDescription: nil))
         .preferredColorScheme(.light)
@@ -83,11 +137,43 @@ struct MenuBarLabelView<VM: MenuBarViewModel>: View {
         .preferredColorScheme(.dark)
 }
 
-#Preview("fallback symbol - light") {
-    MenuBarLabelView(MenuBarViewModelMock()).preferredColorScheme(.light)
+#Preview("Label idle - light") {
+    MenuBarLabelView(MenuBarLabelPreviewModel()).preferredColorScheme(.light)
 }
 
-#Preview("fallback symbol - dark") {
-    MenuBarLabelView(MenuBarViewModelMock()).preferredColorScheme(.dark)
+#Preview("Label idle - dark") {
+    MenuBarLabelView(MenuBarLabelPreviewModel()).preferredColorScheme(.dark)
+}
+
+#Preview("Label running - light") {
+    MenuBarLabelView(MenuBarLabelPreviewModel(runningCount: 2)).preferredColorScheme(.light)
+}
+
+#Preview("Label running - dark") {
+    MenuBarLabelView(MenuBarLabelPreviewModel(runningCount: 2)).preferredColorScheme(.dark)
+}
+
+#Preview("Label workflow and attention counts (AX value only) - light") {
+    MenuBarLabelView(
+        MenuBarLabelPreviewModel(runningCount: 2, workflowActiveCount: 1, workflowAttentionCount: 1)
+    )
+    .preferredColorScheme(.light)
+}
+
+#Preview("Label workflow and attention counts (AX value only) - dark") {
+    MenuBarLabelView(
+        MenuBarLabelPreviewModel(runningCount: 2, workflowActiveCount: 1, workflowAttentionCount: 1)
+    )
+    .preferredColorScheme(.dark)
+}
+
+#Preview("Label loading - light") {
+    MenuBarLabelView(MenuBarLabelPreviewModel(taskCountsLoading: true, workflowCountsLoading: true))
+        .preferredColorScheme(.light)
+}
+
+#Preview("Label loading - dark") {
+    MenuBarLabelView(MenuBarLabelPreviewModel(taskCountsLoading: true, workflowCountsLoading: true))
+        .preferredColorScheme(.dark)
 }
 #endif

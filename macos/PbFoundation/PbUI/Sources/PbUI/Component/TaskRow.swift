@@ -8,7 +8,11 @@
 //  defaults. Mapping from domain types (`TaskInfo`/`TaskNode`) to this Model happens in the owning
 //  VM (decision 9); this component never touches `TaskInfo` itself. The sidebar passes its
 //  purely presentational `SidebarRowAppearance` (SPEC §6.1); every other consumer keeps the
-//  default rendering unchanged.
+//  default rendering unchanged. The one further presentation-only input is `metadataForeground`:
+//  the menu bar passes the palette's `primaryText` for its rows' metadata because they sit
+//  directly on the MenuBarExtra window's native material, where the shared lighter inks miss
+//  the 4.5:1 floor (user-approved glass-ink amendment) — gated so the sidebar and natively
+//  emphasized rows ignore it, and every default (`nil`) consumer renders byte-identically.
 //
 
 import MonitorCore
@@ -131,14 +135,32 @@ public struct TaskRow: View {
     /// The sidebar's presentation-only appearance (SPEC §6.1), or `nil` for the shared default
     /// rendering every other consumer relies on.
     public let sidebarAppearance: SidebarRowAppearance?
+    /// Optional ink for the default rendering's metadata — subtitle, detail line, age and live
+    /// clock (never the title, status icon or chevron). Presentation-only view input, not a
+    /// `TaskRowModel` field, so model equality is untouched. Passed only by the menu bar, whose
+    /// rows sit directly on the MenuBarExtra window's native material where the lighter shared
+    /// inks miss the 4.5:1 floor (user-approved glass-ink amendment); `nil` keeps the default
+    /// `secondaryText` metadata everywhere.
+    ///
+    /// Precedence, strongest first: a natively emphasized row (`backgroundProminence == .increased`)
+    /// keeps its `onAccent` metadata; a sidebar row (`sidebarAppearance != nil`) keeps §6.1's
+    /// sidebar inks regardless of this value; only the default, non-emphasized rendering honors
+    /// the override.
+    public let metadataForeground: Color?
     @Environment(\.backgroundProminence) private var prominence
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Creates a task row with an optional disclosure action and sidebar presentation.
-    public init(model: TaskRowModel, onToggleExpansion: (() -> Void)? = nil, sidebarAppearance: SidebarRowAppearance? = nil) {
+    public init(
+        model: TaskRowModel,
+        onToggleExpansion: (() -> Void)? = nil,
+        sidebarAppearance: SidebarRowAppearance? = nil,
+        metadataForeground: Color? = nil
+    ) {
         self.model = model
         self.onToggleExpansion = onToggleExpansion
         self.sidebarAppearance = sidebarAppearance
+        self.metadataForeground = metadataForeground
     }
 
     /// 7 pt vertical padding in the sidebar (§6.1) over the shared 6 pt default.
@@ -149,7 +171,9 @@ public struct TaskRow: View {
     @ViewBuilder
     private var title: some View {
         // The sidebar's titles are full-contrast `primaryText` (§6.1); the default keeps no
-        // explicit style so other consumers inherit the system label colour untouched.
+        // explicit style so consumers inherit the surrounding foreground — the system label
+        // colour, except the menu bar's own `primaryText` blanket on its glass (user-approved
+        // glass-ink amendment), which is why the menu needs no title API.
         switch sidebarAppearance {
         case .some:
             Text(model.title)
@@ -175,7 +199,15 @@ public struct TaskRow: View {
         }
     }
 
+    /// The gated metadata ink (see `metadataForeground`): non-`nil` only in the default,
+    /// non-emphasized rendering — never on the sidebar's rows and never on an `onAccent` row.
+    private var defaultMetadataColor: Color? {
+        guard sidebarAppearance == nil, prominence != .increased else { return nil }
+        return metadataForeground
+    }
+
     private var metaColor: Color {
+        if let defaultMetadataColor { return defaultMetadataColor }
         if prominence == .increased { return Color.onAccent.opacity(0.8) }
         return Color.secondaryText
     }
@@ -183,7 +215,7 @@ public struct TaskRow: View {
     /// The trailing age/clock: tertiary in the sidebar (§6.1), except where 4.5:1 demands
     /// secondary — the alias `selectedRow` fill — or a natively emphasized row's onAccent.
     private var trailingColor: Color {
-        guard sidebarAppearance != nil else { return Color.secondaryText(on: prominence) }
+        guard sidebarAppearance != nil else { return defaultMetadataColor ?? Color.secondaryText(on: prominence) }
         if prominence == .increased { return Color.onAccent.opacity(0.8) }
         if sidebarAppearance?.isSelectedFill == true { return Color.secondaryText }
         return Color.tertiaryText
@@ -444,6 +476,44 @@ private struct TaskRowSidebarPreview: View {
         .padding(PbRadius.Metrics.spacing16)
         .frame(width: PbRadius.Metrics.activityPreviewWidth)
         .background(selectedFill ? Color.selectedRow : Color.sidebarBG)
+    }
+}
+
+/// The menu bar's rows on native material (user-approved glass ink): `primaryText` metadata —
+/// subtitle, detail, age, live clock — with the title inheriting the menu's own `primaryText`
+/// blanket, because the shared lighter inks miss the 4.5:1 floor on the MenuBarExtra window's
+/// glass. The background is the native material, not a fabricated flat glass colour.
+#Preview("Menu glass ink - light") {
+    TaskRowMenuGlassPreview().preferredColorScheme(.light)
+}
+
+#Preview("Menu glass ink - dark") {
+    TaskRowMenuGlassPreview().preferredColorScheme(.dark)
+}
+
+private struct TaskRowMenuGlassPreview: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: PbRadius.Metrics.spacing8) {
+            TaskRow(
+                model: TaskRowModel(
+                    id: "abc123", backend: "claude", title: "Fix the login bug", status: .running,
+                    repoName: "repo", ageText: "", startedAt: .now.addingTimeInterval(-42)
+                ),
+                metadataForeground: .primaryText
+            )
+            .foregroundStyle(Color.primaryText)
+            TaskRow(
+                model: TaskRowModel(
+                    id: "def456", backend: "codex", title: "Refactor the parser", status: .completed,
+                    repoName: "repo", ageText: "3h", detailLabel: "Draft the migration plan"
+                ),
+                metadataForeground: .primaryText
+            )
+            .foregroundStyle(Color.primaryText)
+        }
+        .padding(PbRadius.Metrics.spacing16)
+        .frame(width: PbRadius.Metrics.formPreviewWidth)
+        .background(.ultraThinMaterial)
     }
 }
 #endif

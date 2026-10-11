@@ -358,6 +358,8 @@ public enum PbRadius {
         public static let menuBarGearIconFrame: CGFloat = 20
         /// Detail inset beneath the running row's status glyph.
         public static let menuBarRunningRowDetailInset: CGFloat = 24
+        /// The menu-bar footer's primary button and gear target height (§6.8).
+        public static let menuBarFooterButtonHeight: CGFloat = 34
         /// The existing popover width, independent of its displayed task counts.
         public static let menuBarPopoverWidth: CGFloat = 380
         /// Retained height of the menu-bar popover.

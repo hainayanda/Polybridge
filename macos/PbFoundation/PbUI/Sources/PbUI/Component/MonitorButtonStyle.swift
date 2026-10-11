@@ -20,18 +20,25 @@ public struct MonitorButtonStyle: ButtonStyle {
 
     public var kind: Kind
 
-    public init(_ kind: Kind = .primary) {
+    /// The button's minimum height. The shared 30 pt default (§5.3) is unchanged; a taller
+    /// primary — the menu-bar footer's 34 (§6.8) — passes a token-derived value at the call
+    /// site rather than duplicating the style.
+    public var height: CGFloat
+
+    public init(_ kind: Kind = .primary, height: CGFloat = PbRadius.Metrics.primaryButtonHeight) {
         self.kind = kind
+        self.height = height
     }
 
     public func makeBody(configuration: Configuration) -> some View {
-        MonitorButtonBody(configuration: configuration, kind: kind)
+        MonitorButtonBody(configuration: configuration, kind: kind, height: height)
     }
 }
 
 private struct MonitorButtonBody: View {
     let configuration: ButtonStyleConfiguration
     let kind: MonitorButtonStyle.Kind
+    let height: CGFloat
     @Environment(\.isEnabled) private var isEnabled
 
     private var shape: Capsule { Capsule() }
@@ -44,7 +51,7 @@ private struct MonitorButtonBody: View {
                 .font(.pb(.body, weight: .medium))
                 .foregroundStyle(foreground)
                 .padding(.horizontal, PbRadius.Metrics.secondaryButtonHorizontalPadding)
-                .frame(minHeight: PbRadius.Metrics.primaryButtonHeight)
+                .frame(minHeight: height)
                 .glassEffect(.regular.interactive(isEnabled), in: shape)
                 .contentShape(shape)
         case .primary, .tinted, .destructive:
@@ -52,7 +59,7 @@ private struct MonitorButtonBody: View {
                 .font(.pb(.body, weight: .semibold))
                 .foregroundStyle(foreground)
                 .padding(.horizontal, horizontalPadding)
-                .frame(minHeight: PbRadius.Metrics.primaryButtonHeight)
+                .frame(minHeight: height)
                 .background(shape.fill(fill))
                 .brightness(configuration.isPressed ? -0.04 : 0)
                 .contentShape(shape)
@@ -100,6 +107,8 @@ private struct MonitorButtonsPreview: View {
                 Button("Cancel run", role: .destructive) {}.buttonStyle(MonitorButtonStyle(.destructive)).disabled(true)
                 Button("Glass") {}.buttonStyle(MonitorButtonStyle(.glass)).disabled(true)
             }
+            // The menu-bar footer's token-derived 34 pt height (§6.8); the default above stays 30.
+            Button("Open Monitor") {}.buttonStyle(MonitorButtonStyle(.primary, height: PbRadius.Metrics.menuBarFooterButtonHeight))
         }
         .padding()
         .background(Color.windowBG)
