@@ -36,7 +36,7 @@ uv tool install . --force --no-cache             # reinstall after changes; --no
 swiftformat macos && swiftlint lint                  # Monitor app: format, then lint (SwiftFormat 0.62.1, SwiftLint 0.65.0)
 scripts/check-private-refs.sh                        # private-reference guard (CI runs it too)
 PB_NATIVE_SIDEBAR_BENCHMARK=1 python3 scripts/test-swift-package.py --package macos/PbFeatures/MainWindowFeature --mode suites  # Monitor app: guarded Swift Testing, one fresh process per suite (serialized)
-for p in macos/PbFoundation/* macos/PbCore/* macos/PbFeatures/MenuBarFeature macos/PbFeatures/SettingsFeature macos/PolybridgeMonitor; do python3 scripts/test-swift-package.py --package "$p" --mode aggregate || exit 1; done  # the other eight Monitor packages: one guarded serialized process each
+for p in macos/PbFoundation/* macos/PbCore/* macos/PbFeatures/MenuBarFeature macos/PbFeatures/SettingsFeature macos/PolybridgeMonitor; do PB_NATIVE_BENCHMARK=1 python3 scripts/test-swift-package.py --package "$p" --mode aggregate || exit 1; done  # the other eight Monitor packages: one guarded serialized process each
 macos/build-app.sh                               # build the .app into macos/build/ (build only)
 ```
 

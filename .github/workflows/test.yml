@@ -69,6 +69,7 @@ jobs:
 
       - name: Guarded swift tests
         env:
+          PB_NATIVE_BENCHMARK: "1"
           PB_NATIVE_SIDEBAR_BENCHMARK: "1"
         # AppKit layout fixtures share the main actor with async view-model tests:
         # the runner serializes execution and fail-closed validates identity

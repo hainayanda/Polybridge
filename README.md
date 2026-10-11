@@ -217,7 +217,7 @@ PB_CLI_INTEGRATION=1 uv run pytest -m cli_integration   # Real CLIs with isolate
 uv run mcp dev src/polybridge/server.py                 # MCP Inspector
 ```
 
-For Monitor, enable the synthetic sidebar benchmark with `PB_NATIVE_SIDEBAR_BENCHMARK=1` and run the guarded Swift Testing runner — `python3 scripts/test-swift-package.py
+For Monitor, enable the synthetic benchmarks with `PB_NATIVE_BENCHMARK=1` and `PB_NATIVE_SIDEBAR_BENCHMARK=1` and run the guarded Swift Testing runner — `python3 scripts/test-swift-package.py
 --package <package> --mode suites` for `MainWindowFeature` and `--mode aggregate` for every other
 package under `macos/` — then `swiftformat macos && swiftlint lint` and `./macos/build-app.sh`.
 
