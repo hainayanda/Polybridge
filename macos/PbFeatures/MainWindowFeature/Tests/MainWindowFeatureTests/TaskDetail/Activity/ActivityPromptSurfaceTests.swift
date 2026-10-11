@@ -56,23 +56,8 @@ import Testing
         if surface == "detail" {
             #expect(document.bounds.height > 100)
         } else {
-            let mountedRows = mountedMeasurementFrames(in: document)
-            #expect(mountedRows.count == 1, "The compact activity surface must mount exactly its activity row")
-            #expect(mountedRows.allSatisfy { $0.width > 0 && $0.height > 0 && $0.height < 100 },
-                    "The parallel activity row must retain compact mounted content geometry")
-            let hiddenViewport = scroll.contentView.bounds.height
-            // when — the explicit toggle inserts its bubble above the feed.
-            host.rootView = root(showPrompt: true)
-            await waitUntil {
-                host.layoutSubtreeIfNeeded()
-                return scroll.contentView.bounds.height < hiddenViewport - 50
-            }
-            // then — the header gets the bubble, without a second copy in the activity document.
-            #expect(scroll.contentView.bounds.height < hiddenViewport - 50)
-            let toggledRows = mountedMeasurementFrames(in: document)
-            #expect(toggledRows.count == 1, "Toggling the prompt must not add an activity row")
-            #expect(toggledRows.allSatisfy { $0.width > 0 && $0.height > 0 && $0.height < 100 },
-                    "The activity row must remain compact after the prompt moves to the header")
+            try await verifyCompactSurface(host: host, scroll: scroll, document: document,
+                                           togglePrompt: { host.rootView = root(showPrompt: true) })
         }
     }
 
@@ -83,5 +68,24 @@ import Testing
             .compactMap { $0 as? ActivityRowGeometry.MeasurementView }
             .map { $0.convert($0.bounds, to: document) }
             .filter { $0.width > 0 && $0.height > 0 }
+    }
+
+    private func verifyCompactSurface(host: NSView, scroll: NSScrollView, document: NSView,
+                                      togglePrompt: () -> Void) async throws {
+        let mountedRows = mountedMeasurementFrames(in: document)
+        #expect(mountedRows.count == 1, "The compact activity surface must mount exactly its activity row")
+        #expect(mountedRows.allSatisfy { $0.width > 0 && $0.height > 0 && $0.height < 100 },
+                "The parallel activity row must retain compact mounted content geometry")
+        let hiddenViewport = scroll.contentView.bounds.height
+        togglePrompt()
+        await waitUntil {
+            host.layoutSubtreeIfNeeded()
+            return scroll.contentView.bounds.height < hiddenViewport - 50
+        }
+        #expect(scroll.contentView.bounds.height < hiddenViewport - 50)
+        let toggledRows = mountedMeasurementFrames(in: document)
+        #expect(toggledRows.count == 1, "Toggling the prompt must not add an activity row")
+        #expect(toggledRows.allSatisfy { $0.width > 0 && $0.height > 0 && $0.height < 100 },
+                "The activity row must remain compact after the prompt moves to the header")
     }
 }

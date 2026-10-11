@@ -257,6 +257,44 @@ import Testing
         await waitUntil(timeout: 2) { replacementPositions.count > beforeB }
         #expect(replacementPositions.count > beforeB)
     }
+
+    @Test func givenLegacyVerticalScroller_whenTestingPageUpTrackPart_thenTestPartReceivesWindowCoordinates() async throws {
+        // NSScroller.testPart(_:) documents its argument in window coordinates. Keep this
+        // contract executable because the local scroller coordinate space is easy to pass by
+        // mistake when handling a native List's page-up click.
+        _ = NSApplication.shared
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 500, height: 300))
+        let scroll = NSScrollView(frame: NSRect(x: 120, y: 70, width: 240, height: 180))
+        scroll.scrollerStyle = .legacy
+        scroll.hasVerticalScroller = true
+        scroll.hasHorizontalScroller = false
+        scroll.documentView = NSView(frame: NSRect(x: 0, y: 0, width: 220, height: 1200))
+        root.addSubview(scroll)
+        let window = NSWindow(contentRect: root.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = root
+        window.orderFront(nil)
+        defer { window.contentView = nil; window.close() }
+
+        scroll.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        let scroller = try #require(scroll.verticalScroller)
+        try #require(scroller.isHidden == false)
+        try #require(scroller.bounds.width > 0)
+        try #require(scroller.bounds.height > 0)
+
+        let pageRect = scroller.rect(for: .decrementPage)
+        try #require(pageRect.width > 0)
+        try #require(pageRect.height > 0)
+        let localPoint = NSPoint(x: pageRect.midX, y: pageRect.midY)
+        let windowPoint = scroller.convert(localPoint, to: nil)
+        try #require(windowPoint != localPoint)
+
+        let windowPart = scroller.testPart(windowPoint)
+        let localPart = scroller.testPart(localPoint)
+        #expect(windowPart == .decrementPage)
+        #expect(localPart != windowPart)
+    }
 }
 
 private func insetsEqual(_ lhs: NSEdgeInsets, _ rhs: NSEdgeInsets) -> Bool {

@@ -130,7 +130,7 @@ import Testing
                          && scroll.documentVisibleRect.maxY >= document.bounds.maxY - 2,
                      "The feed must settle at the live bottom before pausing")
         let initialOffset = scroll.documentVisibleRect.minY
-        let liveAnchor = state.anchor
+        let liveAnchor = try #require(state.anchor)
 
         // Explicitly pause the feed, then move the native viewport to the reading position.
         state.followLive.suspend()
@@ -158,29 +158,9 @@ import Testing
         let generationBeforePublication = measurementGeneration(in: host)
 
         host.rootView = feed(rows(prepending: true), state: state)
-        await waitUntil(timeout: 5) {
-            @MainActor in measurementGeneration(in: host) > generationBeforePublication
-                && state.viewportPositioned && !state.followLive.isFollowing
-                && state.anchor?.id == pausedAnchor.id
-                && firstVisibleMeasurementFrame(in: host, scroll: scroll).map {
-                    abs($0.minY - scroll.documentVisibleRect.minY - pausedAnchor.relativeOffset) < 3
-                } == true
-                && abs(state.scrollOffset - scroll.documentVisibleRect.minY) < 2
-        }
-
-        try #require(measurementGeneration(in: host) > generationBeforePublication,
-                     "The prepended snapshot must update mounted row measurements")
-        #expect(state.viewportPositioned)
-        #expect(!state.followLive.isFollowing)
-        #expect(state.anchor?.id == pausedAnchor.id)
-        let restoredViewport = scroll.documentVisibleRect
-        let restoredRowFrame = try #require(firstVisibleMeasurementFrame(in: host, scroll: scroll),
-                                           "The restored anchor must have a mounted row measurement")
-        #expect(abs(restoredRowFrame.minY - restoredViewport.minY - pausedAnchor.relativeOffset) < 3,
-                "Prepending history must preserve the anchor's position within its row")
-        #expect(abs(state.anchor!.relativeOffset - pausedAnchor.relativeOffset) < 3,
-                "Prepending history must preserve the semantic reading anchor")
-        #expect(abs(state.scrollOffset - scroll.documentVisibleRect.minY) < 2)
+        try await verifyPublishedHistory(host: host, state: state, scroll: scroll,
+                                               pausedAnchor: pausedAnchor,
+                                               generationBeforePublication: generationBeforePublication)
     }
 
     @Test func givenAPausedActivityFeed_whenLegacyChromeIsReasserted_thenReadingAnchorAndFollowStateSurvive() async throws {
@@ -383,6 +363,35 @@ import Testing
                 && $0.minY < scroll.documentVisibleRect.maxY
             }
             .min { $0.minY < $1.minY }
+    }
+
+    private func verifyPublishedHistory(host: NSView, state: ParallelColumnUIState,
+                                        scroll: NSScrollView, pausedAnchor: ParallelVerticalAnchor,
+                                        generationBeforePublication: Int) async throws {
+        await waitUntil(timeout: 5) {
+            @MainActor in measurementGeneration(in: host) > generationBeforePublication
+                && state.viewportPositioned && !state.followLive.isFollowing
+                && state.anchor?.id == pausedAnchor.id
+                && firstVisibleMeasurementFrame(in: host, scroll: scroll).map {
+                    abs($0.minY - scroll.documentVisibleRect.minY - pausedAnchor.relativeOffset) < 3
+                } == true
+                && abs(state.scrollOffset - scroll.documentVisibleRect.minY) < 2
+        }
+
+        try #require(measurementGeneration(in: host) > generationBeforePublication,
+                     "The prepended snapshot must update mounted row measurements")
+        #expect(state.viewportPositioned)
+        #expect(!state.followLive.isFollowing)
+        let restoredAnchor = try #require(state.anchor)
+        #expect(restoredAnchor.id == pausedAnchor.id)
+        let restoredViewport = scroll.documentVisibleRect
+        let restoredRowFrame = try #require(firstVisibleMeasurementFrame(in: host, scroll: scroll),
+                                           "The restored anchor must have a mounted row measurement")
+        #expect(abs(restoredRowFrame.minY - restoredViewport.minY - pausedAnchor.relativeOffset) < 3,
+                "Prepending history must preserve the anchor's position within its row")
+        #expect(abs(restoredAnchor.relativeOffset - pausedAnchor.relativeOffset) < 3,
+                "Prepending history must preserve the semantic reading anchor")
+        #expect(abs(state.scrollOffset - scroll.documentVisibleRect.minY) < 2)
     }
 
     private func measurementGeneration(in view: NSView) -> Int {
