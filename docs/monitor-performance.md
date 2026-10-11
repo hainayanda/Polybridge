@@ -1045,3 +1045,22 @@ anchor keeps the proxy fallback, which completes only against a paired current d
 The regression is
 `givenPausedFeedNearOlderPageBoundary_whenOlderRowsLoad_thenReadingViewportDoesNotJumpDuringRealization`
 (heights deliberately vary so lazy realization cannot satisfy it by estimate).
+
+Numeric restoration without a reference lease follows the same user-input rule. A cancellation
+clears queued native targets before notifying the feed. The notification validates the current
+observer, scroll view and document, and returns the feed's current restoration generation; this
+also retires an owner update not yet delivered to the native observer. Older configurations cannot
+re-arm it, while a genuinely newer restoration can use the same offset. The cancellation watermark
+cannot decrease during repeated input and is scoped to the native binding.
+
+After cancellation, only coherent native geometry can establish the next reading anchor; cached
+frames cannot clear that pending capture. Older-history reveal, disclosure and retry do not mutate
+the feed while this capture is unavailable. A disclosure or retry click during that brief transition
+is skipped rather than deferred: repeat it after the feed settles. Once live following resumes,
+the previous reading target is cleared before computing the current bottom. Refused page requests
+also discard targets from completed restorations and retain fresh measurement work.
+
+Real-window regressions in `ActivityFeedNumericCancellationHostedTests` cover publication/input
+overlap, pending pages, End navigation after a completed paused restoration, refused loading and
+recovery from an explicitly missing native measurement. `ParallelScrollNativeIdentityTests` checks
+providerless input, owner/configuration generation races, repeated cancellation and fresh targets.
