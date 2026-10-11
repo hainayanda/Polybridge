@@ -348,7 +348,7 @@ struct ActivityFeedView<Tail: View>: View {
             // eligible while updating row-width acceptance from the actual clip geometry.
             if needsMeasuredResize { beginRestoration(cause: .resize) }
         }
-        if state.followLive.isFollowing { followingLayout = true }
+        if state.followLive.isFollowing, size != viewportSize { followingLayout = true }
         viewportSize = size
     }
 

@@ -356,6 +356,7 @@ final class ParallelScrollObservationView: NSView {
     }
 
     func configure(ids: [String], stride: CGFloat, restorationOffset: CGFloat?, restorationActive: Bool) {
+        diagnose("configure entry incomingActive=\(restorationActive) incomingOffset=\(String(describing: restorationOffset))")
         let restorationOffset = anchorProvider?.isAnchorRestorationActive == false ? nil : restorationOffset
         let restorationActive = anchorProvider?.isAnchorRestorationActive == false ? false : restorationActive
         let geometryChanged = configuredAxis != axis || ids != self.ids || stride != self.stride
@@ -377,6 +378,7 @@ final class ParallelScrollObservationView: NSView {
             requestedOffset = restorationOffset
             if let restorationOffset { pendingOffset = restorationOffset } else if axis == .vertical { pendingOffset = nil }
         }
+        diagnose("configure ack")
         DispatchQueue.main.async { [weak self] in self?.reattach(); self?.report() }
     }
 
@@ -601,9 +603,7 @@ final class ParallelScrollObservationView: NSView {
 
     private func applyRestorationTarget(_ target: CGFloat, scroll: NSScrollView, document: NSView,
                                         length: CGFloat, viewport: CGFloat, visible: CGRect) {
-        if let restorationDiagnostic {
-            restorationDiagnostic("apply target=\(target) visible=\(visible.minY) height=\(length) viewport=\(viewport)")
-        }
+        diagnose("apply target=\(target) visible=\(visible.minY) height=\(length) viewport=\(viewport) before")
         pendingOffset = nil
         let clamped = min(max(0, target), max(0, length - viewport))
         var point = scroll.contentView.bounds.origin
@@ -614,6 +614,7 @@ final class ParallelScrollObservationView: NSView {
             scroll.reflectScrolledClipView(scroll.contentView)
             applyingRestoration = false
         }
+        diagnose("apply after target=\(target)")
     }
 
     /// Synchronous callback-only retry; nested provider retries are dropped without ending the lease.
@@ -625,16 +626,23 @@ final class ParallelScrollObservationView: NSView {
         report(documentGeometryChanged: true)
     }
 
+    private func diagnose(_ event: @autoclosure () -> String) {
+        guard let restorationDiagnostic else { return }
+        let scroll = observedScrollView
+        restorationDiagnostic(event() + " native=\(String(describing: scroll.map { ObjectIdentifier($0) }))"
+            + " outer=\(scroll?.frame.width ?? 0) clip=\(String(describing: scroll?.contentView.bounds.size))"
+            + " style=\(scroll?.scrollerStyle.rawValue ?? -1) preferred=\(NSScroller.preferredScrollerStyle.rawValue)"
+            + " offset=\(scroll?.documentVisibleRect.minY ?? 0) height=\(scroll?.documentView?.bounds.height ?? 0)"
+            + " rows=\((scroll?.documentView as? NSTableView)?.numberOfRows ?? -1)"
+            + " active=\(restorationActive) requested=\(String(describing: requestedOffset)) pending=\(String(describing: pendingOffset)) ack=\(pendingPositionAcknowledgement)")
+    }
+
     private func report(observeExternalMovement: Bool = false, documentGeometryChanged: Bool = false) {
         guard !isTornDown, let scroll = observedScrollView, let document = scroll.documentView else { return }
         // Native targets re-assert the zero-inset contract on every report, so a later resize or
         // layout pass that restores an automatic inset cannot shift the feed's document geometry.
         if usesNativeIdentity { enforceNativeInsets(on: scroll) }
-        if let restorationDiagnostic {
-            restorationDiagnostic("report geometry=\(documentGeometryChanged) external=\(observeExternalMovement)"
-                                  + " live=\(liveUserScroll) offset=\(scroll.documentVisibleRect.minY)"
-                                  + " height=\(document.bounds.height) rows=\((document as? NSTableView)?.numberOfRows ?? -1)")
-        }
+        diagnose("report geometry=\(documentGeometryChanged) external=\(observeExternalMovement) live=\(liveUserScroll)")
         let visible = scroll.documentVisibleRect
         let viewportSize = scroll.contentView.bounds.size
         if usesNativeIdentity, axis == .vertical, let onNativeViewportGeometry {
@@ -642,7 +650,9 @@ final class ParallelScrollObservationView: NSView {
             if viewportSize != lastViewportSize || outerWidth != lastOuterScrollWidth {
                 lastViewportSize = viewportSize
                 lastOuterScrollWidth = outerWidth
+                diagnose("geometry callback entry")
                 onNativeViewportGeometry(viewportSize, outerWidth)
+                diagnose("geometry callback exit")
             }
         } else if viewportSize != lastViewportSize {
             lastViewportSize = viewportSize
@@ -653,11 +663,13 @@ final class ParallelScrollObservationView: NSView {
         let viewport = axis == .horizontal ? viewportSize.width : viewportSize.height
         // A queued layout report can precede the bounds notification for a user move.
         if observeExternalMovement || liveUserScroll, !applyingRestoration {
+            diagnose("external movement entry")
             let incoming = document.isFlipped ? visible.minY : document.bounds.maxY - visible.maxY
             // A downward live move is user intent in the other direction: it ends an armed
             // anchor provider's reference just as an upward move does.
             if liveUserScroll, incoming > lastOffset + 0.5 { cancelAnchorReference() }
             observeExternalUpwardScroll(visible: visible, document: document, length: length, viewport: viewport)
+            diagnose("external movement exit")
         }
         // An armed anchor provider corrects from the document's fresh native geometry before
         // this report applies anything, and owns the target over every queued numeric
@@ -675,7 +687,10 @@ final class ParallelScrollObservationView: NSView {
         lastOffset = axis == .horizontal ? updated.minX : (document.isFlipped ? updated.minY : document.bounds.maxY - updated.maxY)
         let report = CGRect(x: lastOffset, y: 0, width: length, height: viewport)
         let acknowledgesRestoration = pendingPositionAcknowledgement && viewport > 0 && horizontalLayoutReady && pendingOffset == nil
-        if acknowledgesRestoration { pendingPositionAcknowledgement = false }
+        if acknowledgesRestoration {
+            diagnose("position ack")
+            pendingPositionAcknowledgement = false
+        }
         if report != lastReported || acknowledgesRestoration {
             lastReported = report
             onPosition?(lastOffset, length, viewport)

@@ -67,6 +67,36 @@ jobs:
           path: ${{ matrix.package }}/.build
           key: swift-build-${{ runner.arch }}-${{ steps.xcode.outputs.xcode }}-${{ matrix.package }}-${{ hashFiles('macos/**/Package.swift', 'macos/**/Package.resolved') }}
 
+      - name: Build first-mount scrollbar diagnostic
+        if: matrix.package == 'macos/PbFeatures/MainWindowFeature' && github.head_ref == 'fix/monitor-long-message-activity'
+        timeout-minutes: 10
+        continue-on-error: true
+        run: swift build --package-path "${{ matrix.package }}" --build-tests
+
+      - name: Capture first-mount scrollbar diagnostic
+        if: matrix.package == 'macos/PbFeatures/MainWindowFeature' && github.head_ref == 'fix/monitor-long-message-activity'
+        timeout-minutes: 3
+        continue-on-error: true
+        run: |
+          mkdir -p "$RUNNER_TEMP/pb-chrome-diagnostic"
+          set +e
+          swift test --package-path "${{ matrix.package }}" --skip-build --no-parallel \
+            --filter 'ActivityFeedLongMarkdownHostedTests/givenEightTallActivityRows_whenTaskDetailMounts_thenBottomAndVisibleGeometryRemainStable' \
+            --event-stream-output-path "$RUNNER_TEMP/pb-chrome-diagnostic/events.jsonl" \
+            > "$RUNNER_TEMP/pb-chrome-diagnostic/stdout.log" \
+            2> "$RUNNER_TEMP/pb-chrome-diagnostic/stderr.log"
+          diagnostic_status=$?
+          printf '%s\n' "$diagnostic_status" > "$RUNNER_TEMP/pb-chrome-diagnostic/exit-code.txt"
+          exit "$diagnostic_status"
+
+      - name: Preserve first-mount scrollbar diagnostic
+        if: always() && matrix.package == 'macos/PbFeatures/MainWindowFeature' && github.head_ref == 'fix/monitor-long-message-activity'
+        uses: actions/upload-artifact@v4
+        with:
+          name: first-mount-scrollbar-diagnostic
+          path: ${{ runner.temp }}/pb-chrome-diagnostic
+          retention-days: 7
+
       - name: Guarded swift tests
         env:
           PB_NATIVE_BENCHMARK: "1"

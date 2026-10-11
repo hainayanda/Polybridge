@@ -30,7 +30,10 @@ import Testing
         let recorder = FirstMountRecorder(controller: controller)
         // when — mount through the normal run loop and wait for the native table to settle.
         window.orderFront(nil)
-        defer { harness.sut.didDisappear(); window.contentViewController = nil; window.close() }
+        defer {
+            recorder.detach(from: controller)
+            harness.sut.didDisappear(); window.contentViewController = nil; window.close()
+        }
         harness.sut.didAppear()
         harness.tasksSubject.send([harness.detailBox.value!])
         await waitUntil(timeout: 5) { harness.sut.timelineWorker == nil && harness.sut.timelineModel.rows.count >= 5 }
@@ -54,13 +57,14 @@ import Testing
         // then — the feed reaches bottom with visible rows and no oscillating geometry.
         let metrics = firstMountMetrics(samples: recorder.validSamples)
         let trace = recorder.mountTrace.map(\.logLine).joined(separator: " | ")
+        let diagnostics = recorder.diagnosticTrace.joined(separator: " | ")
         try #require(recorder.validSamples.count >= 2,
                      "The bounded observation must compare an initial and terminal valid sample")
         print(
             "synthetic-first-mount rows=\(table.numberOfRows) notifications=\(recorder.mountTrace.count) "
                 + "reversals=\(metrics.reversals) heightTransitions=\(metrics.heightTransitions) "
                 + "validSamples=\(recorder.validSamples.count) stableIDs=\(metrics.stableIDs) "
-                + "stableGeometry=\(metrics.stableGeometry) trace=\(trace)"
+                + "stableGeometry=\(metrics.stableGeometry) trace=\(trace) diagnostics=\(diagnostics)"
         )
         #expect(table.numberOfRows >= 5)
         #expect(document.bounds.height > scroll.contentView.bounds.height)
@@ -294,9 +298,15 @@ import Testing
     private final class FirstMountRecorder: @unchecked Sendable {
         var mountTrace: [FirstMountSample] = []
         var validSamples: [FirstMountSample] = []
+        private(set) var diagnosticTrace: [String] = []
         private var observer: NSObjectProtocol?
+        private var diagnosticViewIDs: Set<ObjectIdentifier> = []
+        private var diagnosticAttachments: [DiagnosticAttachment] = []
+        private var diagnosticSequence = 0
 
-        init(controller: NSViewController) {
+        @MainActor init(controller: NSViewController) {
+            self.observer = nil
+            attachDiagnostics(in: controller)
             self.observer = NotificationCenter.default.addObserver(
                 forName: NSView.boundsDidChangeNotification, object: nil, queue: .main
             ) { [weak self, weak controller] notification in
@@ -313,7 +323,16 @@ import Testing
             if let observer { NotificationCenter.default.removeObserver(observer) }
         }
 
+        @MainActor func detach(from controller: NSViewController) {
+            for attachment in diagnosticAttachments {
+                attachment.view?.restorationDiagnostic = attachment.original
+            }
+            diagnosticAttachments.removeAll()
+            diagnosticViewIDs.removeAll()
+        }
+
         @MainActor private func record(objectID: ObjectIdentifier, in controller: NSViewController) {
+            attachDiagnostics(in: controller)
             guard let scroll = Self.activityScroll(in: controller.view), let document = scroll.documentView,
                   document is NSTableView, ObjectIdentifier(scroll.contentView) == objectID else { return }
             let visible = Self.descendants(document)
@@ -352,6 +371,12 @@ import Testing
                 comparisonFrames: comparison.map(\.1)
             )
             mountTrace.append(sample)
+            appendDiagnostic(String(format: "sample t=%.3f style=%ld auto=%d outer=%.1f clip=(%.1f,%.1f) offset=%.1f doc=%.1f rows=%d providers=%d active=%@",
+                                    sample.timestamp, scroll.scrollerStyle.rawValue, scroll.autohidesScrollers ? 1 : 0,
+                                    scroll.frame.width, scroll.contentView.bounds.width, scroll.contentView.bounds.height,
+                                    sample.offset, sample.documentHeight, sample.rowIDs.count,
+                                    Self.observerViews(in: controller.view).count,
+                                    Self.observerViews(in: controller.view).map { $0.anchorProvider?.isAnchorRestorationActive == true ? "1" : "0" }.joined(separator: ",")))
             let hasOverflow = sample.documentHeight > sample.viewportHeight
             let hasMaterializedRows = !sample.rowFrames.isEmpty
             let isBottom = sample.documentHeight - sample.offset - sample.viewportHeight <= 3
@@ -364,8 +389,46 @@ import Testing
         }
 
         @MainActor func captureCurrent(controller: NSViewController) {
+            attachDiagnostics(in: controller)
             guard let scroll = Self.activityScroll(in: controller.view) else { return }
             record(objectID: ObjectIdentifier(scroll.contentView), in: controller)
+        }
+
+        @MainActor private func attachDiagnostics(in controller: NSViewController) {
+            if diagnosticTrace.isEmpty {
+                let preferred = UserDefaults.standard.string(forKey: "AppleShowScrollBars") ?? "nil"
+                let screen = NSScreen.main?.frame.debugDescription ?? "nil"
+                appendDiagnostic("environment preferredStyle=\(NSScroller.preferredScrollerStyle.rawValue) AppleShowScrollBars=\(preferred) screen=\(screen)")
+            }
+            let views = Self.observerViews(in: controller.view)
+            if views.isEmpty {
+                appendDiagnostic("observer-sink missing t=\(ProcessInfo.processInfo.systemUptime)")
+            }
+            for view in views where diagnosticViewIDs.insert(ObjectIdentifier(view)).inserted {
+                let attachment = DiagnosticAttachment(view: view, original: view.restorationDiagnostic)
+                diagnosticAttachments.append(attachment)
+                view.restorationDiagnostic = { [weak self] message in
+                    self?.appendDiagnostic("observer \(message)")
+                }
+                appendDiagnostic("observer-sink attached t=\(ProcessInfo.processInfo.systemUptime)")
+            }
+        }
+
+        private func appendDiagnostic(_ line: String) {
+            guard diagnosticTrace.count < 300 else { return }
+            diagnosticSequence += 1
+            diagnosticTrace.append(String(format: "#%03d t=%.6f %@",
+                                           diagnosticSequence, ProcessInfo.processInfo.systemUptime, line))
+        }
+
+        private final class DiagnosticAttachment {
+            weak var view: ParallelScrollObservationView?
+            let original: ((String) -> Void)?
+
+            init(view: ParallelScrollObservationView, original: ((String) -> Void)?) {
+                self.view = view
+                self.original = original
+            }
         }
 
         @MainActor private static func descendants(_ view: NSView) -> [NSView] {
@@ -374,6 +437,10 @@ import Testing
 
         @MainActor private static func activityScroll(in view: NSView) -> NSScrollView? {
             descendants(view).compactMap { $0 as? NSScrollView }.first(where: { $0.hasVerticalScroller })
+        }
+
+        @MainActor private static func observerViews(in view: NSView) -> [ParallelScrollObservationView] {
+            descendants(view).compactMap { $0 as? ParallelScrollObservationView }
         }
     }
 
