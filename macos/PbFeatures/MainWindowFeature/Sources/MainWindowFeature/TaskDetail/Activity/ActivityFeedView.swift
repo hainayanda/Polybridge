@@ -40,6 +40,7 @@ struct ActivityFeedView<Tail: View>: View {
 
     @State private var measurementGeneration = 0
     @State private var viewportSize: CGSize = .zero
+    @State private var outerScrollWidth: CGFloat?
     @State private var nativeViewportReady = false
     @State private var realizedLastRowID: String?
     @State private var position = ActivityFeedPosition()
@@ -136,7 +137,7 @@ struct ActivityFeedView<Tail: View>: View {
         // Outside the marker pair; native identity excludes the outer parallel lane.
         .background(ParallelScrollObserver(
             axis: .vertical, restorationOffset: targetOffset, restorationActive: restoring || followingLayout,
-            onViewportSize: observeViewport, onUpwardIntent: upwardIntent, nativeIdentity: nativeIdentity,
+            onNativeViewportGeometry: observeViewport, onUpwardIntent: upwardIntent, nativeIdentity: nativeIdentity,
             anchorProvider: position.referenceRestoration
         ) { offset, content, viewport in
             if positioned, !restoring, !followingLayout, abs(content - position.content) < 0.5, position.viewport == viewport,
@@ -316,11 +317,26 @@ struct ActivityFeedView<Tail: View>: View {
         return true
     }
 
-    private func observeViewport(_ size: CGSize) {
+    private func observeViewport(_ size: CGSize, outerWidth: CGFloat) {
+        let outerWidthChanged = outerScrollWidth.map { abs(outerWidth - $0) > 0.5 } ?? false
+        outerScrollWidth = outerWidth
         defer { bindIntendedListSnapshot() }
-        guard size != viewportSize else { return }
+        guard size != viewportSize || outerWidthChanged else { return }
+        let needsMeasuredResize = outerWidthChanged || abs(size.height - viewportSize.height) > 0.5
+        let clipWidthChanged = viewportSize.width > 0 && abs(size.width - viewportSize.width) > 0.5
         if positioned, !state.followLive.isFollowing {
-            if viewportSize.width > 0, abs(size.width - viewportSize.width) > 0.5 {
+            if !needsMeasuredResize, clipWidthChanged, let anchor = state.anchor,
+               position.referenceRestoration?.isActive != true, position.referenceRestoration?.cancelled != true {
+                let pagePending = waitingForPage || position.referenceRestoration?.pagePending == true
+                position.openReferenceRestoration(anchor: anchor, shownIDs: shown.map(\.id),
+                                                  nativeIdentity: nativeIdentity, generation: measurementGeneration,
+                                                  awaitingPagePublication: pagePending)
+                restoring = true
+                pendingReadingCapture = false
+                targetOffset = nil
+                state.viewportPositioned = false
+            }
+            if clipWidthChanged {
                 restorationWidth.resize(
                     measuredWidth: position.expectedRowWidth(
                         for: state.anchor?.id, viewportWidth: size.width, nativeIdentity: nativeIdentity
@@ -328,7 +344,9 @@ struct ActivityFeedView<Tail: View>: View {
                     previousViewportWidth: viewportSize.width, viewportWidth: size.width, restoring: restoring
                 )
             }
-            beginRestoration(cause: .resize)
+            // Legacy scroller appearance changes only clip width; keep the native lease
+            // eligible while updating row-width acceptance from the actual clip geometry.
+            if needsMeasuredResize { beginRestoration(cause: .resize) }
         }
         if state.followLive.isFollowing { followingLayout = true }
         viewportSize = size
@@ -677,23 +695,3 @@ private extension ActivityFeedView {
         }
     }
 }
-
-#if DEBUG
-/// Overflowing dummy rows prove the feed's thin chrome and content fit together — no invented
-/// production values, only `PreviewFixtures`' own fixture items.
-@MainActor
-private func activityFeedPreview() -> some View {
-    let rows = ActivityRowsBuilder.build(from: PreviewFixtures.sampleRows(taskID: "feed-preview", running: false))
-    let liveStep = LiveStep(rows: [], isRunning: true)
-    return ActivityFeedView(rows: rows, start: .now.addingTimeInterval(-600), history: EventHistoryState(),
-                            isLoading: false, tailValue: ActivityFeedTail(liveStep: liveStep), emptyText: nil,
-                            state: ParallelColumnUIState(), onLoadMore: nil) {
-        LiveStepLineView(text: "Running the login tests…", indicator: .threeDots)
-    }
-    .frame(width: PbRadius.Metrics.timelinePanePreviewWidth, height: PbRadius.Metrics.taskDetailPreviewHeight)
-    .background(Color.windowBG)
-}
-
-#Preview("ActivityFeed - light") { activityFeedPreview().preferredColorScheme(.light) }
-#Preview("ActivityFeed - dark") { activityFeedPreview().preferredColorScheme(.dark) }
-#endif

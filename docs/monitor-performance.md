@@ -954,6 +954,13 @@ All four affected tests passed locally again; no assertions or deadlines were re
 Activity feeds retain List's native table sizing to avoid first-load scroll oscillation.
 Cards have a slightly larger horizontal inset; restoring the prior inset remains follow-up work.
 Paused reading restoration uses the measured row width when the viewport resizes.
+The native vertical Activity observer reports both the actual clip viewport and its outer scroll
+view width. A legacy scrollbar appearing or disappearing changes only clip width: the feed
+updates row-width acceptance and retries its existing native anchor without opening a measured
+resize or discarding frames. Outer-width or clip-height changes still require coherent measured
+resize geometry. An outer-frame report arriving before the clip-width update keeps that measured
+resize requirement through the later clip report. Row measurements always use actual clip dimensions;
+horizontal lanes and observers without the native geometry callback retain their existing behavior.
 Upward adjustments within the existing 24-point follow zone return to the latest content immediately.
 This includes selection, focus or accessibility scrolling that sends no separate user-intent signal.
 A paused reader moving down into this zone keeps the chosen offset until the next content change.

@@ -117,6 +117,8 @@ struct ParallelScrollObserver: NSViewRepresentable {
     var restorationOffset: CGFloat?
     var restorationActive = false
     var onViewportSize: ((CGSize) -> Void)?
+    /// Native vertical geometry separates the clip viewport from scrollbar-independent outer width.
+    var onNativeViewportGeometry: ((CGSize, CGFloat) -> Void)?
     var onUpwardIntent: (() -> Void)?
     /// Scoped native identity (a List-backed feed's own NSScrollView, disclosed through PbUI's
     /// `.scrollChromeScope(onNativeScrollView:)` bounded marker-pair relay). When present the
@@ -146,6 +148,7 @@ struct ParallelScrollObserver: NSViewRepresentable {
         view.axis = axis
         view.onPosition = onPosition
         view.onViewportSize = onViewportSize
+        view.onNativeViewportGeometry = onNativeViewportGeometry
         view.onUpwardIntent = onUpwardIntent
         if let nativeIdentity {
             view.anchorProvider = nativeIdentity.resolvedAnchorProvider(fallback: anchorProvider)
@@ -175,6 +178,8 @@ final class ParallelScrollObservationView: NSView {
     var axis = ParallelScrollObserver.Axis.horizontal
     var onPosition: ((CGFloat, CGFloat, CGFloat) -> Void)?
     var onViewportSize: ((CGSize) -> Void)?
+    /// Native vertical geometry separates the clip viewport from scrollbar-independent outer width.
+    var onNativeViewportGeometry: ((CGSize, CGFloat) -> Void)?
     var onUpwardIntent: (() -> Void)?
     /// Opt-in bounded native report diagnostics; no message construction while unset.
     var restorationDiagnostic: ((String) -> Void)?
@@ -202,6 +207,7 @@ final class ParallelScrollObservationView: NSView {
     private var lastOffset: CGFloat = 0
     private var lastReported: CGRect?
     private var lastViewportSize: CGSize?
+    private var lastOuterScrollWidth: CGFloat?
     /// True when a scoped native identity (`nativeIdentity`) owns attachment: the observation
     /// view then never attaches through its own `enclosingScrollView` — including never to an
     /// enclosing horizontal lane — and every attach/detach comes from `adoptNativeIdentity`.
@@ -295,6 +301,8 @@ final class ParallelScrollObservationView: NSView {
         observedDocument = nil
         nativeAnchorTarget = nil
         lastReported = nil
+        lastViewportSize = nil
+        lastOuterScrollWidth = nil
     }
 
     /// Full release at representable dismantle: notifications, wheel monitor, any borrowed
@@ -309,6 +317,8 @@ final class ParallelScrollObservationView: NSView {
         restoreNativeInsets()
         observedScrollView = nil
         observedDocument = nil
+        lastViewportSize = nil
+        lastOuterScrollWidth = nil
     }
 
     /// A List-backed feed owns its document's vertical spacing (row padding and explicit gap
@@ -383,6 +393,7 @@ final class ParallelScrollObservationView: NSView {
             observedDocument = nil
             lastReported = nil
             lastViewportSize = nil
+            lastOuterScrollWidth = nil
         } else { DispatchQueue.main.async { [weak self] in self?.reattach() } }
     }
 
@@ -423,6 +434,11 @@ final class ParallelScrollObservationView: NSView {
                 .store(in: &subscriptions)
         }
         if usesNativeIdentity {
+            scroll.postsFrameChangedNotifications = true
+            NotificationCenter.default
+                .publisher(for: NSView.frameDidChangeNotification, object: scroll)
+                .sink { [weak self] _ in self?.report() }
+                .store(in: &subscriptions)
             NotificationCenter.default
                 .publisher(for: NSScrollView.willStartLiveScrollNotification, object: scroll)
                 .sink { [weak self] _ in
@@ -621,8 +637,16 @@ final class ParallelScrollObservationView: NSView {
         }
         let visible = scroll.documentVisibleRect
         let viewportSize = scroll.contentView.bounds.size
-        if viewportSize != lastViewportSize {
+        if usesNativeIdentity, axis == .vertical, let onNativeViewportGeometry {
+            let outerWidth = scroll.frame.width
+            if viewportSize != lastViewportSize || outerWidth != lastOuterScrollWidth {
+                lastViewportSize = viewportSize
+                lastOuterScrollWidth = outerWidth
+                onNativeViewportGeometry(viewportSize, outerWidth)
+            }
+        } else if viewportSize != lastViewportSize {
             lastViewportSize = viewportSize
+            lastOuterScrollWidth = nil
             onViewportSize?(viewportSize)
         }
         let length = axis == .horizontal ? document.bounds.width : document.bounds.height
