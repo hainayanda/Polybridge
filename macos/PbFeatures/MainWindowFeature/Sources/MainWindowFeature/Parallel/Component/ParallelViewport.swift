@@ -124,6 +124,10 @@ struct ParallelScrollObserver: NSViewRepresentable {
     /// `enclosingScrollView` — and an explicit nil fails closed. Absent (the default), both the
     /// horizontal lane and every ScrollView-backed surface keep their exact prior behaviour.
     var nativeIdentity: ParallelScrollNativeIdentity?
+    /// The reading-anchor provider of a native-identity vertical surface, held weakly by the
+    /// observation view. Absent (the default), every observer — the horizontal lane, every
+    /// ScrollView-backed surface — keeps its exact prior behaviour.
+    var anchorProvider: ParallelScrollAnchorProvider?
     let onPosition: (CGFloat, CGFloat, CGFloat) -> Void
 
     func makeNSView(context: Context) -> ParallelScrollObservationView {
@@ -143,69 +147,12 @@ struct ParallelScrollObserver: NSViewRepresentable {
         view.onPosition = onPosition
         view.onViewportSize = onViewportSize
         view.onUpwardIntent = onUpwardIntent
+        if let nativeIdentity {
+            view.anchorProvider = nativeIdentity.resolvedAnchorProvider(fallback: anchorProvider)
+        } else { view.anchorProvider = anchorProvider }
         view.updateWheelMonitor()
         view.configure(ids: columnIDs, stride: columnStride, restorationOffset: restorationOffset, restorationActive: restorationActive)
         view.bindNativeIdentity(nativeIdentity)
-    }
-}
-
-// MARK: - ParallelScrollNativeIdentity
-
-/// Main-actor holder wiring one scoped container's disclosed native scroll identity to this
-/// observer's observation view — the bounded path a List-backed feed needs: its own NSScrollView
-/// is not reachable as the representable's `enclosingScrollView` (the observation view must sit
-/// outside the marker pair, and inside a virtualized row it would die with the row), so the
-/// identity comes from PbUI's strict marker-pair discovery instead.
-///
-/// The holder never defers on its own: the scope relay's single generation-guarded main-queue
-/// delivery is the only asynchrony, so an unmounted or replaced observation view is exactly a
-/// weak miss — no stale attach callback can reach a dead view. Registration re-delivers the last
-/// known identity so a queued restoration survives the observation view's own initial mount, and
-/// an explicit nil detaches the observation view's native notifications and wheel monitor — fail
-/// closed, never a fallback to any enclosing scroll view.
-@MainActor
-final class ParallelScrollNativeIdentity {
-    private weak var observationView: ParallelScrollObservationView?
-    /// The last identity the scope relay delivered — weak, so a scoped scroll view that
-    /// deallocated reads as nil on the observation view's next registration.
-    private weak var knownScrollView: NSScrollView?
-    private weak var knownDocument: NSView?
-
-    /// Registers the observation view — also re-registering it after a representable remount —
-    /// and immediately delivers the last known identity, so a scroll view disclosed before the
-    /// observation view mounted still attaches once it exists.
-    func register(_ view: ParallelScrollObservationView) {
-        observationView = view
-        view.adoptNativeIdentity(knownScrollView)
-    }
-
-    /// Releases the observation view at representable dismantle; the dying view detaches its own
-    /// subscriptions and wheel monitor.
-    func unregister(_ view: ParallelScrollObservationView) {
-        guard observationView === view else { return }
-        observationView = nil
-    }
-
-    /// The scope relay's delivery point: pushes the disclosed identity straight to the weakly
-    /// held observation view — direct adoption that bypasses `configure`'s unchanged-input early
-    /// return, so a discovered or replaced target attaches and reports even when nothing else
-    /// changed.
-    @discardableResult
-    func deliver(_ scrollView: NSScrollView?) -> Bool {
-        let changed = knownScrollView !== scrollView || knownDocument !== scrollView?.documentView
-        knownScrollView = scrollView
-        knownDocument = scrollView?.documentView
-        observationView?.adoptNativeIdentity(scrollView)
-        return changed
-    }
-
-    /// Identity matching for cached native measurements: whether the document view a sample was
-    /// measured in is the one the scoped relay currently discloses. A sample that fails this
-    /// check belongs to a replaced (or already deallocated) native target and must be rejected,
-    /// never scaled onto a new viewport.
-    func isCurrentDocument(_ document: NSView?) -> Bool {
-        guard let document else { return false }
-        return knownScrollView?.documentView === document
     }
 }
 
@@ -229,6 +176,9 @@ final class ParallelScrollObservationView: NSView {
     var onPosition: ((CGFloat, CGFloat, CGFloat) -> Void)?
     var onViewportSize: ((CGSize) -> Void)?
     var onUpwardIntent: (() -> Void)?
+    /// The reading-anchor provider of the adopted native target, held weakly: it dies with the
+    /// lease that created it. Nil for every default observer.
+    weak var anchorProvider: ParallelScrollAnchorProvider?
     private var wheelMonitor: Any?
     private var liveUserScroll = false
     private weak var observedScrollView: NSScrollView?
@@ -240,6 +190,8 @@ final class ParallelScrollObservationView: NSView {
     private var stride: CGFloat = 0
     private var pendingOffset: CGFloat?
     private var applyingRestoration = false
+    private var nativeAnchorTarget: CGFloat?
+    private weak var nativeAnchorTargetProvider: ParallelScrollAnchorProvider?
     private var requestedOffset: CGFloat?
     private var restorationActive = false
     private var configuredAxis: ParallelScrollObserver.Axis?
@@ -288,6 +240,8 @@ final class ParallelScrollObservationView: NSView {
     /// preserving insets, wheel monitoring, live gestures and pending restoration.
     /// A temporarily absent document drops only its frame subscription for lifecycle retry.
     /// A different scroll view fully detaches the previous target; nil fails closed.
+    /// A replaced document ends an armed anchor provider's reference — its captured native
+    /// package is dead — while the temporary nil gap keeps the live gesture listeners.
     private func applyNativeIdentity(_ scrollView: NSScrollView?) {
         guard let scrollView else {
             if observedScrollView != nil { detachNativeTarget() }
@@ -297,10 +251,12 @@ final class ParallelScrollObservationView: NSView {
             let document = scrollView.documentView
             if document !== observedDocument {
                 if document != nil {
+                    anchorProvider?.cancelAnchorRestoration()
                     attachDocumentNotifications(for: document)
                     lastReported = nil
-                    report()
+                    report(documentGeometryChanged: true)
                 } else {
+                    cancelAnchorReference()
                     documentSubscription = nil
                     observedDocument = nil
                 }
@@ -315,13 +271,18 @@ final class ParallelScrollObservationView: NSView {
         enforceNativeInsets(on: scrollView)
         attachNotifications(for: scrollView)
         updateWheelMonitor()
-        report()
+        report(documentGeometryChanged: true)
     }
 
     /// Detaches the currently adopted native target's notifications, wheel monitor and borrowed
-    /// insets. The queued restoration state (`requestedOffset`/`pendingOffset`) deliberately
-    /// survives — replacement and initial attachment must still land a pending restoration.
+    /// insets, and ends an armed anchor provider's reference — a detached target's captured
+    /// native package can never be verified again. The queued restoration state
+    /// (`requestedOffset`/`pendingOffset`) deliberately survives — replacement and initial
+    /// attachment must still land a pending restoration.
     private func detachNativeTarget() {
+        // Only a genuinely held target's reference dies here; the initial adoption passes
+        // through with nothing observed and must not end an already-armed provider.
+        if observedScrollView != nil { anchorProvider?.cancelAnchorRestoration() }
         subscriptions.removeAll()
         documentSubscription = nil
         removeWheelMonitor()
@@ -329,14 +290,16 @@ final class ParallelScrollObservationView: NSView {
         restoreNativeInsets()
         observedScrollView = nil
         observedDocument = nil
+        nativeAnchorTarget = nil
         lastReported = nil
     }
 
-    /// Full release at representable dismantle: notifications, wheel monitor and any borrowed
-    /// native insets go with the observation view.
+    /// Full release at representable dismantle: notifications, wheel monitor, any borrowed
+    /// native insets and an armed anchor provider's reference go with the observation view.
     func teardownObservation() {
         isTornDown = true
         liveUserScroll = false
+        anchorProvider?.cancelAnchorRestoration()
         subscriptions.removeAll()
         documentSubscription = nil
         removeWheelMonitor()
@@ -380,6 +343,8 @@ final class ParallelScrollObservationView: NSView {
     }
 
     func configure(ids: [String], stride: CGFloat, restorationOffset: CGFloat?, restorationActive: Bool) {
+        let restorationOffset = anchorProvider?.isAnchorRestorationActive == false ? nil : restorationOffset
+        let restorationActive = anchorProvider?.isAnchorRestorationActive == false ? false : restorationActive
         let geometryChanged = configuredAxis != axis || ids != self.ids || stride != self.stride
         guard geometryChanged || restorationOffset != requestedOffset || restorationActive != self.restorationActive else { return }
         if !restorationActive { pendingPositionAcknowledgement = false }
@@ -406,6 +371,7 @@ final class ParallelScrollObservationView: NSView {
         super.viewDidMoveToWindow()
         if window == nil {
             liveUserScroll = false
+            anchorProvider?.cancelAnchorRestoration()
             subscriptions.removeAll()
             documentSubscription = nil
             removeWheelMonitor()
@@ -433,7 +399,7 @@ final class ParallelScrollObservationView: NSView {
         observedScrollView = scroll
         updateWheelMonitor()
         attachNotifications(for: scroll)
-        report()
+        report(documentGeometryChanged: true)
     }
 
     /// Subscribes the native bounds/frame notifications of one adopted scroll view and its
@@ -455,11 +421,17 @@ final class ParallelScrollObservationView: NSView {
         }
         if usesNativeIdentity {
             NotificationCenter.default
-    .publisher(for: NSScrollView.willStartLiveScrollNotification, object: scroll)
-                .sink { [weak self] _ in self?.liveUserScroll = true }
+                .publisher(for: NSScrollView.willStartLiveScrollNotification, object: scroll)
+                .sink { [weak self] _ in
+                    self?.liveUserScroll = true
+                    // A live scroll gesture is real user intent: it ends an armed anchor
+                    // provider's reference before any correction can fight the reader's own
+                    // position.
+                    self?.cancelAnchorReference()
+                }
                 .store(in: &subscriptions)
             NotificationCenter.default
-    .publisher(for: NSScrollView.didEndLiveScrollNotification, object: scroll)
+                .publisher(for: NSScrollView.didEndLiveScrollNotification, object: scroll)
                 .sink { [weak self] _ in self?.liveUserScroll = false }
                 .store(in: &subscriptions)
         }
@@ -475,7 +447,7 @@ final class ParallelScrollObservationView: NSView {
         document.postsFrameChangedNotifications = true
         documentSubscription = NotificationCenter.default
             .publisher(for: NSView.frameDidChangeNotification, object: document)
-            .sink { [weak self] _ in self?.report() }
+            .sink { [weak self] _ in self?.report(documentGeometryChanged: true) }
     }
 
     func updateWheelMonitor() {
@@ -504,9 +476,13 @@ final class ParallelScrollObservationView: NSView {
     private func observeWheelIntent(_ event: NSEvent) {
         guard axis == .vertical, let scroll = observedScrollView, event.window === scroll.window,
               scroll.bounds.contains(scroll.convert(event.locationInWindow, from: nil)),
-              event.scrollingDeltaY > 0, event.momentumPhase.isEmpty,
-              event.phase.isEmpty || event.phase.contains(.began) else { return }
-        signalUpwardIntent()
+              event.momentumPhase.isEmpty,
+              event.phase.isEmpty || event.phase.contains(.began) || event.phase.contains(.changed) else { return }
+        // Continued wheel movement in either direction is real user intent: it ends an armed
+        // anchor provider's reference before the next correction can fight the reader's own
+        // position.
+        if event.scrollingDeltaY != 0 { cancelAnchorReference() }
+        if event.scrollingDeltaY > 0, event.phase.isEmpty || event.phase.contains(.began) { signalUpwardIntent() }
     }
 
     /// Native List navigation signals apply only to this scoped scroll view and never consume
@@ -518,17 +494,37 @@ final class ParallelScrollObservationView: NSView {
         case .keyDown:
             guard let responder = scroll.window?.firstResponder as? NSView,
                   responder === scroll || responder.isDescendant(of: scroll),
-                  let character = event.charactersIgnoringModifiers?.unicodeScalars.first?.value,
-                  [UInt32(NSUpArrowFunctionKey), UInt32(NSPageUpFunctionKey), UInt32(NSHomeFunctionKey)].contains(character)
-            else { return }
-            signalUpwardIntent()
+                  let character = event.charactersIgnoringModifiers?.unicodeScalars.first?.value else { return }
+            if [UInt32(NSUpArrowFunctionKey), UInt32(NSPageUpFunctionKey), UInt32(NSHomeFunctionKey)].contains(character) {
+                signalUpwardIntent()
+            } else if [UInt32(NSDownArrowFunctionKey), UInt32(NSPageDownFunctionKey), UInt32(NSEndFunctionKey)].contains(character) {
+                // Downward navigation is user intent too: it only ends an armed anchor
+                // provider's reference, never the upward-intent handling.
+                cancelAnchorReference()
+            }
         case .leftMouseDown:
             guard let scroller = scroll.verticalScroller,
                   scroller.bounds.contains(scroller.convert(event.locationInWindow, from: nil)) else { return }
             let part = scroller.testPart(event.locationInWindow)
-            if part == .decrementLine || part == .decrementPage { signalUpwardIntent() }
+            if part == .decrementLine || part == .decrementPage {
+                signalUpwardIntent()
+            } else if part == .incrementLine || part == .incrementPage {
+                cancelAnchorReference()
+            }
         default: break
         }
+    }
+
+    /// Ends an armed anchor provider's reference and clears this observer's own queued
+    /// restoration targets, so no stale numeric target lands after the user's own move. A nil
+    /// or inactive provider leaves the observer untouched.
+    private func cancelAnchorReference() {
+        guard let anchorProvider else { return }
+        anchorProvider.cancelAnchorRestoration()
+        restorationActive = false
+        nativeAnchorTarget = nil
+        pendingOffset = nil
+        requestedOffset = nil
     }
 
     private func signalUpwardIntent() {
@@ -536,6 +532,7 @@ final class ParallelScrollObservationView: NSView {
             pendingOffset = nil
             requestedOffset = nil
             restorationActive = false
+            anchorProvider?.cancelAnchorRestoration()
         }
         onUpwardIntent?()
     }
@@ -554,7 +551,50 @@ final class ParallelScrollObservationView: NSView {
         onPosition?(offset, length, viewport)
     }
 
-    private func report(observeExternalMovement: Bool = false) {
+    private func nativeRestorationTarget(document: NSView, geometryChanged: Bool) -> CGFloat? {
+        var providerTarget: CGFloat?
+        if axis == .vertical, usesNativeIdentity {
+            if anchorProvider?.isAnchorRestorationActive == false {
+                pendingOffset = nil
+                requestedOffset = nil
+                restorationActive = false
+                nativeAnchorTarget = nil
+            }
+            if geometryChanged {
+                nativeAnchorTarget = anchorProvider?.immediateAnchorTarget(document: document)
+                nativeAnchorTargetProvider = anchorProvider
+            }
+            if geometryChanged, anchorProvider?.isAnchorRestorationActive == true,
+               nativeAnchorTargetProvider === anchorProvider {
+                providerTarget = nativeAnchorTarget
+            }
+            if anchorProvider?.ownsNumericRestoration == true {
+                pendingOffset = nil
+                requestedOffset = nil
+            }
+            if providerTarget != nil {
+                pendingOffset = nil
+                requestedOffset = nil
+            }
+        }
+        return providerTarget
+    }
+
+    private func applyRestorationTarget(_ target: CGFloat, scroll: NSScrollView, document: NSView,
+                                        length: CGFloat, viewport: CGFloat, visible: CGRect) {
+        pendingOffset = nil
+        let clamped = min(max(0, target), max(0, length - viewport))
+        var point = scroll.contentView.bounds.origin
+        if axis == .horizontal { point.x = clamped } else { point.y = document.isFlipped ? clamped : max(0, document.bounds.maxY - viewport - clamped) }
+        if abs((axis == .horizontal ? point.x : point.y) - (axis == .horizontal ? visible.minX : visible.minY)) > 0.5 {
+            applyingRestoration = true
+            scroll.contentView.scroll(to: point)
+            scroll.reflectScrolledClipView(scroll.contentView)
+            applyingRestoration = false
+        }
+    }
+
+    private func report(observeExternalMovement: Bool = false, documentGeometryChanged: Bool = false) {
         guard !isTornDown, let scroll = observedScrollView, let document = scroll.documentView else { return }
         // Native targets re-assert the zero-inset contract on every report, so a later resize or
         // layout pass that restores an automatic inset cannot shift the feed's document geometry.
@@ -569,21 +609,23 @@ final class ParallelScrollObservationView: NSView {
         let viewport = axis == .horizontal ? viewportSize.width : viewportSize.height
         // A queued layout report can precede the bounds notification for a user move.
         if observeExternalMovement || liveUserScroll, !applyingRestoration {
+            let incoming = document.isFlipped ? visible.minY : document.bounds.maxY - visible.maxY
+            // A downward live move is user intent in the other direction: it ends an armed
+            // anchor provider's reference just as an upward move does.
+            if liveUserScroll, incoming > lastOffset + 0.5 { cancelAnchorReference() }
             observeExternalUpwardScroll(visible: visible, document: document, length: length, viewport: viewport)
         }
+        // An armed anchor provider corrects from the document's fresh native geometry before
+        // this report applies anything, and owns the target over every queued numeric
+        // restoration request — those were measured before the structural change and are stale
+        // by construction while the provider's mapping stays valid. Computed after external
+        // movement observation, so a user move that cancels the provider this same report
+        // cannot leave a stale correction to apply.
+        let providerTarget = nativeRestorationTarget(document: document, geometryChanged: documentGeometryChanged)
         let horizontalLayoutReady = axis != .horizontal || abs(length - CGFloat(ids.count) * stride) < 2
         if restorationActive, pendingOffset == nil, let requestedOffset { pendingOffset = requestedOffset }
-        if let pendingOffset, viewport > 0, horizontalLayoutReady {
-            self.pendingOffset = nil
-            let target = min(max(0, pendingOffset), max(0, length - viewport))
-            var point = scroll.contentView.bounds.origin
-            if axis == .horizontal { point.x = target } else { point.y = document.isFlipped ? target : max(0, document.bounds.maxY - viewport - target) }
-            if abs((axis == .horizontal ? point.x : point.y) - (axis == .horizontal ? visible.minX : visible.minY)) > 0.5 {
-                applyingRestoration = true
-                scroll.contentView.scroll(to: point)
-                scroll.reflectScrolledClipView(scroll.contentView)
-                applyingRestoration = false
-            }
+        if let target = providerTarget ?? pendingOffset, viewport > 0, horizontalLayoutReady {
+            applyRestorationTarget(target, scroll: scroll, document: document, length: length, viewport: viewport, visible: visible)
         }
         let updated = scroll.documentVisibleRect
         lastOffset = axis == .horizontal ? updated.minX : (document.isFlipped ? updated.minY : document.bounds.maxY - updated.maxY)

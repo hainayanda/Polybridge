@@ -20,14 +20,6 @@ private struct ActivityFeedKey: Equatable {
     let restoring: Bool
 }
 
-// MARK: - ActivityFeedTail
-
-struct ActivityFeedTail: Equatable {
-    var liveStep: LiveStep?
-    var pendingMessages: [PendingMessage] = []
-    var children: [TaskDetailTimelineChild] = []
-}
-
 // MARK: - ActivityFeedView
 
 /// Shared reading, progressive reveal and older-page behavior across activity surfaces.
@@ -41,7 +33,6 @@ struct ActivityFeedView<Tail: View>: View {
     var isVisible = true
     var emptyText: String?
     var horizontalPadding: CGFloat = PbRadius.Metrics.zero
-    /// Task detail owns its started-row prompt; Parallel owns it in the toggled column header.
     var showsPromptBubble = true
     let state: ParallelColumnUIState
     let onLoadMore: (() -> Bool)?
@@ -52,8 +43,6 @@ struct ActivityFeedView<Tail: View>: View {
     @State private var nativeViewportReady = false
     @State private var realizedLastRowID: String?
     @State private var position = ActivityFeedPosition()
-    /// Weak relay endpoint between the List's scoped native identity and its scroll observer;
-    /// owned here so it lives exactly as long as this feed instance.
     @State private var nativeIdentity = ParallelScrollNativeIdentity()
     @State private var pendingReadingCapture = true
     @State private var positioned = false
@@ -94,9 +83,11 @@ struct ActivityFeedView<Tail: View>: View {
                         state.retainedFirstID = next.first?.id
                         waitingForPage = false
                     }
+                    markReferencePagePublication()
                 }
                 .onChange(of: tailValue) { _, _ in
                     if state.followLive.isFollowing { followingLayout = true } else { beginRestoration() }
+                    markReferencePagePublication()
                 }
                 .onChange(of: paginationRevision) { _, _ in
                     rejectedPageIDs = nil
@@ -104,25 +95,21 @@ struct ActivityFeedView<Tail: View>: View {
                     sawLoading = false
                     if !state.followLive.isFollowing { beginRestoration() }
                     if !rows.isEmpty { state.retainedFirstID = rows.first?.id }
+                    markReferencePagePublication()
                 }
-                .onChange(of: history) { _, next in
-                    rejectedPageIDs = nil
-                    if waitingForPage {
-                        sawLoading = sawLoading || next.isLoading
-                        if !next.isLoading, sawLoading || next.error != nil || !next.hasMore {
-                            waitingForPage = false
-                            restoring = !state.followLive.isFollowing
-                            restorationWidth.finish(restoring: restoring)
-                        }
-                    }
-                }
+                .onChange(of: history) { _, next in historyChanged(next) }
         }
     }
 
-    /// Uses native List row virtualization with explicit document spacing and shared card views.
-    /// The bounded scroll scope supplies the container identity independently of realized rows.
     private var feedList: some View {
-        List {
+        // Body updates only plain intended-shape data; it never changes lease lifecycle.
+        position.registerListSnapshotCandidate(
+            generation: measurementGeneration,
+            expectedCount: expectedNativeRowCount,
+            expectedAnchorIndex: expectedNativeAnchorIndex,
+            expectedPadding: expectedNativeAnchorIndex.map { $0 == 0 ? PbRadius.Metrics.spacing12 : PbRadius.Metrics.spacing20 }
+        )
+        return List {
             if showsHistoryHeader { historyHeaderRow }
             if emptyText != nil { emptyTextRow }
             ForEach(shown) { row in
@@ -147,11 +134,11 @@ struct ActivityFeedView<Tail: View>: View {
                 position.measurements.invalidateMeasurements()
             }
         })
-        // Outside the scope's marker pair: in native-identity mode this observation view never
-        // attaches to its own enclosingScrollView — an outer parallel lane is never a target.
+        // Outside the marker pair; native identity excludes the outer parallel lane.
         .background(ParallelScrollObserver(
             axis: .vertical, restorationOffset: targetOffset, restorationActive: restoring || followingLayout,
-            onViewportSize: observeViewport, onUpwardIntent: upwardIntent, nativeIdentity: nativeIdentity
+            onViewportSize: observeViewport, onUpwardIntent: upwardIntent, nativeIdentity: nativeIdentity,
+            anchorProvider: position.referenceRestoration
         ) { offset, content, viewport in
             if positioned, !restoring, !followingLayout, abs(content - position.content) < 0.5, position.viewport == viewport,
                abs(offset - position.offset) > 0.5 {
@@ -172,20 +159,14 @@ struct ActivityFeedView<Tail: View>: View {
             position.offset = offset
             position.content = content
             position.viewport = viewport
-            // Native attachment can follow the first keyed task. Retry proxy positioning
-            // once the native list has a usable viewport.
+            reconcileReferenceRestoration()
+            // Retry initial positioning when native attachment becomes usable.
             let ready = viewport > 0
             if nativeViewportReady != ready { nativeViewportReady = ready }
             scheduleReadingUpdate()
         })
     }
 
-    /// The feed's explicit document spacing on one List row, with the native contributions
-    /// stripped: no row insets, separators, backgrounds or minimum height from the List itself,
-    /// and the row's own horizontal padding plus top gap (12pt at the document edge, 20pt between
-    /// actual children) live inside the row content. `ActivityRowGeometry` backgrounds the row
-    /// BEFORE this padding, so measured frames stay the real row's document coordinates and
-    /// exclude the inserted spacing.
     private struct ActivityFeedRowPlacement: ViewModifier {
         let top: CGFloat
         let bottom: CGFloat
@@ -200,7 +181,6 @@ struct ActivityFeedView<Tail: View>: View {
         }
     }
 
-    /// The header is the document's first child whenever it shows — it owns the 12pt top edge.
     private var showsHistoryHeader: Bool {
         history.isLoading || waitingForPage || history.error != nil
             || (!history.hasMore && !rows.isEmpty
@@ -228,9 +208,18 @@ struct ActivityFeedView<Tail: View>: View {
         }
     }
 
-    /// A row owns the 12pt top edge exactly when no header or empty text precedes it.
     private func isDocumentFirst(_ row: ActivityRow) -> Bool {
         !showsHistoryHeader && emptyText == nil && row.id == shown.first?.id
+    }
+
+    private var expectedNativeRowCount: Int {
+        (showsHistoryHeader ? 1 : 0) + (emptyText != nil ? 1 : 0) + shown.count + (hasTailContent ? 1 : 0) + 1
+    }
+
+    private var expectedNativeAnchorIndex: Int? {
+        guard let anchor = state.anchor, let id = anchor.resolvedID(in: shown.map(\.id)),
+              let index = shown.firstIndex(where: { $0.id == id }) else { return nil }
+        return (showsHistoryHeader ? 1 : 0) + (emptyText != nil ? 1 : 0) + index
     }
 
     private func rowContent(_ row: ActivityRow) -> some View {
@@ -238,7 +227,8 @@ struct ActivityFeedView<Tail: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(ActivityRowGeometry(
                 generation: measurementGeneration,
-                measurements: position.measurements
+                measurements: position.measurements,
+                stableID: row.id
             ) { [generation = measurementGeneration] sample in
                 guard generation == measurementGeneration else { return }
                 guard position.record(sample, for: row.id, nativeIdentity: nativeIdentity) else { return }
@@ -249,7 +239,6 @@ struct ActivityFeedView<Tail: View>: View {
             .onAppear { seenIDs.insert(row.id) }
     }
 
-    /// EmptyView contributes no row even when a caller supplies tail metadata for settlement.
     private var hasTailContent: Bool {
         Tail.self != EmptyView.self && tailValue != ActivityFeedTail()
     }
@@ -269,9 +258,6 @@ struct ActivityFeedView<Tail: View>: View {
         }
     }
 
-    /// The bottom sentinel keeps its own List row — outside the tail VStack — so live following
-    /// has a stable scroll target past the tail, and the document's 12pt bottom edge rides on
-    /// it.
     private var sentinelRow: some View {
         Color.clear
             .frame(height: PbRadius.Metrics.hairlineStroke)
@@ -301,7 +287,7 @@ struct ActivityFeedView<Tail: View>: View {
         case .toolGroup(let group):
             ToolGroupCardView(group: group, start: start, isExpanded: state.expandedGroups.contains(group.id)) {
                 shortFillBudget.replenish()
-                beginRestoration()
+                beginRestoration(cause: .disclosure)
                 withAnimation(PbMotion.disclosure(reduceMotion: reduceMotion)) {
                     if !state.expandedGroups.insert(group.id).inserted { state.expandedGroups.remove(group.id) }
                 }
@@ -320,13 +306,15 @@ struct ActivityFeedView<Tail: View>: View {
         return position.frames.filter { abs($0.value.width - measuredWidth) < 1 }
     }
 
-    private func captureAnchor() {
-        guard pendingReadingCapture || state.followLive.isFollowing || state.anchor == nil else { return }
-        if let anchor = ParallelVerticalAnchor.capture(ids: shown.map(\.id), frames: currentWidthFrames,
-            viewportHeight: position.viewport, offset: position.offset) {
-            state.anchor = anchor
-            pendingReadingCapture = false
-        }
+    @discardableResult
+    private func captureAnchor() -> Bool {
+        guard !(position.referenceRestoration?.cancelled == true && position.referenceRestoration?.pagePending == true) else { return false }
+        guard pendingReadingCapture || state.followLive.isFollowing || state.anchor == nil else { return false }
+        guard let anchor = ParallelVerticalAnchor.capture(ids: shown.map(\.id), frames: currentWidthFrames,
+            viewportHeight: position.viewport, offset: position.offset) else { return false }
+        state.anchor = anchor
+        pendingReadingCapture = false
+        return true
     }
 
     private func observeViewport(_ size: CGSize) {
@@ -340,7 +328,7 @@ struct ActivityFeedView<Tail: View>: View {
                     previousViewportWidth: viewportSize.width, viewportWidth: size.width, restoring: restoring
                 )
             }
-            beginRestoration()
+            beginRestoration(cause: .resize)
         }
         if state.followLive.isFollowing { followingLayout = true }
         viewportSize = size
@@ -348,6 +336,7 @@ struct ActivityFeedView<Tail: View>: View {
 
     private func settle(_ proxy: ScrollViewProxy) async {
         await Task.yield()
+        reconcileReferenceRestoration()
         position.discardStaleFrames(nativeIdentity: nativeIdentity)
         guard !Task.isCancelled, !isLoading, position.viewport > 0 else { return }
         if state.followLive.isFollowing {
@@ -365,9 +354,12 @@ struct ActivityFeedView<Tail: View>: View {
             followingLayout = true
             targetOffset = max(0, position.content - position.viewport)
         } else if restoring {
-            if let anchor = state.anchor, let id = anchor.resolvedID(in: shown.map(\.id)) {
+            if let transaction = position.referenceRestoration, transaction.isActive, transaction.appliedTarget != nil {
+                // Fresh native correction owns the target over proxy and stale numeric paths.
+            } else if let anchor = state.anchor, let id = anchor.resolvedID(in: shown.map(\.id)) {
                 let staleWidth = !restorationWidth.accepts(rowWidth: position.frames[id]?.width)
                 if position.frames[id] == nil || staleWidth {
+                    // Missing or unrealized anchor: the proxy fallback still restores it.
                     proxy.scrollTo(id, anchor: .top)
                     await Task.yield()
                 }
@@ -405,9 +397,11 @@ struct ActivityFeedView<Tail: View>: View {
             await Task.yield()
             await Task.yield()
             guard !Task.isCancelled else { return }
+            reconcileReferenceRestoration()
             if restoring { restoreAnchor() }
             observePosition()
             guard positioned, !restoring, !followingLayout else { return }
+            guard !(position.referenceRestoration?.cancelled == true && position.referenceRestoration?.pagePending == true) else { return }
             if !shown.isEmpty {
                 guard let anchor = ParallelVerticalAnchor.capture(ids: shown.map(\.id), frames: currentWidthFrames,
                     viewportHeight: position.viewport, offset: position.offset) else { return }
@@ -420,6 +414,94 @@ struct ActivityFeedView<Tail: View>: View {
         }
     }
 
+    private func historyChanged(_ next: EventHistoryState) {
+        rejectedPageIDs = nil
+        if waitingForPage {
+            sawLoading = sawLoading || next.isLoading
+            if !next.isLoading, sawLoading || next.error != nil || !next.hasMore {
+                waitingForPage = false
+                restoring = !state.followLive.isFollowing && position.referenceRestoration?.cancelled != true
+                restorationWidth.finish(restoring: restoring)
+            }
+        }
+        markReferencePagePublication()
+    }
+}
+
+// MARK: - ActivityFeedView restoration
+
+private extension ActivityFeedView {
+    private func restoreAnchor() {
+        reconcileReferenceRestoration()
+        position.discardStaleFrames(nativeIdentity: nativeIdentity)
+        guard !state.followLive.isFollowing else { return }
+        if shown.isEmpty {
+            state.anchor = nil
+            state.retainedFirstID = nil
+            position.clearFrames()
+            restorationWidth.clear()
+            position.referenceRestoration?.finish()
+            nativeIdentity.setAnchorProvider(nil)
+            position.referenceRestoration = nil
+            targetOffset = 0
+        } else if let transaction = position.referenceRestoration, transaction.isActive,
+                  let applied = transaction.appliedTarget {
+            targetOffset = applied
+        } else if let anchor = state.anchor, let id = anchor.resolvedID(in: shown.map(\.id)), let frame = position.frames[id] {
+            guard restorationWidth.accepts(rowWidth: frame.width) else { return }
+            // Same-document pre-change frames are stale unless their sample pair matches.
+            guard sampledPairMatchesCurrentDocument(id) else { return }
+            targetOffset = anchor.offset(in: frame)
+        } else if state.anchor == nil { targetOffset = state.scrollOffset }
+        finishRestoration()
+    }
+
+    private func sampledPairMatchesCurrentDocument(_ id: String) -> Bool {
+        guard position.referenceRestoration?.isActive == true else { return true }
+        return position.sampledPairs[id] == position.currentDocumentPair()
+    }
+
+    private func reconcileReferenceRestoration() {
+        guard let transaction = position.referenceRestoration else { return }
+        guard transaction.cancelled || transaction.finished else { return }
+        if transaction.finished { nativeIdentity.setAnchorProvider(nil); position.referenceRestoration = nil; return }
+        guard transaction.cancelled else { return }
+        if !transaction.cancellationReconciled {
+            transaction.cancellationReconciled = true
+            targetOffset = nil
+            position.pagingTask?.cancel()
+            position.pagingTask = nil
+            restoring = false
+            restorationWidth.finish(restoring: false)
+            pendingReadingCapture = true
+        }
+        state.scrollOffset = position.offset
+        // Retry coherent native capture; never reuse the cancelled anchor or cached frames.
+        state.anchor = position.captureNativeReadingAnchor(shownIDs: shown.map(\.id), nativeIdentity: nativeIdentity)
+        if transaction.pagePending, state.anchor != nil {
+            // Hand off a new token synchronously, without invalidating measurements.
+            position.openReferenceRestoration(anchor: state.anchor, shownIDs: shown.map(\.id),
+                                              nativeIdentity: nativeIdentity, generation: measurementGeneration,
+                                              awaitingPagePublication: true)
+            pendingReadingCapture = false
+            restoring = true
+        } else if transaction.pageCommitted {
+            nativeIdentity.setAnchorProvider(nil)
+            position.referenceRestoration = nil
+        }
+        state.viewportPositioned = positioned && !restoring && !followingLayout
+    }
+
+    private func markReferencePagePublication() {
+        guard let transaction = position.referenceRestoration, transaction.pagePending else { return }
+        guard !waitingForPage, !history.isLoading else { return }
+        transaction.markPageCommitted()
+        if transaction.cancelled {
+            nativeIdentity.setAnchorProvider(nil)
+            position.referenceRestoration = nil
+        }
+    }
+
     private func finishRestoration() {
         position.discardStaleFrames(nativeIdentity: nativeIdentity)
         defer {
@@ -428,6 +510,9 @@ struct ActivityFeedView<Tail: View>: View {
         }
         if !state.followLive.isFollowing { followingLayout = false }
         if state.followLive.isFollowing, followingLayout {
+            position.referenceRestoration?.cancelAnchorRestoration()
+            position.referenceRestoration = nil
+            nativeIdentity.setAnchorProvider(nil)
             if !positioned, let last = shown.last, position.frames[last.id] == nil { return }
             targetOffset = max(0, position.content - position.viewport)
             if abs(position.offset - (targetOffset ?? 0)) < 1 {
@@ -437,8 +522,10 @@ struct ActivityFeedView<Tail: View>: View {
             } else { return }
         }
         if restoring {
-            if state.followLive.isFollowing,
-               abs(position.offset - max(0, position.content - position.viewport)) < 2 {
+            if let transaction = position.referenceRestoration, transaction.isActive {
+                finishReferenceRestoration(transaction)
+            } else if state.followLive.isFollowing,
+                      abs(position.offset - max(0, position.content - position.viewport)) < 2 {
                 positioned = true; restoring = false
             } else if let targetOffset,
                       abs(position.offset - min(max(0, targetOffset), max(0, position.content - position.viewport))) < 1 {
@@ -447,33 +534,71 @@ struct ActivityFeedView<Tail: View>: View {
         }
     }
 
-    private func beginRestoration() {
+    private func finishReferenceRestoration(_ transaction: ActivityFeedReferenceRestoration) {
+        guard transaction.pageCommitted, transaction.matchesCurrentCandidate(document: position.pairedDocument) else { return }
+        let maxTarget = max(0, position.content - position.viewport)
+        if let applied = transaction.appliedTarget {
+            guard position.currentDocumentPair() == transaction.appliedDocumentPair else { return }
+            guard abs(position.offset - min(applied, maxTarget)) < 1 else { return }
+            transaction.finish()
+            nativeIdentity.setAnchorProvider(nil)
+            position.referenceRestoration = nil
+            positioned = true
+            restoring = false
+            targetOffset = applied
+        } else if let targetOffset,
+                  abs(position.offset - min(max(0, targetOffset), maxTarget)) < 1 {
+            if let anchor = state.anchor, let id = anchor.resolvedID(in: shown.map(\.id)) {
+                guard let frame = position.frames[id], restorationWidth.accepts(rowWidth: frame.width),
+                      sampledPairMatchesCurrentDocument(id) else { return }
+            }
+            transaction.finish()
+            nativeIdentity.setAnchorProvider(nil)
+            position.referenceRestoration = nil
+            positioned = true
+            restoring = false
+        }
+    }
+
+    private enum RestorationCause {
+        case publication, pageRequest, retainedReveal, resize, disclosure
+    }
+
+    private func beginRestoration(cause: RestorationCause = .publication) {
+        reconcileReferenceRestoration()
+        var inheritedPagePending = false
+        if let transaction = position.referenceRestoration, transaction.cancelled {
+            // Only an explicit opening replaces the cancelled token with a live anchor.
+            guard cause != .publication else { return }
+            inheritedPagePending = transaction.pagePending
+            state.scrollOffset = position.offset
+            state.anchor = position.captureNativeReadingAnchor(shownIDs: shown.map(\.id), nativeIdentity: nativeIdentity)
+            position.referenceRestoration = nil
+        }
         restorationTiming = MonitorMetrics.begin()
         state.followLive.suspend()
         pendingReadingCapture = false
         position.pagingTask?.cancel()
         measurementGeneration &+= 1
+        if let transaction = position.referenceRestoration, transaction.isActive {
+            if let id = state.anchor?.resolvedID(in: shown.map(\.id)), let oldID = transaction.stableID, id != oldID {
+                // An explicitly replaced anchor opens a fresh lease; unrealized targets use fallback.
+                transaction.cancelAnchorRestoration()
+                position.openReferenceRestoration(anchor: state.anchor, shownIDs: shown.map(\.id),
+                                                  nativeIdentity: nativeIdentity, generation: measurementGeneration,
+                                                  awaitingPagePublication: transaction.pagePending)
+            } else { transaction.join(generation: measurementGeneration) }
+        } else if cause != .publication {
+            position.openReferenceRestoration(anchor: state.anchor, shownIDs: shown.map(\.id),
+                                              nativeIdentity: nativeIdentity, generation: measurementGeneration,
+                                              awaitingPagePublication: cause == .pageRequest || inheritedPagePending)
+        }
+        if cause == .resize { position.referenceRestoration?.deferToMeasuredResize() }
         position.clearFrames()
         position.measurements.invalidateMeasurements()
         restoring = true
         state.viewportPositioned = false
         targetOffset = nil
-    }
-
-    private func restoreAnchor() {
-        position.discardStaleFrames(nativeIdentity: nativeIdentity)
-        guard !state.followLive.isFollowing else { return }
-        if shown.isEmpty {
-            state.anchor = nil
-            state.retainedFirstID = nil
-            position.clearFrames()
-            restorationWidth.clear()
-            targetOffset = 0
-        } else if let anchor = state.anchor, let id = anchor.resolvedID(in: shown.map(\.id)), let frame = position.frames[id] {
-            guard restorationWidth.accepts(rowWidth: frame.width) else { return }
-            targetOffset = anchor.offset(in: frame)
-        } else if state.anchor == nil { targetOffset = state.scrollOffset }
-        finishRestoration()
     }
 
     private var upwardIntent: (() -> Void)? {
@@ -507,7 +632,7 @@ struct ActivityFeedView<Tail: View>: View {
         guard boundary != nil || history.hasMore,
               shortFillBudget.consume(content: position.content, viewport: position.viewport) else { return }
         if let boundary {
-            beginRestoration()
+            beginRestoration(cause: .retainedReveal)
             state.retainedFirstID = boundary
         } else if history.hasMore { requestPage(retry: false) }
     }
@@ -527,7 +652,7 @@ struct ActivityFeedView<Tail: View>: View {
             requestedIDs = []
             return
         }
-        beginRestoration()
+        beginRestoration(cause: .pageRequest)
     }
 
     private func preserveRegroupedAnchor(old: [ActivityRow], next: [ActivityRow]) {

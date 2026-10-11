@@ -957,3 +957,46 @@ Paused reading restoration uses the measured row width when the viewport resizes
 Upward adjustments within the existing 24-point follow zone return to the latest content immediately.
 This includes selection, focus or accessibility scrolling that sends no separate user-intent signal.
 A paused reader moving down into this zone keeps the chosen offset until the next content change.
+
+### Older-page restoration without proxy excursions
+
+Publishing an older page while paused near the boundary used to clear the measured-frame cache
+(`beginRestoration`) and then settle through the stale numeric target or
+`ScrollViewReader.scrollTo(anchor, .top)` — a visible ~100 pt excursion on the retained row, because
+the retained row's *measured* frame and row-view frame lag the prepend while the native table's
+`rect(ofRow:)` is already fresh. Reading restoration now runs as one irreversible reference lease
+(`ActivityFeedReferenceRestoration`, owned by the plain `ActivityFeedPosition` coordinator): the
+opening cause (page request, retained reveal, resize or disclosure) captures the
+anchor's coherent native package — its uniquely identified measurement view, row view, document,
+within-row inset (only the feed's 12/20 pt paddings validate), native index and count — before the
+structural change. The scroll observer holds the lease weakly through the generic
+`ParallelScrollAnchorProvider` seam (no Activity types cross it) and asks it on attach and on every
+document-frame notification, before reporting (ordinary bounds reports never apply its correction): a pure prepend above the anchor (native index and
+count grow by the same delta), or a height-only change with unchanged mapping, whose realized table matches the feed's independently modeled
+expected row count and anchor index corrects immediately from `rect(ofRow:)` plus the captured
+inset, keeping the row glued while realization proceeds. An inset is updated only when the
+containing native row view agrees with the table rectangle and the measured inset matches
+the intended List row padding; a plausible 12 pt value from a stale descendant cannot replace
+a validated 20 pt inset. A changed candidate or non-prepend mapping waits for coherent measured geometry; lost,
+recycled, duplicate or foreign native identity permanently releases the captured package to
+the existing fallback. Width changes use the coherent measured mapping, whose frames now carry
+the document height and native row count they were sampled with, so a frame from an older state of
+the same document cannot drive a target or complete a restoration. Real user intent in either
+direction — continued wheel, live scroll, arrow/page/home/end keys, either scroller direction —
+cancels the lease irreversibly: the live offset is stored, a fresh anchor is captured (never the
+pre-lease one), and a cancelled lease never re-arms. Its token remains through the pending
+page publication, and joining rows/history/pagination/tail callbacks cannot create a replacement.
+Continued native movement during a pending page explicitly opens a new transaction token only when
+a unique mounted native row provides a fresh, validated reading anchor at the live offset.
+The cancelled token remains cancelled; the replacement preserves the new semantic position
+through publication. If that synchronous capture fails, later geometry updates retry fresh
+native capture while the page is pending; they never revive the old reference or reuse its
+cached anchor. Gesture rebasing does not invalidate the feed measurement generation. A later explicit resize or disclosure may open from a fresh native anchor while carrying the
+pending publication acknowledgement. Cancelled tokens are released when publication commits,
+and live following releases reading leases before issuing bottom-follow targets.
+Joining callbacks keep an active page lease instead of re-reading its anchor; completion marks
+the token finished before releasing it and requires the intended native snapshot to match. A genuinely missing or unrealized
+anchor keeps the proxy fallback, which completes only against a paired current document sample.
+The regression is
+`givenPausedFeedNearOlderPageBoundary_whenOlderRowsLoad_thenReadingViewportDoesNotJumpDuringRealization`
+(heights deliberately vary so lazy realization cannot satisfy it by estimate).
