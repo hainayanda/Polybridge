@@ -44,10 +44,7 @@ import Testing
         let document = try #require(scroll.documentView)
         let table = try #require(document as? NSTableView)
         scroll.contentView.postsBoundsChangedNotifications = true
-        await waitUntil(timeout: 5) {
-            !recorder.validSamples.isEmpty && table.numberOfRows >= 5
-                && document.bounds.height > scroll.contentView.bounds.height
-        }
+        await waitForMaterializedSample(recorder, controller: controller, table: table, scroll: scroll)
         try #require(!recorder.validSamples.isEmpty,
                      "The first valid bottom sample must include materialized overflow rows")
         // Keep a bounded observation window: after the first settle, the test measures whether
@@ -61,7 +58,7 @@ import Testing
         try #require(recorder.validSamples.count >= 2,
                      "The bounded observation must compare an initial and terminal valid sample")
         print(
-            "synthetic-first-mount rows=\(table.numberOfRows) notifications=\(recorder.mountTrace.count) "
+            "synthetic-first-mount rows=\(table.numberOfRows) notifications=\(recorder.boundsNotificationCount) "
                 + "reversals=\(metrics.reversals) heightTransitions=\(metrics.heightTransitions) "
                 + "validSamples=\(recorder.validSamples.count) stableIDs=\(metrics.stableIDs) "
                 + "stableGeometry=\(metrics.stableGeometry) trace=\(trace)"
@@ -69,13 +66,23 @@ import Testing
         #expect(table.numberOfRows >= 5)
         #expect(document.bounds.height > scroll.contentView.bounds.height)
         #expect(document.bounds.maxY - scroll.documentVisibleRect.maxY <= 3)
-        #expect(!recorder.mountTrace.isEmpty, "The mounted table must publish bounds notifications")
+        #expect(recorder.boundsNotificationCount > 0, "The mounted table must publish bounds notifications")
         #expect(!metrics.comparisonFrames.isEmpty,
                 "The stability comparison must include an oversized or fully visible row")
         #expect(metrics.reversals == 0)
         #expect(metrics.heightTransitions < 3)
         #expect(metrics.stableIDs, "The valid bottom samples must retain the same realized row identities")
         #expect(metrics.stableGeometry, "The valid bottom samples must retain viewport-relative row geometry")
+    }
+
+    private func waitForMaterializedSample(_ recorder: FirstMountRecorder, controller: NSViewController,
+                                           table: NSTableView, scroll: NSScrollView) async {
+        await waitUntil(timeout: 5) {
+            // Bounds can settle before native cells realize; observe without causing layout.
+            recorder.captureCurrent(controller: controller)
+            return !recorder.validSamples.isEmpty && table.numberOfRows >= 5
+                && table.bounds.height > scroll.contentView.bounds.height
+        }
     }
 
     @Test func givenTwoLatestRowsAndTallMarkdown_whenTaskDetailOpensNarrow_thenVisibleRowsAreMeasured() async throws {
@@ -305,6 +312,7 @@ import Testing
     private final class FirstMountRecorder: @unchecked Sendable {
         var mountTrace: [FirstMountSample] = []
         var validSamples: [FirstMountSample] = []
+        private(set) var boundsNotificationCount = 0
         private(set) var diagnosticTrace: [String] = []
         private var observer: NSObjectProtocol?
         private var diagnosticViewIDs: Set<ObjectIdentifier> = []
@@ -322,7 +330,7 @@ import Testing
                 guard let object = notification.object as? NSView else { return }
                 let objectID = ObjectIdentifier(object)
                 MainActor.assumeIsolated {
-                    self.record(objectID: objectID, in: controller)
+                    self.record(objectID: objectID, in: controller, fromBoundsNotification: true)
                 }
             }
         }
@@ -339,10 +347,11 @@ import Testing
             diagnosticViewIDs.removeAll()
         }
 
-        @MainActor private func record(objectID: ObjectIdentifier, in controller: NSViewController) {
+        @MainActor private func record(objectID: ObjectIdentifier, in controller: NSViewController, fromBoundsNotification: Bool = false) {
             attachDiagnostics(in: controller)
             guard let scroll = Self.activityScroll(in: controller.view), let document = scroll.documentView,
                   document is NSTableView, ObjectIdentifier(scroll.contentView) == objectID else { return }
+            if fromBoundsNotification { boundsNotificationCount += 1 }
             let visible = Self.descendants(document)
                 .compactMap { $0 as? ActivityFeedNativeCell }
 .filter(\.isCoherentNativeMeasurement)

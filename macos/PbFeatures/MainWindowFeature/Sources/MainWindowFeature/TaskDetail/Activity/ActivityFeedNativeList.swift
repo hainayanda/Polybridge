@@ -83,6 +83,34 @@ enum ActivityFeedNativeListMetrics {
     }
 }
 
+// MARK: - ActivityFeedNativeScroller
+
+/// Keeps AppKit's native tracking and actions while identifying the owned scrollbar gesture.
+@MainActor class ActivityFeedNativeScroller: NSScroller {
+    override class var isCompatibleWithOverlayScrollers: Bool { true }
+
+    weak var owner: ActivityFeedNativeList.Coordinator?
+    private var previousTrackingValue: Double = 0
+
+    override func mouseDown(with event: NSEvent) {
+        previousTrackingValue = doubleValue
+        owner?.isScrollerTracking = true
+        defer { owner?.isScrollerTracking = false }
+        super.mouseDown(with: event)
+    }
+
+    override func sendAction(_ action: Selector?, to target: Any?) -> Bool {
+        let upward = hitPart == .decrementLine || hitPart == .decrementPage
+            || (hitPart == .knob && doubleValue < previousTrackingValue)
+        if upward {
+            owner?.noteUserScrollEvent()
+            owner?.noteUpwardIntent()
+        }
+        previousTrackingValue = doubleValue
+        return super.sendAction(action, to: target)
+    }
+}
+
 // MARK: - ActivityFeedNativeTableView
 
 @MainActor final class ActivityFeedNativeTableView: NSTableView {
@@ -133,6 +161,7 @@ struct ActivityFeedNativeList: NSViewRepresentable {
         scroll.borderType = .noBorder
         scroll.hasVerticalScroller = true
         scroll.hasHorizontalScroller = false
+        scroll.verticalScroller = ActivityFeedNativeScroller(frame: NSRect(x: 0, y: 0, width: 15, height: 100))
         scroll.autohidesScrollers = true
         scroll.scrollerStyle = .overlay
         scroll.verticalScroller?.controlSize = .small
@@ -202,6 +231,7 @@ struct ActivityFeedNativeList: NSViewRepresentable {
         var lastViewportHeight: CGFloat = 0
         var pendingUserScrollEvent = false
         var isLiveScrolling = false
+        var isScrollerTracking = false
         var pendingNativeCapture: ActivityFeedNativeReadingCapture?
         var heldPagingOffset: CGFloat?
         var pendingHostedHeights: [String: ActivityFeedNativeHostedHeightReport] = [:]
@@ -218,6 +248,7 @@ struct ActivityFeedNativeList: NSViewRepresentable {
             self.scroll = scroll
             self.table = table
             scroll.owner = self
+            (scroll.verticalScroller as? ActivityFeedNativeScroller)?.owner = self
             table.owner = self
             table.dataSource = self
             table.delegate = self
@@ -269,6 +300,8 @@ struct ActivityFeedNativeList: NSViewRepresentable {
             table?.delegate = nil
             table?.owner = nil
             scroll?.owner = nil
+            (scroll?.verticalScroller as? ActivityFeedNativeScroller)?.owner = nil
+            isScrollerTracking = false
             cells.removeAll()
             boxes.removeAll()
             entries.removeAll()

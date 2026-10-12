@@ -84,7 +84,7 @@ extension ActivityFeedNativeList.Coordinator {
         if movedUp { noteUpwardIntent() }
         // Ordinary native position changes retain the 24pt follow band. Explicit upward
         // wheel/live gestures stay paused even inside it; owned keys classify separately.
-        let upwardGesture = movedUp && (wheelEvent || isLiveScrolling)
+        let upwardGesture = movedUp && (wheelEvent || isLiveScrolling || isScrollerTracking)
         if !upwardGesture, !isLiveScrolling || movedDown {
             state?.followLive.observe(offset: visible.minY,
                                      contentHeight: table.bounds.height,

@@ -972,7 +972,7 @@ including updates with equal rendering values. Width changes invalidate width-de
 height-relevant environment and rendering-input changes invalidate their corresponding keys.
 
 Each reconciliation applies its entry and height changes as one synchronous native transaction.
-Following feeds target the latest content; paused feeds preserve the latest semantic row and its
+Following feeds target the latest content; paused feeds preserve the latest semantic timeline row or live tail and its
 viewport-relative offset against the table's committed row rectangles. A shortened row clamps
 the saved intra-row position so some of that row remains visible. Hosted content can also change
 height through local disclosure state: reports are coalesced into a bounded queued transaction,
@@ -980,7 +980,7 @@ which changes affected heights without replacing the reporting cell. There is no
 `ScrollViewReader` restoration loop, reference lease, or measurement-generation correction path.
 This is controlled native positioning, not a claim that the table needs no programmatic scrolls.
 
-Live follow starts enabled. Genuine upward wheel, keyboard or native movement pauses it; real
+Live follow starts enabled. Genuine upward wheel, keyboard, scrollbar actions or native movement pauses it; real
 movement back into the 24-point near-bottom zone resumes it when the live gesture is no longer
 active. Programmatic geometry changes are distinguished from user movement. Page publication
 uses the reader's current position, including movement while loading, rather than reinstating a
@@ -998,8 +998,8 @@ Parallel visibility, repository leases and retained visited snapshots keep their
 
 The earlier List/reference-restoration approach and its diagnostics are historical experiments,
 not the current scrolling contract. Their preserved handoff is not a release-validation result.
-Local integration validation passed all nine guarded package runs, including 152 MainWindow
-suites with 1166 tests and the application package's 95 tests. The release build and signature
+Local integration validation passed all nine guarded package runs, including 154 MainWindow
+suites with 1168 tests and the application package's 95 tests. The release build and signature
 verification passed. An isolated startup check observed a task-file change trigger a catalog
 refresh before the periodic fallback; native fixture checks exposed actual tail text and invoked
 its child-navigation button through accessibility. Hosted regressions cover tall initial messages,

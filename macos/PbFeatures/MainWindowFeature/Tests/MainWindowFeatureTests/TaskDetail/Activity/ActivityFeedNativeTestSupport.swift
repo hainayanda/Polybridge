@@ -32,10 +32,13 @@ import AppKit
 
     var stableID: String? { isCoherentNativeMeasurement ? entryID : nil }
 
-    /// Commit evidence from actual entry revisions, not the removed List measurement generation.
+    /// Timeline-row commit evidence; independently changing tail revisions are excluded.
     var nativeSnapshotRevision: Int {
         guard let owner = (enclosingScrollView?.documentView as? ActivityFeedNativeTableView)?.owner else { return -1 }
-        let rows = owner.boxes.filter { $0.entry.anchorID != nil }
+        let rows = owner.boxes.filter { box in
+            if case .row = box.entry { return true }
+            return false
+        }
         return rows.count + rows.reduce(0) { $0 + $1.revision }
     }
 }

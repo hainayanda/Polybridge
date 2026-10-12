@@ -52,7 +52,7 @@ extension ActivityFeedNativeList.Coordinator {
         apply(plan: plan, next: next, following: following,
               environmentHeightsInvalidated: environmentHeightsInvalidated, rootsNeedRefresh: rootsNeedRefresh)
         if model.shownRows.isEmpty {
-            state.anchor = nil
+            if firstRowIndex == nil { state.anchor = nil }
             if state.retainedFirstID != nil { state.retainedFirstID = nil }
         }
         maybePerformInitialPositioning()
@@ -369,13 +369,15 @@ extension ActivityFeedNativeList.Coordinator {
     /// observed movement has kept current — the latest reading, never one captured when a
     /// page request was made. Falls back to the live viewport when no reading was published.
     private func structuralReading(next: [ActivityFeedNativeEntry]) -> ActivityFeedNativeReadingCapture? {
-        if let anchor = state?.anchor, next.contains(where: { $0.id == anchor.id }) {
+        if let anchor = state?.anchor, !entries.contains(where: { $0.id == anchor.id }),
+           next.contains(where: { $0.id == anchor.id }) {
             return ActivityFeedNativeReadingCapture(id: anchor.id, relativeOffset: anchor.relativeOffset)
         }
         return latestReading()
     }
 
     func latestReading() -> ActivityFeedNativeReadingCapture? {
+        if let current = captureReading() { return current }
         if let anchor = state?.anchor, entries.contains(where: { $0.id == anchor.id }) {
             return ActivityFeedNativeReadingCapture(id: anchor.id, relativeOffset: anchor.relativeOffset)
         }
@@ -388,7 +390,7 @@ extension ActivityFeedNativeList.Coordinator {
     /// has not laid out — a detached document's synthetic moves among them — never overwrites
     /// the durable reading anchor.
     func captureReading() -> ActivityFeedNativeReadingCapture? {
-        guard let table, let scroll, table.window != nil, positioned,
+        guard let table, let scroll, scroll.documentView === table, table.window != nil, positioned,
               let first = firstRowIndex, let last = lastRowIndex else { return nil }
         let visible = scroll.documentVisibleRect
         guard visible.height > 0 else { return nil }
@@ -434,8 +436,9 @@ extension ActivityFeedNativeList.Coordinator {
     func restoreAnchor(_ anchor: ParallelVerticalAnchor) {
         guard let table, let model else { return }
         let shownIDs = model.shownRows.map(\.id)
-        guard let id = anchor.resolvedID(in: shownIDs), let index = entries.firstIndex(where: { $0.id == id })
-        else { return }
+        let id = entries.contains(where: { $0.anchorID == anchor.id })
+            ? anchor.id : anchor.resolvedID(in: shownIDs)
+        guard let id, let index = entries.firstIndex(where: { $0.id == id }) else { return }
         let rect = table.rect(ofRow: index)
         writeOffset(ActivityFeedNativeReading.restoredOffset(anchor: anchor, resolvedIndex: index, rowRect: rect))
     }
@@ -477,10 +480,10 @@ extension ActivityFeedNativeList.Coordinator {
     func publishPosition() {
         guard let state, let scroll else { return }
         state.scrollOffset = scroll.documentVisibleRect.minY
-        if model?.shownRows.isEmpty == true {
-            state.anchor = nil
-        } else if let anchor = firstVisibleAnchor() {
+        if let anchor = firstVisibleAnchor() {
             state.anchor = anchor
+        } else if firstRowIndex == nil {
+            state.anchor = nil
         }
         state.viewportPositioned = positioned
     }

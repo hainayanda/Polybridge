@@ -66,10 +66,13 @@ enum ActivityFeedNativeEntry: Equatable, Identifiable {
         }
     }
 
-    /// The stable semantic id a reading anchor may reference: row ids only.
+    /// The stable semantic id of reading content: timeline rows and the live tail.
     var anchorID: String? {
-        if case .row(let row) = self { return row.row.id }
-        return nil
+        switch self {
+        case .row(let row): row.row.id
+        case .tail: id
+        default: nil
+        }
     }
 }
 
