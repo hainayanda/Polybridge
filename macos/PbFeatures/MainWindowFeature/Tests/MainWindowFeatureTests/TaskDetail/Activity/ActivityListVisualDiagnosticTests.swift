@@ -235,7 +235,7 @@ import Testing
             }
         }
         if let document = scroll.documentView {
-            let measurements = descendants(document).compactMap { $0 as? ActivityRowGeometry.MeasurementView }
+            let measurements = descendants(document).compactMap { $0 as? ActivityFeedNativeCell }.filter(\.isCoherentNativeMeasurement)
             let documentFrames = measurements.map { $0.convert($0.bounds, to: document) }
             result += " measurementFrames=\(documentFrames)"
         }

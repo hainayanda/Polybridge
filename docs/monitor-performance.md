@@ -634,16 +634,18 @@ Codex review found no remaining code or report blockers after the raw metric evi
 
 ## Stage 5: automatic activity pagination (verification in progress)
 
-Task detail, standalone Parallel and the workflow's bottom Parallel pane share a lazy vertical
-activity feed. It positions at latest activity, reveals older loaded rows in batches of 100, and
+Task detail, standalone Parallel and the workflow's bottom Parallel pane share an owned native
+activity table. The current scrolling contract is described in [Owned native activity scrolling](#owned-native-activity-scrolling). It positions at latest activity, reveals older loaded rows in batches of 100, and
 requests bounded history near the oldest visible edge after positioning or restoration settles.
-Only visible Parallel columns initiate pagination; neighboring columns retain activity leases.
+Only viewport-intersecting Parallel columns initiate pagination and hold activity leases; visited
+off-screen columns retain their presentation and reading state without subscriptions.
 Short viewports permit one automatic older-history operation per positioning or interaction episode;
 intentional upward scrolling or a tool disclosure replenishes that budget. This prevents a collapsed
 group with unchanged visible height from draining its conversation on mount. Valid empty decoded
 pages still commit their cursor; the UI fill budget does not turn them into reader failures.
-A mounted feed retains lightweight geometry for rows it has measured; column eviction discards
-that view-owned geometry. Loaded history and its measurements can grow through requested paging.
+A mounted feed caches heights for its retained entries; native teardown discards that view-owned
+cache while the shared column state retains the semantic reading anchor and history boundary.
+Loaded history and height caches can grow through requested paging.
 Show all and manual Load more controls are removed; failed history reads retain explicit Retry.
 Initial resume-chain history forms a recent suffix: the newest member is paged before the previous
 member is revealed. If a resumed turn is newly discovered while someone is reading, existing rows
@@ -949,118 +951,59 @@ failure messages report independent timer-handler firing counts alongside main-a
 This is a controlled measurement correction; timer coalescing is not established as the cause.
 All four affected tests passed locally again; no assertions or deadlines were relaxed.
 
-### Initial Activity layout stability
+### Owned native activity scrolling
 
-Activity feeds retain List's native table sizing to avoid first-load scroll oscillation.
-Cards have a slightly larger horizontal inset; restoring the prior inset remains follow-up work.
-Paused reading restoration uses the measured row width when the viewport resizes.
-The native vertical Activity observer reports both the actual clip viewport and its outer scroll
-view width. A legacy scrollbar appearing or disappearing changes only clip width: the feed
-updates row-width acceptance and retries its existing native anchor without opening a measured
-resize or discarding frames. Outer-width or clip-height changes still require coherent measured
-resize geometry. An outer-frame report arriving before the clip-width update keeps that measured
-resize requirement through the later clip report. Row measurements always use actual clip dimensions;
-horizontal lanes and observers without the native geometry callback retain their existing behavior.
-Previous native clip size and outer width live in the plain position coordinator, so multiple
-synchronous reports compare actual observations rather than a SwiftUI state snapshot.
-A different scroll identity resets that baseline before its synchronous first report. Nil
-identity delivery detaches observation while retaining the weak last scroll and baseline, so
-reattaching the same live scroll detects a real off-window resize without treating unchanged
-geometry as a new resize. Same-scroll document replacement also keeps the baseline. An upward reading
-report captures a coherent current native row before
-subsequent chrome reflow can clamp its offset. Paused feeds re-enter live follow only on downward
-movement with unchanged native content and viewport geometry, preserving the existing follow zone.
-Layout clamps and upward adjustments alone keep paused reading paused.
-While already following, upward adjustments within the existing 24-point follow zone return
-to the latest content immediately, including selection, focus or accessibility scrolling that
-sends no separate user-intent signal. A paused reader moving upward remains paused. A paused
-reader moving downward into the zone re-enters live follow while keeping the chosen offset until
-the next content change.
+The current implementation replaces the activity SwiftUI `List` with one owned `NSScrollView`
+and normally oriented `NSTableView`, shared by TaskDetail and both Parallel surfaces. Existing
+SwiftUI message, Markdown, tool-group and tail renderers remain hosted in table cells. The native
+feed retains TaskDetail's 24-point horizontal padding, Parallel's zero padding, history headers,
+retry, empty states, child navigation, pending messages and live-step indicators. It owns overlay,
+auto-hiding, small scrollbar chrome and reasserts it after native restyling.
 
-### Stable activity List rendering
+The coordinator measures changed entries before committing table heights. Measurement and
+visible hosting roots use the same pinned actual column width and explicitly inherited public
+SwiftUI renderer values (font, type size, locale, direction, color scheme, legibility, scale,
+control size, enabled state, motion overrides and link action). Each host retains its own
+framework runtime environment and system-provided read-only contrast/accessibility settings;
+copying an opaque environment snapshot would suppress SwiftUI accessibility descendants.
+Height cache keys include entry revision, column width, environment revision and root-input
+revision; unchanged updates reuse retained heights. Action callbacks refresh on every update,
+including updates with equal rendering values. Width changes invalidate width-dependent heights;
+height-relevant environment and rendering-input changes invalidate their corresponding keys.
 
-Activity List content has an explicit value boundary: native offset, viewport, follow and
-restoration callbacks update the outer coordinator without rebuilding unchanged List content.
-The render inputs include row values, disclosure state, placement, animation decisions and
-measurement generation. Tail presentation is concrete data, including sub-task strip presence
-and start time, pending messages, live text and indicator. Only the tail child observes this
-content store; the List depends on effective tail presence. Constant-presence updates leave
-reading leases, measurement generation, cached frames and restoration targets intact. Structural
-presence changes retain the existing restoration path. Selection and other callbacks use a
-nonpublishing relay refreshed by the parent. Tail presence keeps the prior semantic-tail gate.
-Native identity delivery remains installed through dismantle, while action and measurement
-callbacks refresh on appearance; reappearance reschedules measurements without opening a new
-restoration or advancing its generation. The legacy-scrollbar experiments reproduced repeated
-clip-width and document-height changes without the List boundary and stable geometry with it.
-A settled paused-reader tail update passed with isolated tail content, while the same update
-failed with tail content in the List equality key. Hosted regressions cover both scrollbar
-preferences, paused tail updates, remounts and history prepend, checking native row placement
-and scroll offsets.
+Each reconciliation applies its entry and height changes as one synchronous native transaction.
+Following feeds target the latest content; paused feeds preserve the latest semantic row and its
+viewport-relative offset against the table's committed row rectangles. A shortened row clamps
+the saved intra-row position so some of that row remains visible. Hosted content can also change
+height through local disclosure state: reports are coalesced into a bounded queued transaction,
+which changes affected heights without replacing the reporting cell. There is no activity
+`ScrollViewReader` restoration loop, reference lease, or measurement-generation correction path.
+This is controlled native positioning, not a claim that the table needs no programmatic scrolls.
 
-### Older-page restoration without proxy excursions
+Live follow starts enabled. Genuine upward wheel, keyboard or native movement pauses it; real
+movement back into the 24-point near-bottom zone resumes it when the live gesture is no longer
+active. Programmatic geometry changes are distinguished from user movement. Page publication
+uses the reader's current position, including movement while loading, rather than reinstating a
+request-time anchor. Remounts restore follow, disclosure, retained history and semantic reading
+state from `ParallelColumnUIState`; a different state object identifies a different task.
 
-Publishing an older page while paused near the boundary used to clear the measured-frame cache
-(`beginRestoration`) and then settle through the stale numeric target or
-`ScrollViewReader.scrollTo(anchor, .top)` — a visible ~100 pt excursion on the retained row, because
-the retained row's *measured* frame and row-view frame lag the prepend while the native table's
-`rect(ofRow:)` is already fresh. Reading restoration now runs as one irreversible reference lease
-(`ActivityFeedReferenceRestoration`, owned by the plain `ActivityFeedPosition` coordinator): the
-opening cause (page request, retained reveal, resize or disclosure) captures the
-anchor's coherent native package — its uniquely identified measurement view, row view, document,
-within-row inset (only the feed's 12/20 pt paddings validate), native index and count — before the
-structural change. The scroll observer holds the lease weakly through the generic
-`ParallelScrollAnchorProvider` seam (no Activity types cross it) and asks it on attach and on every
-document-frame notification, before reporting (ordinary bounds reports never apply its correction).
-Completed feed callbacks also bind the same immutable intended List snapshot used by the body
-and synchronously retry the current native provider once. This closes the gap when a frame
-notification arrives before a publication callback advances the candidate generation; body
-registration itself remains data-only. Obsolete body generations are rejected, and nested
-provider retries are dropped without cancelling the lease; ordinary native reports remain active. The existing fresh native geometry and
-identity checks still gate this retry: a pure prepend above the anchor (native index and
-count grow by the same delta), or a height-only change with unchanged mapping, whose realized table matches the feed's independently modeled
-expected row count and anchor index corrects immediately from `rect(ofRow:)` plus the captured
-inset, keeping the row glued while realization proceeds. An inset is updated only when the
-containing native row view agrees with the table rectangle and the measured inset matches
-the intended List row padding; a plausible 12 pt value from a stale descendant cannot replace
-a validated 20 pt inset. A changed candidate or non-prepend mapping waits for coherent measured geometry; lost,
-recycled, duplicate or foreign native identity permanently releases the captured package to
-the existing fallback. Width changes use the coherent measured mapping, whose frames now carry
-the document height and native row count they were sampled with, so a frame from an older state of
-the same document cannot drive a target or complete a restoration. Real user intent in either
-direction — continued wheel, live scroll, arrow/page/home/end keys, either scroller direction —
-cancels the lease irreversibly: the live offset is stored, a fresh anchor is captured (never the
-pre-lease one), and a cancelled lease never re-arms. Its token remains through the pending
-page publication, and joining rows/history/pagination/tail callbacks cannot create a replacement.
-Continued native movement during a pending page explicitly opens a new transaction token only when
-a unique mounted native row provides a fresh, validated reading anchor at the live offset.
-The cancelled token remains cancelled; the replacement preserves the new semantic position
-through publication. If that synchronous capture fails, later geometry updates retry fresh
-native capture while the page is pending; they never revive the old reference or reuse its
-cached anchor. Gesture rebasing does not invalidate the feed measurement generation. A later explicit resize or disclosure may open from a fresh native anchor while carrying the
-pending publication acknowledgement. Cancelled tokens are released when publication commits,
-and live following releases reading leases before issuing bottom-follow targets.
-Joining callbacks keep an active page lease instead of re-reading its anchor; completion marks
-the token finished before releasing it and requires the intended native snapshot to match. A genuinely missing or unrealized
-anchor keeps the proxy fallback, which completes only against a paired current document sample.
-The regression is
-`givenPausedFeedNearOlderPageBoundary_whenOlderRowsLoad_thenReadingViewportDoesNotJumpDuringRealization`
-(heights deliberately vary so lazy realization cannot satisfy it by estimate).
+The initial window contains the latest 100 activity rows. Near the oldest edge, retained rows
+are revealed in batches of 100 before another bounded history request. Only visible, positioned
+feeds without a loading request or history error initiate automatic pagination. One outstanding
+request and stale-request rejection suppress repeated loading; the short-feed budget prevents
+unchanged collapsed content from draining history. Upward intent or disclosure replenishes that
+budget. A pending request resolves against the corresponding presentation: a pure live append
+does not count as older-page publication. Retry and exhausted-history markers remain explicit.
+Parallel visibility, repository leases and retained visited snapshots keep their existing owners.
 
-Numeric restoration without a reference lease follows the same user-input rule. A cancellation
-clears queued native targets before notifying the feed. The notification validates the current
-observer, scroll view and document, and returns the feed's current restoration generation; this
-also retires an owner update not yet delivered to the native observer. Older configurations cannot
-re-arm it, while a genuinely newer restoration can use the same offset. The cancellation watermark
-cannot decrease during repeated input and is scoped to the native binding.
-
-After cancellation, only coherent native geometry can establish the next reading anchor; cached
-frames cannot clear that pending capture. Older-history reveal, disclosure and retry do not mutate
-the feed while this capture is unavailable. A disclosure or retry click during that brief transition
-is skipped rather than deferred: repeat it after the feed settles. Once live following resumes,
-the previous reading target is cleared before computing the current bottom. Refused page requests
-also discard targets from completed restorations and retain fresh measurement work.
-
-Real-window regressions in `ActivityFeedNumericCancellationHostedTests` cover publication/input
-overlap, pending pages, End navigation after a completed paused restoration, refused loading and
-recovery from an explicitly missing native measurement. `ParallelScrollNativeIdentityTests` checks
-providerless input, owner/configuration generation races, repeated cancellation and fresh targets.
+The earlier List/reference-restoration approach and its diagnostics are historical experiments,
+not the current scrolling contract. Their preserved handoff is not a release-validation result.
+Local integration validation passed all nine guarded package runs, including 152 MainWindow
+suites with 1166 tests and the application package's 95 tests. The release build and signature
+verification passed. An isolated startup check observed a task-file change trigger a catalog
+refresh before the periodic fallback; native fixture checks exposed actual tail text and invoked
+its child-navigation button through accessibility. Hosted regressions cover tall initial messages,
+startup movement, paused history, streaming, disclosure, resizing and remounts. The rebuilt preview
+also verified native page navigation, history loading and disclosure. These local results do not
+establish exact-head PR review, green CI or installation. Earlier test counts and measurements
+elsewhere in this document apply only to their recorded source states.

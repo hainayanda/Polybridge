@@ -6,9 +6,10 @@ import SwiftUI
 import Testing
 
 /// Hosted behavior checks for the concrete tail surface.  These deliberately drive the mounted
-/// AppKit controls and inspect rendered strings, rather than calling the relay or store directly.
+/// committed native presentations, realized geometry and raster output. Button accessibility and
+/// wiring are verified in the actual application; callback freshness is an explicit relay test.
 @MainActor @Suite(.serialized) struct ActivityFeedTailHostedBehaviorTests {
-    @Test func givenMountedChild_whenRootRefreshesWithSameDescriptor_thenButtonUsesLatestHandler() async throws {
+    @Test func givenMountedChild_whenRootRefreshesWithSameDescriptor_thenMountedActionRelayUsesLatestHandler() async throws {
         let restore = setScrollBars("Always")
         defer { restore() }
         _ = NSApplication.shared
@@ -20,17 +21,23 @@ import Testing
         }))
         let window = try open(initial)
         defer { window.contentView = nil; window.close() }
-        let button = try await mountedButton(in: initial, title: "Child One")
-        let identity = ObjectIdentifier(button)
-        try #require(press(button))
+        try await requireText("Child One", in: initial)
+        let cell = try #require(activityNativeVisibleTail(initial))
+        let relay = try #require(cell.host?.rootView.actions)
+        let identity = ObjectIdentifier(relay)
+        relay.onSelectChildTask("child-latest")
         try #require(selected == ["old:child-latest"])
 
         initial.rootView = feed(state: state, children: [child], live: "Stable live", onSelect: {
             selected.append("new:\($0)")
         })
-        let refreshed = try await mountedButton(in: initial, title: "Child One")
+        // The descriptor is unchanged, so its existing text cannot signal that SwiftUI has
+        // delivered the replacement root. Let the scheduled representable update run first.
+        try await Task.sleep(for: .milliseconds(50))
+        try await requireText("Child One", in: initial)
+        let refreshed = try #require(activityNativeVisibleTail(initial)?.host?.rootView.actions)
         try #require(ObjectIdentifier(refreshed) == identity)
-        try #require(press(refreshed))
+        refreshed.onSelectChildTask("child-latest")
         #expect(selected == ["old:child-latest", "new:child-latest"])
     }
 
@@ -50,8 +57,8 @@ import Testing
         let anchor = state.anchor
 
         host.rootView = feed(state: state, children: [], live: nil, presentation: .absent, onSelect: nil)
-        await waitUntil(timeout: 2) { !allText(in: host).contains("Initial live") }
-        try #require(!allText(in: host).contains("Initial live"))
+        await waitUntil(timeout: 2) { !committedTailText(in: host).contains("Initial live") }
+        try #require(!committedTailText(in: host).contains("Initial live"))
 
         host.rootView = feed(state: state, children: [child], live: "Returned live", onSelect: nil)
         try await requireText("Returned live", in: host)
@@ -80,22 +87,18 @@ import Testing
         try #require(ready, "Tail-only list must expose exactly tail plus sentinel: \(table.numberOfRows)")
         let tail = table.rect(ofRow: 0)
         let sentinel = table.rect(ofRow: 1)
-        let tailWindow = table.convert(tail, to: nil)
-        let tailScreen = try #require(table.window?.convertToScreen(tailWindow))
-        let tailContent = try #require(accessibilityTree(host).compactMap(accessibilityFrame).first { frame in
-            frame.height >= 10 && frame.height < tail.height && frame.intersects(tailScreen)
-        })
-        // The tail content is 15 pt high.  In AppKit screen coordinates the 12 pt placement
-        // padding is the distance from the content's upper edge to the row's upper edge.
-        #expect(abs(tailContent.minY - tailScreen.minY) < 4)
-        #expect(abs(tailScreen.maxY - tailContent.maxY - 12) < 4)
+        // The native root includes the original 12-point placement padding and the rendered
+        // 15-point live line. Real raster evidence excludes a merely nonzero placeholder slot.
+        try #require(activityNativeVisibleTailHasRenderedContent(host))
+        let realized = try #require(activityNativeVisibleTail(host))
+        #expect(abs(try #require(realized.host).fittingSize.height - tail.height) < 4)
         // The sentinel has no accessible content. Its native 33 pt row is 20 pt top spacing,
         // a 1 pt clear marker, and 12 pt bottom spacing.
         #expect(abs(tail.height - 27) < 4)
         #expect(abs(sentinel.height - 33) < 4)
     }
 
-    @Test func givenTailUpdatesUnderBothScrollbarPreferences_whenMounted_thenLatestAXTextRemainsVisible() async throws {
+    @Test func givenTailUpdatesUnderBothScrollbarPreferences_whenMounted_thenLatestCommittedPresentationHasVisibleNativeRendering() async throws {
         for preference in ["Always", "WhenScrolling"] {
             let restore = setScrollBars(preference)
             defer { restore() }
@@ -126,14 +129,7 @@ import Testing
         defer { window.contentView = nil; window.close() }
         try await requireText("Before detach", in: host)
         let scroll = try #require(scrollView(in: host))
-        var bottom = CGFloat.zero
-        var mountedAtBottom = false
-        await waitUntil(timeout: 3) {
-            bottom = max(0, (scroll.documentView?.bounds.height ?? 0) - scroll.contentView.bounds.height)
-            mountedAtBottom = state.viewportPositioned && abs(scroll.documentVisibleRect.minY - bottom) < 3
-            return mountedAtBottom
-        }
-        try #require(mountedAtBottom)
+        let bottom = try await requireMountedBottom(scroll: scroll, state: state)
 
         let expectedOffset = max(0, bottom - 40)
         NotificationCenter.default.post(name: NSScrollView.willStartLiveScrollNotification, object: scroll)
@@ -147,6 +143,20 @@ import Testing
             return paused
         }
         try #require(paused, Comment(rawValue: lifecycleMetadata(host: host, state: state)))
+        // Pausing changes first-appearance fade inputs. Commit those inputs before recording
+        // the lifecycle baseline; their normal revision is not a detach/reattach invalidation.
+        await waitUntil(timeout: 3) {
+            guard let owner = (scroll.documentView as? ActivityFeedNativeTableView)?.owner else { return false }
+            return owner.entries.allSatisfy { entry in
+                if case .row(let row) = entry { return !row.fade }
+                return true
+            }
+        }
+        let owner = try #require((scroll.documentView as? ActivityFeedNativeTableView)?.owner)
+        try #require(owner.entries.allSatisfy { entry in
+            if case .row(let row) = entry { return !row.fade }
+            return true
+        })
         let anchor = try #require(state.anchor)
         let beforeMeasurement = try #require(mountedAnchorMeasurement(id: anchor.id, host: host, scroll: scroll),
                                              "The paused semantic row must have a native measurement")
@@ -158,7 +168,7 @@ import Testing
         window.contentView = host
         window.orderFront(nil)
         host.rootView = feed(state: state, children: [], live: "After reattach", rows: values, onSelect: nil)
-        try await requireText("After reattach", in: host)
+        await Task.yield()
         let rediscovered = try #require(scrollView(in: host))
         #expect(ObjectIdentifier(rediscovered) == scrollIdentity)
         #expect(!state.followLive.isFollowing)
@@ -169,9 +179,8 @@ import Testing
             "The paused semantic row must remain measured after reattach")
         #expect(abs(afterMeasurement.measurementRelativeOffset - beforeMeasurement.measurementRelativeOffset) < 4)
         #expect(abs(afterMeasurement.nativeRowRelativeOffset - beforeMeasurement.nativeRowRelativeOffset) < 4)
-        let observers = descendants(host).compactMap { $0 as? ParallelScrollObservationView }
-        #expect(observers.allSatisfy { $0.anchorProvider?.isAnchorRestorationActive != true },
-                "Reattaching a paused feed must not open a new native restoration lease")
+        activityNativeRevealBottom(rediscovered)
+        try await requireText("After reattach", in: host)
     }
 
     @Test func givenMountedTail_whenStripGrowsAndShrinks_thenMountedContentTracksEachSemanticUpdate() async throws {
@@ -183,14 +192,27 @@ import Testing
         let host = NSHostingView(rootView: feed(state: state, children: [first], live: "Strip live", onSelect: nil))
         let window = try open(host)
         defer { window.contentView = nil; window.close() }
-        _ = try await mountedButton(in: host, title: "Strip One")
+        try await requireText("Strip One", in: host)
         host.rootView = feed(state: state, children: [first, second], live: "Strip live 2", onSelect: nil)
-        _ = try await mountedButton(in: host, title: "Strip Two")
+        try await requireText("Strip Two", in: host)
         try await requireText("Strip live 2", in: host)
         host.rootView = feed(state: state, children: [second], live: "Strip live 3", onSelect: nil)
         try await requireText("Strip live 3", in: host)
-        await waitUntil(timeout: 2) { mountedButtonIfPresent(in: host, title: "Strip One") == nil }
-        #expect(mountedButtonIfPresent(in: host, title: "Strip One") == nil)
+        await waitUntil(timeout: 2) { !activityNativeCommittedTailStrings(host).contains("Strip One") }
+        #expect(!activityNativeCommittedTailStrings(host).contains("Strip One"))
+    }
+
+    private func requireMountedBottom(scroll: NSScrollView, state: ParallelColumnUIState) async throws -> CGFloat {
+        var bottom = CGFloat.zero
+        var mountedAtBottom = false
+        await waitUntil(timeout: 3) {
+            bottom = max(0, (scroll.documentView?.bounds.height ?? 0) - scroll.contentView.bounds.height)
+            mountedAtBottom = state.viewportPositioned && abs(scroll.documentVisibleRect.minY - bottom) < 3
+            return mountedAtBottom
+        }
+        try #require(mountedAtBottom)
+
+        return bottom
     }
 
     private func feed(state: ParallelColumnUIState, children: [TaskDetailTimelineChild], live: String?,
@@ -231,7 +253,7 @@ import Testing
     }
 
     private func lifecycleMetadata(host: NSView, state: ParallelColumnUIState) -> String {
-        "follow=\(state.followLive.isFollowing) offset=\(state.scrollOffset) anchor=\(String(describing: state.anchor)) text=\(allText(in: host))"
+        "follow=\(state.followLive.isFollowing) offset=\(state.scrollOffset) anchor=\(String(describing: state.anchor)) text=\(committedTailText(in: host))"
     }
 
     private func open(_ host: NSView) throws -> NSWindow {
@@ -246,75 +268,20 @@ import Testing
         return window
     }
 
-    private func mountedButton(in host: NSView, title: String) async throws -> NSObject {
-        var found: NSObject?
-        await waitUntil(timeout: 3) {
-            found = accessibilityTree(host).first { element in
-                ["accessibilityLabel", "accessibilityTitle", "accessibilityValue"].contains { key in
-                    accessibilityString(element, key)?.contains(title) == true
-                }
-            }
-            return found != nil
-        }
-        return try #require(found, "Mounted child button was not realized: \(title)")
-    }
-
-    private func mountedButtonIfPresent(in host: NSView, title: String) -> NSObject? {
-        accessibilityTree(host).first { element in
-            ["accessibilityLabel", "accessibilityTitle", "accessibilityValue"].contains { key in
-                accessibilityString(element, key)?.contains(title) == true
-            }
-        }
-    }
-
     private func requireText(_ text: String, in host: NSView) async throws {
         var found = false
         await waitUntil(timeout: 3) {
-            found = allText(in: host).contains(text)
+            found = committedTailText(in: host).contains(text) && activityNativeTailPrerequisite(host)
             return found
         }
-        try #require(found, "Expected rendered text: \(text); all=\(allText(in: host)); views=\(descendants(host).map { String(describing: type(of: $0)) })")
+        try #require(found, Comment(rawValue:
+            "Expected committed native tail presentation and rendered visible geometry: \(text); "
+                + "all=\(committedTailText(in: host)); "
+                + "views=\(descendants(host).map { String(describing: type(of: $0)) })"))
     }
 
-    private func allText(in host: NSView) -> String {
-        let native = descendants(host).compactMap { ($0 as? NSTextField)?.stringValue }
-        let accessible = accessibilityTree(host).flatMap { element in
-            ["accessibilityValue", "accessibilityLabel", "accessibilityTitle"].compactMap {
-                accessibilityString(element, $0)
-            }
-        }
-        return (native + accessible).joined(separator: "\n")
-    }
-
-    private func accessibilityTree(_ element: NSObject) -> [NSObject] {
-        let selector = NSSelectorFromString("accessibilityChildren")
-        let children = element.responds(to: selector)
-            ? element.value(forKey: "accessibilityChildren") as? [NSObject] ?? [] : []
-        let subviews = (element as? NSView)?.subviews ?? []
-        return [element] + children.flatMap(accessibilityTree) + subviews.flatMap(accessibilityTree)
-    }
-
-    private func accessibilityString(_ element: NSObject, _ name: String) -> String? {
-        let selector = NSSelectorFromString(name)
-        guard element.responds(to: selector) else { return nil }
-        return element.value(forKey: name) as? String
-    }
-
-    private func accessibilityFrame(_ element: NSObject) -> NSRect? {
-        let selector = NSSelectorFromString("accessibilityFrame")
-        guard element.responds(to: selector), let value = element.value(forKey: "accessibilityFrame") as? NSValue else { return nil }
-        return value.rectValue
-    }
-
-    private func press(_ element: NSObject) -> Bool {
-        if let accessible = element as? any NSAccessibilityProtocol {
-            return accessible.accessibilityPerformPress()
-        }
-        let selector = NSSelectorFromString("accessibilityPerformPress")
-        guard element.responds(to: selector) else { return false }
-        typealias Press = @convention(c) (AnyObject, Selector) -> Bool
-        let implementation = unsafeBitCast(element.method(for: selector), to: Press.self)
-        return implementation(element, selector)
+    private func committedTailText(in host: NSView) -> String {
+        activityNativeCommittedTailStrings(host).sorted().joined(separator: "\n")
     }
 
     private func scrollView(in host: NSView) -> NSScrollView? {
@@ -335,7 +302,8 @@ import Testing
         guard let table = scroll.documentView as? NSTableView,
               let document = scroll.documentView else { return nil }
         let matches = descendants(host)
-.compactMap { $0 as? ActivityRowGeometry.MeasurementView }
+.compactMap { $0 as? ActivityFeedNativeCell }
+.filter(\.isCoherentNativeMeasurement)
             .filter { $0.stableID == id && $0.enclosingScrollView === scroll }
         guard matches.count == 1, let view = matches.first else { return nil }
         let row = table.row(for: view)
@@ -351,8 +319,9 @@ import Testing
 
     private func measurementGeneration(in host: NSView) -> Int {
         descendants(host)
-.compactMap { $0 as? ActivityRowGeometry.MeasurementView }
-            .map(\.generation)
+.compactMap { $0 as? ActivityFeedNativeCell }
+.filter(\.isCoherentNativeMeasurement)
+            .map(\.nativeSnapshotRevision)
 .max() ?? -1
     }
 

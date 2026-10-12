@@ -1,6 +1,5 @@
 import Foundation
 import MonitorCore
-import Observation
 
 // MARK: - ActivityFeedTail
 
@@ -36,11 +35,4 @@ enum ActivityFeedTailPresentation: Equatable {
     func isVisible(with semanticTail: ActivityFeedTail) -> Bool {
         semanticTail != ActivityFeedTail() && self != .absent
     }
-}
-
-/// Only the tail child observes content updates; the List depends on structural presence.
-@MainActor @Observable
-final class ActivityFeedTailStore {
-    var presentation: ActivityFeedTailPresentation
-    init(presentation: ActivityFeedTailPresentation) { self.presentation = presentation }
 }

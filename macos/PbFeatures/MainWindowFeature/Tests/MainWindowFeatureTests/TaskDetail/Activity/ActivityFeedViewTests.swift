@@ -109,17 +109,15 @@ import Testing
 
         await waitUntil {
             host.layoutSubtreeIfNeeded()
-            return state.viewportPositioned && descendants(host).contains {
-                ($0 as? NSTextField)?.stringValue.contains("Static tail content") == true
-            } && accessibilityStrings(in: host).contains("Static tail content")
+            return state.viewportPositioned && activityNativeTailPrerequisite(host) && committedTailStrings(in: host).contains("Static tail content")
         }
-        try #require(accessibilityStrings(in: host).contains("Static tail content"))
+        try #require(committedTailStrings(in: host).contains("Static tail content"))
         let scroll = try #require(descendants(host).compactMap { $0 as? NSScrollView }.first)
         #expect((scroll.documentView?.bounds.height ?? 0) > scroll.contentView.bounds.height)
         #expect(state.followLive.isFollowing)
     }
 
-    @Test func givenReadingUpward_whenPlainTextTailChanges_thenLatestTailIsRenderedWithoutResumingFollow() async throws {
+    @Test func givenReadingUpward_whenPlainTextTailChanges_thenLatestTailCommitsWithoutResumingFollowAndRendersWhenRevealed() async throws {
         _ = NSApplication.shared
         enableAccessibility()
         let state = ParallelColumnUIState()
@@ -145,15 +143,13 @@ import Testing
         let anchor = try #require(state.anchor)
 
         host.rootView = tailFixture(rows: values, state: state, text: String(repeating: "Updated live tail.\n", count: 20))
-        await waitUntil {
-            host.layoutSubtreeIfNeeded()
-            return descendants(host).contains { ($0 as? NSTextField)?.stringValue.contains("Updated live tail.") == true }
-                && accessibilityStrings(in: host).contains { $0.contains("Updated live tail.") }
-        }
-        try #require(accessibilityStrings(in: host).contains { $0.contains("Updated live tail.") })
-
+        await Task.yield()
         #expect(!state.followLive.isFollowing)
         #expect(state.anchor?.id == anchor.id)
+        #expect(abs(scroll.documentVisibleRect.minY - 180) < 4)
+        activityNativeRevealBottom(scroll)
+        await waitUntil { committedTailStrings(in: host).contains { $0.contains("Updated live tail.") } }
+        try #require(committedTailStrings(in: host).contains { $0.contains("Updated live tail.") })
     }
 
     @Test func givenSemanticTailAndPresentation_whenCheckingTailVisibility_thenAbsentAndEmptyAreOmitted() {
@@ -213,8 +209,8 @@ import Testing
         await waitUntil { host.layoutSubtreeIfNeeded(); return state.viewportPositioned }
         for _ in 0 ..< 20 { await Task.yield(); host.layoutSubtreeIfNeeded() }
         #expect(requests.total == 1)
-        let observer = try #require(descendants(host).compactMap { $0 as? ParallelScrollObservationView }.first)
-        observer.onUpwardIntent?()
+        let nativeScroll = try #require(descendants(host).compactMap { $0 as? ActivityFeedNativeScrollView }.first)
+        nativeScroll.owner?.noteUpwardIntent()
         await waitUntil { host.layoutSubtreeIfNeeded(); return requests.total == 2 }
         #expect(requests.total == 2)
     }
@@ -316,22 +312,7 @@ import Testing
 
     private func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
 
-    private func accessibilityStrings(in host: NSView) -> Set<String> {
-        var strings = Set<String>()
-        var visited = Set<ObjectIdentifier>()
-        func collect(_ element: NSObject) {
-            guard visited.insert(ObjectIdentifier(element)).inserted else { return }
-            for key in ["accessibilityValue", "accessibilityLabel", "accessibilityTitle"] {
-                let selector = NSSelectorFromString(key)
-                if element.responds(to: selector), let value = element.value(forKey: key) as? String { strings.insert(value) }
-            }
-            let selector = NSSelectorFromString("accessibilityChildren")
-            if element.responds(to: selector), let children = element.value(forKey: "accessibilityChildren") as? [NSObject] {
-                children.forEach(collect)
-            }
-            if let view = element as? NSView { view.subviews.forEach(collect) }
-        }
-        collect(host)
-        return strings
+    private func committedTailStrings(in host: NSView) -> Set<String> {
+        activityNativeCommittedTailStrings(host)
     }
 }

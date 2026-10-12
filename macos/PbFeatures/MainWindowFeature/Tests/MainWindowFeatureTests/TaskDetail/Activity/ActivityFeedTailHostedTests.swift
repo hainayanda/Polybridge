@@ -14,10 +14,7 @@ import Testing
 
         let state = ParallelColumnUIState()
         let host = NSHostingView(rootView: feed(rows: rows(count: 6), state: state, liveText: "Static live step"))
-        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 420, height: 450), styleMask: [.titled],
-                              backing: .buffered, defer: false)
-        window.isReleasedWhenClosed = false
-        window.contentView = host
+        let window = activityMountedTestWindow(host, style: [.titled])
         let firstMountTrace = NativeMountRecorder()
         let firstMountObserver = NotificationCenter.default.addObserver(
             forName: NSView.boundsDidChangeNotification, object: nil, queue: .main
@@ -33,13 +30,7 @@ import Testing
             window.close()
         }
 
-        var initialTailReady = false
-        await waitUntil {
-            let text = accessibilityStrings(in: host).joined(separator: "\n") + "\n" + nativeFieldStrings(in: host).joined(separator: "\n")
-            initialTailReady = text.contains("Static live step") && text.contains("Static pending message")
-            return initialTailReady
-        }
-        try #require(initialTailReady, Comment(rawValue: initialMetadata(host: host, state: state)))
+        try await requireInitialTail(host: host, state: state)
         let scroll = try #require(descendants(host).compactMap { $0 as? NSScrollView }.first)
         try #require(NSScroller.preferredScrollerStyle == .legacy)
         #expect(scroll.scrollerStyle == .overlay)
@@ -87,33 +78,18 @@ import Testing
         let state = ParallelColumnUIState()
         let values = rows(count: 32)
         let host = NSHostingView(rootView: feed(rows: values, state: state, liveText: "Static live step"))
-        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 420, height: 450), styleMask: [.titled, .resizable],
-                              backing: .buffered, defer: false)
-        window.isReleasedWhenClosed = false
-        window.contentView = host
+        let window = activityMountedTestWindow(host, style: [.titled, .resizable])
         window.orderFront(nil)
         defer { window.contentView = nil; window.close() }
 
-        var initialTailReady = false
-        await waitUntil {
-            let text = accessibilityStrings(in: host).joined(separator: "\n") + "\n" + nativeFieldStrings(in: host).joined(separator: "\n")
-            initialTailReady = text.contains("Static live step") && text.contains("Static pending message")
-            return initialTailReady
-        }
-        try #require(initialTailReady, Comment(rawValue: initialMetadata(host: host, state: state)))
+        try await requireInitialTail(host: host, state: state)
         let scroll = try #require(descendants(host).compactMap { $0 as? NSScrollView }.first)
         try #require(NSScroller.preferredScrollerStyle == .legacy)
         #expect(scroll.scrollerStyle == .overlay)
         let mountedIdentity = ObjectIdentifier(scroll)
 
         let bottom = max(0, (scroll.documentView?.bounds.height ?? 0) - scroll.contentView.bounds.height)
-        var initialBottomAligned = false
-        await waitUntil {
-            initialBottomAligned = state.viewportPositioned && state.anchor != nil
-                && abs(scroll.documentVisibleRect.minY - bottom) < 3
-            return initialBottomAligned
-        }
-        try #require(initialBottomAligned)
+        try await requireInitialBottomAligned(scroll: scroll, state: state, bottom: bottom)
         let offsetTrace = OffsetTrace(values: [scroll.documentVisibleRect.minY])
         let boundsObserver = NotificationCenter.default.addObserver(
             forName: NSView.boundsDidChangeNotification, object: scroll.contentView, queue: .main
@@ -122,10 +98,7 @@ import Testing
         }
         defer { NotificationCenter.default.removeObserver(boundsObserver) }
         let gestureStartOffset = scroll.documentVisibleRect.minY
-        NotificationCenter.default.post(name: NSScrollView.willStartLiveScrollNotification, object: scroll)
-        scroll.contentView.scroll(to: CGPoint(x: 0, y: max(0, bottom - 40)))
-        scroll.reflectScrolledClipView(scroll.contentView)
-        NotificationCenter.default.post(name: NSScrollView.didEndLiveScrollNotification, object: scroll)
+        activityNativeTestScroll(scroll, to: max(0, bottom - 40))
         var paused = false
         let expectedGestureOffset = max(0, bottom - 40)
         await waitUntil(timeout: 0.5) {
@@ -139,18 +112,7 @@ import Testing
         try #require(abs(state.scrollOffset - gestureEndOffset) < 4)
         let beforeViewport = scroll.contentView.bounds.size
         let beforeAnchor = try #require(state.anchor)
-        try #require((accessibilityStrings(in: host).joined(separator: "\n") + "\n" + nativeFieldStrings(in: host).joined(separator: "\n")).contains("Static live step"))
-        var settledAnchor = false
-        var stableAnchorSamples = 0
-        var previousAnchor = beforeAnchor
-        await waitUntil {
-            let current = state.anchor
-            if current == previousAnchor { stableAnchorSamples += 1 } else { stableAnchorSamples = 0 }
-            previousAnchor = current ?? previousAnchor
-            settledAnchor = current != nil && stableAnchorSamples >= 2
-            return settledAnchor
-        }
-        try #require(settledAnchor)
+        try await requireSettledAnchor(state: state, beforeAnchor: beforeAnchor)
 
         let mutationTraceStart = offsetTrace.values.count
         // Keep the pre-mutation point in the same bounded trace as any native
@@ -159,14 +121,6 @@ import Testing
         // contain observable start and settled samples.
         offsetTrace.values.append(scroll.documentVisibleRect.minY)
         host.rootView = feed(rows: values, state: state, liveText: "Updated live step while reading")
-        var updatedTailReady = false
-        await waitUntil {
-            let text = accessibilityStrings(in: host).joined(separator: "\n") + "\n" + nativeFieldStrings(in: host).joined(separator: "\n")
-            updatedTailReady = text.contains("Updated live step while reading")
-            return updatedTailReady
-        }
-        try #require(updatedTailReady)
-
         // Allow the hosted view to finish its presentation-triggered work before
         // taking the terminal sample.  This is deliberately bounded and does
         // not manufacture a movement event when the native bounds stay still.
@@ -186,6 +140,44 @@ import Testing
         #expect(state.anchor?.id == beforeAnchor.id)
         #expect(abs((state.anchor?.relativeOffset ?? .infinity) - beforeAnchor.relativeOffset) < 4)
         #expect(!state.followLive.isFollowing)
+        activityNativeRevealBottom(scroll)
+        await waitUntil { activityNativeTailPrerequisite(host) && activityNativeCommittedTailStrings(host).contains("Updated live step while reading") }
+        try #require(activityNativeTailPrerequisite(host) && activityNativeCommittedTailStrings(host).contains("Updated live step while reading"))
+    }
+
+    private func requireInitialBottomAligned(scroll: NSScrollView, state: ParallelColumnUIState,
+                                             bottom: CGFloat) async throws {
+        var initialBottomAligned = false
+        await waitUntil {
+            initialBottomAligned = state.viewportPositioned && state.anchor != nil
+                && abs(scroll.documentVisibleRect.minY - bottom) < 3
+            return initialBottomAligned
+        }
+        try #require(initialBottomAligned)
+    }
+
+    private func requireInitialTail(host: NSView, state: ParallelColumnUIState) async throws {
+        var initialTailReady = false
+        await waitUntil {
+            let text = committedTailStrings(in: host).joined(separator: "\n") + "\n" + nativeFieldStrings(in: host).joined(separator: "\n")
+            initialTailReady = activityNativeTailPrerequisite(host) && text.contains("Static live step") && text.contains("Static pending message")
+            return initialTailReady
+        }
+        try #require(initialTailReady, Comment(rawValue: initialMetadata(host: host, state: state)))
+    }
+
+    private func requireSettledAnchor(state: ParallelColumnUIState, beforeAnchor: ParallelVerticalAnchor) async throws {
+        var settledAnchor = false
+        var stableAnchorSamples = 0
+        var previousAnchor = beforeAnchor
+        await waitUntil {
+            let current = state.anchor
+            if current == previousAnchor { stableAnchorSamples += 1 } else { stableAnchorSamples = 0 }
+            previousAnchor = current ?? previousAnchor
+            settledAnchor = current != nil && stableAnchorSamples >= 2
+            return settledAnchor
+        }
+        try #require(settledAnchor)
     }
 
     private func waitForStableNativeGeometry(_ scroll: NSScrollView) async throws {
@@ -224,8 +216,8 @@ import Testing
 
         var initialTailReady = false
         await waitUntil {
-            let text = accessibilityStrings(in: host).joined(separator: "\n") + "\n" + nativeFieldStrings(in: host).joined(separator: "\n")
-            initialTailReady = text.contains("Static live step") && state.viewportPositioned
+            let text = committedTailStrings(in: host).joined(separator: "\n") + "\n" + nativeFieldStrings(in: host).joined(separator: "\n")
+            initialTailReady = activityNativeTailPrerequisite(host) && text.contains("Static live step") && state.viewportPositioned
             return initialTailReady
         }
         try #require(initialTailReady, Comment(rawValue: initialMetadata(host: host, state: state)))
@@ -289,22 +281,8 @@ import Testing
         [view] + view.subviews.flatMap(descendants)
     }
 
-    private func accessibilityStrings(in host: NSView) -> Set<String> {
-        var strings: Set<String> = []
-        var visited: Set<ObjectIdentifier> = []
-        func collect(_ element: NSObject) {
-            guard visited.insert(ObjectIdentifier(element)).inserted else { return }
-            for key in ["accessibilityValue", "accessibilityLabel", "accessibilityTitle"] where element.responds(to: NSSelectorFromString(key)) {
-                if let value = element.value(forKey: key) as? String { strings.insert(value) }
-            }
-            if element.responds(to: NSSelectorFromString("accessibilityChildren")),
-               let children = element.value(forKey: "accessibilityChildren") as? [NSObject] {
-                children.forEach(collect)
-            }
-            if let view = element as? NSView { view.subviews.forEach(collect) }
-        }
-        collect(host)
-        return strings
+    private func committedTailStrings(in host: NSView) -> Set<String> {
+        activityNativeCommittedTailStrings(host)
     }
 
     private func nativeFieldStrings(in host: NSView) -> [String] {
@@ -314,7 +292,7 @@ import Testing
     private func initialMetadata(host: NSView, state: ParallelColumnUIState) -> String {
         let scroll = descendants(host).compactMap { $0 as? NSScrollView }.first
         let tableRows = scroll.flatMap { descendants($0.documentView ?? NSView()).compactMap { $0 as? NSTableView }.first?.numberOfRows }
-        return "AX=\(accessibilityStrings(in: host).sorted()) native=\(nativeFieldStrings(in: host)) "
+        return "committedTail=\(committedTailStrings(in: host).sorted()) native=\(nativeFieldStrings(in: host)) "
             + "positioned=\(state.viewportPositioned) follow=\(state.followLive.isFollowing) anchor=\(String(describing: state.anchor)) "
             + "tableRows=\(String(describing: tableRows)) document=\(String(describing: scroll?.documentView?.bounds)) "
             + "clip=\(String(describing: scroll?.contentView.bounds)) offset=\(String(describing: scroll?.documentVisibleRect.minY))"
@@ -344,7 +322,7 @@ import Testing
             guard let scroll = descendants(root).compactMap({ $0 as? NSScrollView }).first(where: {
                 ObjectIdentifier($0.contentView) == objectID && $0.hasVerticalScroller
             }), let document = scroll.documentView else { return }
-            let measured = descendants(document).compactMap { $0 as? ActivityRowGeometry.MeasurementView }
+            let measured = descendants(document).compactMap { $0 as? ActivityFeedNativeCell }.filter(\.isCoherentNativeMeasurement)
             guard !measured.isEmpty else { return }
             let rows = measured.map { ($0.stableID ?? "", $0.convert($0.bounds, to: document)) }
             samples.append(Sample(offset: scroll.documentVisibleRect.minY, documentHeight: document.bounds.height,

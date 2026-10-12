@@ -65,15 +65,26 @@ import Testing
 
     private func mountedMeasurementFrames(in document: NSView) -> [CGRect] {
         descendants(document)
-            .compactMap { $0 as? ActivityRowGeometry.MeasurementView }
+            .compactMap { $0 as? ActivityFeedNativeCell }
+.filter(\.isCoherentNativeMeasurement)
             .map { $0.convert($0.bounds, to: document) }
             .filter { $0.width > 0 && $0.height > 0 }
     }
 
     private func verifyCompactSurface(host: NSView, scroll: NSScrollView, document: NSView,
                                       togglePrompt: () -> Void) async throws {
+        await waitUntil(timeout: 3) {
+            host.layoutSubtreeIfNeeded()
+            return mountedMeasurementFrames(in: document).count == 1
+        }
         let mountedRows = mountedMeasurementFrames(in: document)
-        #expect(mountedRows.count == 1, "The compact activity surface must mount exactly its activity row")
+        let native = descendants(document)
+.compactMap { $0 as? ActivityFeedNativeCell }
+.map {
+            "id=\($0.entryID ?? "nil") cell=\($0.frame) host=\(String(describing: $0.host?.frame)) natural=\($0.host?.fittingSize.height ?? -1)"
+        }
+.joined(separator: "; ")
+        #expect(mountedRows.count == 1, Comment(rawValue: "The compact activity surface must mount exactly its activity row: \(native)"))
         #expect(mountedRows.allSatisfy { $0.width > 0 && $0.height > 0 && $0.height < 100 },
                 "The parallel activity row must retain compact mounted content geometry")
         let hiddenViewport = scroll.contentView.bounds.height

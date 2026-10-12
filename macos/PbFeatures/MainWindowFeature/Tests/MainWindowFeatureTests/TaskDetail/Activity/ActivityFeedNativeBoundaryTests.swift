@@ -11,10 +11,7 @@ import Testing
         _ = NSApplication.shared
         let state = ParallelColumnUIState()
         let host = NSHostingView(rootView: feed(state: state))
-        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 420, height: 450),
-                              styleMask: [.titled, .resizable], backing: .buffered, defer: false)
-        window.isReleasedWhenClosed = false
-        window.contentView = host
+        let window = activityMountedTestWindow(host, style: [.titled, .resizable])
         window.orderFront(nil)
         defer { window.contentView = nil; window.close() }
         await waitUntil(timeout: 5) { @MainActor in state.viewportPositioned && state.followLive.isFollowing }

@@ -111,21 +111,7 @@ import Testing
         try await requireText("Race before", host: host)
         let scroll = try #require(scrollView(in: host))
         let identity = ObjectIdentifier(scroll)
-        var previousGeometry = (height: CGFloat.zero, width: CGFloat.zero, clip: CGFloat.zero)
-        var stableGeometrySamples = 0
-        var geometryReady = false
-        await waitUntil(timeout: 2) {
-            let current = (height: scroll.documentView?.bounds.height ?? 0,
-                           width: scroll.bounds.width, clip: scroll.contentView.bounds.width)
-            if abs(current.height - previousGeometry.height) < 0.5,
-               abs(current.width - previousGeometry.width) < 0.5,
-               abs(current.clip - previousGeometry.clip) < 0.5 { stableGeometrySamples += 1 }
-            else { stableGeometrySamples = 0 }
-            previousGeometry = current
-            geometryReady = scroll.scrollerStyle == .overlay && stableGeometrySamples >= 3
-            return geometryReady
-        }
-        try #require(geometryReady, "The mounted overlay geometry must settle before the race gesture")
+        try await requireStableOverlayGeometry(scroll)
         var bottom = CGFloat.zero
         var ready = false
         await waitUntil(timeout: 3) {
@@ -187,8 +173,7 @@ import Testing
                            width: scroll.bounds.width, clip: scroll.contentView.bounds.width)
             if abs(current.height - previousGeometry.height) < 0.5,
                abs(current.width - previousGeometry.width) < 0.5,
-               abs(current.clip - previousGeometry.clip) < 0.5 { stableGeometrySamples += 1 }
-            else { stableGeometrySamples = 0 }
+               abs(current.clip - previousGeometry.clip) < 0.5 { stableGeometrySamples += 1 } else { stableGeometrySamples = 0 }
             previousGeometry = current
             geometryReady = scroll.scrollerStyle == .overlay && stableGeometrySamples >= 3
             return geometryReady
@@ -226,7 +211,24 @@ import Testing
         }
         try #require(paused, Comment(rawValue: initialMetadata(host: host, state: state)))
         #expect(abs(scroll.documentVisibleRect.minY - secondExpected) < 4)
-        #expect(!allText(in: host).isEmpty)
+        #expect(!committedTailText(in: host).isEmpty)
+    }
+
+    private func requireStableOverlayGeometry(_ scroll: NSScrollView) async throws {
+        var previousGeometry = (height: CGFloat.zero, width: CGFloat.zero, clip: CGFloat.zero)
+        var stableGeometrySamples = 0
+        var geometryReady = false
+        await waitUntil(timeout: 2) {
+            let current = (height: scroll.documentView?.bounds.height ?? 0,
+                           width: scroll.bounds.width, clip: scroll.contentView.bounds.width)
+            if abs(current.height - previousGeometry.height) < 0.5,
+               abs(current.width - previousGeometry.width) < 0.5,
+               abs(current.clip - previousGeometry.clip) < 0.5 { stableGeometrySamples += 1 } else { stableGeometrySamples = 0 }
+            previousGeometry = current
+            geometryReady = scroll.scrollerStyle == .overlay && stableGeometrySamples >= 3
+            return geometryReady
+        }
+        try #require(geometryReady, "The mounted overlay geometry must settle before the race gesture")
     }
 
     private func feed(rows: [ActivityRow], state: ParallelColumnUIState, live: String, pending: String) -> some View {
@@ -242,7 +244,8 @@ import Testing
     private func activityRows(count: Int) -> [ActivityRow] {
         (0 ..< count).map { index in
             .single(ConversationTimelineRow(id: "race-row-\(index)", taskID: "race-task", timestamp: nil,
-                kind: .item(PreviewFixtures.textItem(String(repeating: "Race row \(index) keeps the viewport populated. ", count: 8), seq: index)), live: false))
+                kind: .item(PreviewFixtures.textItem(String(repeating: "Race row \(index) keeps the viewport populated. ", count: 8),
+                    seq: index)), live: false))
         }
     }
 
@@ -254,30 +257,17 @@ import Testing
 
     private func requireText(_ text: String, host: NSView) async throws {
         var found = false
-        await waitUntil(timeout: 3) { found = allText(in: host).contains(text); return found }
+        await waitUntil(timeout: 3) { found = committedTailText(in: host).contains(text) && activityNativeTailPrerequisite(host); return found }
         try #require(found, Comment(rawValue: initialMetadata(host: host, state: ParallelColumnUIState())))
     }
 
-    private func allText(in host: NSView) -> String {
-        accessibilityTree(host)
-.flatMap { element in
-            ["accessibilityValue", "accessibilityLabel", "accessibilityTitle"].compactMap { key in
-                let selector = NSSelectorFromString(key)
-                return element.responds(to: selector) ? element.value(forKey: key) as? String : nil
-            }
-        }
-.joined(separator: "\n")
+    private func committedTailText(in host: NSView) -> String {
+        activityNativeCommittedTailStrings(host).sorted().joined(separator: "\n")
     }
 
     private func initialMetadata(host: NSView, state: ParallelColumnUIState) -> String {
-        "AX=\(allText(in: host)) offset=\(scrollView(in: host)?.documentVisibleRect.minY as Any) anchor=\(String(describing: state.anchor)) follow=\(state.followLive.isFollowing)"
-    }
-
-    private func accessibilityTree(_ element: NSObject) -> [NSObject] {
-        let selector = NSSelectorFromString("accessibilityChildren")
-        let children = element.responds(to: selector) ? element.value(forKey: "accessibilityChildren") as? [NSObject] ?? [] : []
-        let subviews = (element as? NSView)?.subviews ?? []
-        return [element] + children.flatMap(accessibilityTree) + subviews.flatMap(accessibilityTree)
+        "committedTail=\(committedTailText(in: host)) offset=\(scrollView(in: host)?.documentVisibleRect.minY as Any)"
+            + " anchor=\(String(describing: state.anchor)) follow=\(state.followLive.isFollowing)"
     }
 
     private func scrollView(in host: NSView) -> NSScrollView? {
@@ -296,18 +286,19 @@ import Testing
         guard let table = scroll.documentView as? NSTableView,
               let document = scroll.documentView else { return nil }
         let matches = descendants(host)
-.compactMap { $0 as? ActivityRowGeometry.MeasurementView }
-            .filter { $0.stableID == id && $0.enclosingScrollView === scroll }
-        guard matches.count == 1, let view = matches.first else { return nil }
-        let targetRow = table.row(for: view)
+.compactMap { $0 as? ActivityFeedNativeCell }
+.filter(\.isCoherentNativeMeasurement)
+            .filter { $0.entryID == id && $0.enclosingScrollView === scroll }
+        guard matches.count == 1, let cell = matches.first else { return nil }
+        let targetRow = table.row(for: cell)
         guard targetRow >= 0 else { return nil }
-        let measurementFrame = view.convert(view.bounds, to: document)
+        let mountedFrame = cell.convert(cell.bounds, to: document)
         let nativeRowFrame = table.rect(ofRow: targetRow)
-        guard measurementFrame.width > 0, measurementFrame.height > 0,
-              measurementFrame.intersects(scroll.documentVisibleRect),
+        guard mountedFrame.width > 0, mountedFrame.height > 0,
+              mountedFrame.intersects(scroll.documentVisibleRect),
               nativeRowFrame.height > 0 else { return nil }
         return MountedAnchorMeasurement(
-            measurementRelativeOffset: measurementFrame.minY - scroll.documentVisibleRect.minY,
+            measurementRelativeOffset: mountedFrame.minY - scroll.documentVisibleRect.minY,
             nativeRowRelativeOffset: nativeRowFrame.minY - scroll.documentVisibleRect.minY)
     }
 

@@ -11,64 +11,6 @@ struct ParallelScrollRestorationCancellation {
     let isUpward: Bool
 }
 
-// MARK: - ParallelScrollObserver
-
-/// Native observation also covers scrollbar and keyboard movement on macOS 14.
-struct ParallelScrollObserver: NSViewRepresentable {
-    enum Axis { case horizontal, vertical }
-    let axis: Axis
-    var columnIDs: [String] = []
-    var columnStride: CGFloat = 0
-    var restorationOffset: CGFloat?
-    var restorationActive = false
-    var restorationGeneration = 0
-    var followsLive = false
-    var onRestorationCancelled: ((ParallelScrollRestorationCancellation) -> Int?)?
-    var onViewportSize: ((CGSize) -> Void)?
-    /// Native vertical geometry separates the clip viewport from scrollbar-independent outer width.
-    var onNativeViewportGeometry: ((CGSize, CGFloat) -> Void)?
-    var onUpwardIntent: (() -> Void)?
-    /// Scoped native identity (a List-backed feed's own NSScrollView, disclosed through PbUI's
-    /// `.scrollChromeScope(onNativeScrollView:)` bounded marker-pair relay). When present the
-    /// observation view attaches only to the identities this holder delivers — never to its own
-    /// `enclosingScrollView` — and an explicit nil fails closed. Absent (the default), both the
-    /// horizontal lane and every ScrollView-backed surface keep their exact prior behaviour.
-    var nativeIdentity: ParallelScrollNativeIdentity?
-    /// The reading-anchor provider of a native-identity vertical surface, held weakly by the
-    /// observation view. Absent (the default), every observer — the horizontal lane, every
-    /// ScrollView-backed surface — keeps its exact prior behaviour.
-    var anchorProvider: ParallelScrollAnchorProvider?
-    let onPosition: (CGFloat, CGFloat, CGFloat) -> Void
-
-    func makeNSView(context: Context) -> ParallelScrollObservationView {
-        let view = ParallelScrollObservationView()
-        updateNSView(view, context: context)
-        return view
-    }
-
-    static func dismantleNSView(_ view: ParallelScrollObservationView, coordinator: ()) {
-        view.bindNativeIdentity(nil)
-        view.teardownObservation()
-    }
-
-    func updateNSView(_ view: ParallelScrollObservationView, context: Context) {
-        view.usesNativeIdentity = nativeIdentity != nil
-        view.axis = axis
-        view.onPosition = onPosition
-        view.onViewportSize = onViewportSize
-        view.onNativeViewportGeometry = onNativeViewportGeometry
-        view.onUpwardIntent = onUpwardIntent
-        view.followsLive = followsLive
-        view.onRestorationCancelled = onRestorationCancelled
-        if let nativeIdentity {
-            view.anchorProvider = nativeIdentity.resolvedAnchorProvider(fallback: anchorProvider)
-        } else { view.anchorProvider = anchorProvider }
-        view.updateWheelMonitor()
-        view.configure(ids: columnIDs, stride: columnStride, restorationOffset: restorationOffset, restorationActive: restorationActive, generation: restorationGeneration)
-        view.bindNativeIdentity(nativeIdentity)
-    }
-}
-
 // MARK: - ParallelScrollObservationView
 
 final class ParallelScrollObservationView: NSView {
@@ -537,7 +479,8 @@ final class ParallelScrollObservationView: NSView {
     }
 
     private func applyRestorationTarget(_ target: CGFloat, scroll: NSScrollView, document: NSView,
-                                        length: CGFloat, viewport: CGFloat, visible: CGRect) {
+                                        geometry: (length: CGFloat, viewport: CGFloat, visible: CGRect)) {
+        let (length, viewport, visible) = geometry
         diagnose("apply target=\(target) visible=\(visible.minY) height=\(length) viewport=\(viewport) before")
         pendingOffset = nil
         let clamped = min(max(0, target), max(0, length - viewport))
@@ -569,17 +512,11 @@ final class ParallelScrollObservationView: NSView {
             + " style=\(scroll?.scrollerStyle.rawValue ?? -1) preferred=\(NSScroller.preferredScrollerStyle.rawValue)"
             + " offset=\(scroll?.documentVisibleRect.minY ?? 0) height=\(scroll?.documentView?.bounds.height ?? 0)"
             + " rows=\((scroll?.documentView as? NSTableView)?.numberOfRows ?? -1)"
-            + " active=\(restorationActive) requested=\(String(describing: requestedOffset)) pending=\(String(describing: pendingOffset)) ack=\(pendingPositionAcknowledgement)")
+            + " active=\(restorationActive) requested=\(String(describing: requestedOffset))"
+            + " pending=\(String(describing: pendingOffset)) ack=\(pendingPositionAcknowledgement)")
     }
 
-    private func report(observeExternalMovement: Bool = false, documentGeometryChanged: Bool = false) {
-        guard !isTornDown, let scroll = observedScrollView, let document = scroll.documentView else { return }
-        // Native targets re-assert the zero-inset contract on every report, so a later resize or
-        // layout pass that restores an automatic inset cannot shift the feed's document geometry.
-        if usesNativeIdentity { enforceNativeInsets(on: scroll) }
-        diagnose("report geometry=\(documentGeometryChanged) external=\(observeExternalMovement) live=\(liveUserScroll)")
-        let visible = scroll.documentVisibleRect
-        let viewportSize = scroll.contentView.bounds.size
+    private func reportViewportSize(_ viewportSize: CGSize, scroll: NSScrollView) {
         if usesNativeIdentity, axis == .vertical, let onNativeViewportGeometry {
             let outerWidth = scroll.frame.width
             if viewportSize != lastViewportSize || outerWidth != lastOuterScrollWidth {
@@ -594,6 +531,17 @@ final class ParallelScrollObservationView: NSView {
             lastOuterScrollWidth = nil
             onViewportSize?(viewportSize)
         }
+    }
+
+    private func report(observeExternalMovement: Bool = false, documentGeometryChanged: Bool = false) {
+        guard !isTornDown, let scroll = observedScrollView, let document = scroll.documentView else { return }
+        // Native targets re-assert the zero-inset contract on every report, so a later resize or
+        // layout pass that restores an automatic inset cannot shift the feed's document geometry.
+        if usesNativeIdentity { enforceNativeInsets(on: scroll) }
+        diagnose("report geometry=\(documentGeometryChanged) external=\(observeExternalMovement) live=\(liveUserScroll)")
+        let visible = scroll.documentVisibleRect
+        let viewportSize = scroll.contentView.bounds.size
+        reportViewportSize(viewportSize, scroll: scroll)
         let length = axis == .horizontal ? document.bounds.width : document.bounds.height
         let viewport = axis == .horizontal ? viewportSize.width : viewportSize.height
         // A queued layout report can precede the bounds notification for a user move.
@@ -616,7 +564,7 @@ final class ParallelScrollObservationView: NSView {
         let horizontalLayoutReady = axis != .horizontal || abs(length - CGFloat(ids.count) * stride) < 2
         if restorationActive, pendingOffset == nil, let requestedOffset { pendingOffset = requestedOffset }
         if let target = providerTarget ?? pendingOffset, viewport > 0, horizontalLayoutReady {
-            applyRestorationTarget(target, scroll: scroll, document: document, length: length, viewport: viewport, visible: visible)
+            applyRestorationTarget(target, scroll: scroll, document: document, geometry: (length, viewport, visible))
         }
         let updated = scroll.documentVisibleRect
         lastOffset = axis == .horizontal ? updated.minX : (document.isFlipped ? updated.minY : document.bounds.maxY - updated.maxY)

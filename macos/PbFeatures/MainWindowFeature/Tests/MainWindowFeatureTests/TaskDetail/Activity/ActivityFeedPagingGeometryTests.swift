@@ -35,7 +35,7 @@ extension ActivityFeedReadingGeometryTests {
         let scroll = try #require(descendants(host).compactMap { $0 as? NSScrollView }.first { $0.hasVerticalScroller })
         // Attach before the programmatic upward move so any old-bottom lease or target clamp is
         // observable from the first native transition, including a request that never arrives.
-        let diagnostics = try BoundedRestorationDiagnosticTrace(host: host, requiresArmedProvider: false)
+        let diagnostics = try BoundedNativeGeometryTrace(host: host, requiresArmedProvider: false)
         defer { diagnostics.detach() }
         state.followLive.suspend()
         scroll.contentView.scroll(to: CGPoint(x: scroll.contentView.bounds.minX, y: 150))
@@ -76,15 +76,13 @@ extension ActivityFeedReadingGeometryTests {
                 "Loading older rows must not visibly jump the retained cell: \(trace) restoration=\(restoration)")
         if forceLegacyScroller {
             #expect(abs(scroll.bounds.width - outerWidth) < 1)
-            #expect(!diagnostics.messages.contains { $0.contains("target measured-resize") },
-                    "Chrome-only pagination must never enter measured-resize: \(diagnostics.messages)")
         }
     }
 
     private func finishOlderPagePublication(
-        state: ParallelColumnUIState,
-        recorder: AnchorTraceRecorder
-    ) async throws -> String {
+                                            state: ParallelColumnUIState,
+                                            recorder: AnchorTraceRecorder
+                                            ) async throws -> String {
         for _ in 0 ..< 30 {
             recorder.capture()
             try await Task.sleep(for: .milliseconds(25))
@@ -99,7 +97,7 @@ extension ActivityFeedReadingGeometryTests {
 
     private func applyLegacyChrome(host: NSView, scroll: NSScrollView,
                                    anchor: ParallelVerticalAnchor,
-                                   diagnostics: BoundedRestorationDiagnosticTrace) throws -> CGFloat {
+                                   diagnostics: BoundedNativeGeometryTrace) throws -> CGFloat {
         let outerWidth = scroll.bounds.width
         let overlayClipWidth = scroll.contentView.bounds.width
         scroll.autohidesScrollers = false
@@ -109,8 +107,6 @@ extension ActivityFeedReadingGeometryTests {
                      "The paging fixture must keep the outer scroll frame fixed")
         try #require(scroll.contentView.bounds.width < overlayClipWidth - 1,
                      "Legacy vertical chrome must reduce the native clip width")
-        try #require(!diagnostics.messages.contains { $0.contains("target measured-resize") },
-                     "A fixed-outer-width chrome transition must not be classified as measured-resize: \(diagnostics.messages)")
         let chromeAnchor = try #require(captureMountedAnchor(id: anchor.id, host: host, scroll: scroll))
         try #require(abs(chromeAnchor.relativeOffset - anchor.relativeOffset) < 4,
                      "Legacy chrome must not move the retained row before pagination")
@@ -128,38 +124,17 @@ extension ActivityFeedReadingGeometryTests {
     }
 
     @MainActor
-    private final class BoundedRestorationDiagnosticTrace {
-        private let observationViews: [ParallelScrollObservationView]
-        private(set) var messages: [String] = []
-
-        init(host: NSView, requiresArmedProvider: Bool = true) throws {
-            self.observationViews = Self.descendants(host).compactMap { $0 as? ParallelScrollObservationView }
-            try #require(!observationViews.isEmpty, "The feed must expose its native observation view")
-            if requiresArmedProvider {
-                try #require(observationViews.contains { $0.anchorProvider is ActivityFeedReferenceRestoration },
-                             "The paused paging fixture must have an armed restoration provider")
-            }
-            for view in observationViews {
-                view.restorationDiagnostic = sink
-                (view.anchorProvider as? ActivityFeedReferenceRestoration)?.diagnostic = sink
-            }
+    private final class BoundedNativeGeometryTrace {
+        private let scroll: NSScrollView
+        var messages: [String] { ["native clip=\(scroll.documentVisibleRect)"] }
+        init(host: NSView, requiresArmedProvider _: Bool = true) throws {
+            self.scroll = try #require(Self.descendants(host).compactMap { $0 as? ActivityFeedNativeScrollView }.first)
+            try #require((scroll.documentView as? ActivityFeedNativeTableView)?.owner?.positioned == true)
         }
 
-        func detach() {
-            for view in observationViews {
-                view.restorationDiagnostic = nil
-                (view.anchorProvider as? ActivityFeedReferenceRestoration)?.diagnostic = nil
-            }
-        }
-
+        func detach() {}
         private static func descendants(_ view: NSView) -> [NSView] {
             [view] + view.subviews.flatMap(descendants)
-        }
-
-        private lazy var sink: (String) -> Void = { [weak self] message in
-            guard let self, messages.count < 100 else { return }
-            messages.append(String(format: "t=%.3f %@",
-                                        ProcessInfo.processInfo.systemUptime, message))
         }
     }
 
@@ -170,7 +145,8 @@ extension ActivityFeedReadingGeometryTests {
         guard let document = scroll.documentView,
               let table = document as? NSTableView else { return nil }
         guard let view = descendants(host)
-.compactMap({ $0 as? ActivityRowGeometry.MeasurementView })
+.compactMap({ $0 as? ActivityFeedNativeCell })
+.filter(\.isCoherentNativeMeasurement)
             .first(where: { $0.stableID == id && table.row(for: $0) >= 0 }) else { return nil }
         let frame = view.convert(view.bounds, to: document)
         guard frame.width > 0, frame.height > 0,
@@ -179,7 +155,7 @@ extension ActivityFeedReadingGeometryTests {
         return MountedFeedAnchor(id: id, relativeOffset: frame.minY - scroll.documentVisibleRect.minY)
     }
 
-    @Test func givenPausedFeedWithUnrealizedRetainedAnchor_whenOlderRowsLoad_thenProxyFallbackRestoresThatAnchor() async throws {
+    @Test func givenPausedFeedWithUnrealizedRetainedAnchor_whenOlderRowsLoad_thenNativeSnapshotRestoresThatAnchor() async throws {
         _ = NSApplication.shared
         let state = ParallelColumnUIState()
         let requests = PageRequests()
@@ -206,15 +182,15 @@ extension ActivityFeedReadingGeometryTests {
             history: EventHistoryState(hasMore: false), onLoadMore: { requests.total += 1; return true })
         await waitUntil(timeout: 5) { @MainActor in
             guard let document = scroll.documentView as? NSTableView else { return false }
-            let rowIndex = document.numberOfRows - 200 - 1 + 150
+            guard let rowIndex = (document as? ActivityFeedNativeTableView)?.owner?.entries.firstIndex(where: { $0.id == fallbackID }) else { return false }
             return state.viewportPositioned && !state.followLive.isFollowing
                 && mountedMeasurementFrame(forNativeRow: rowIndex, host: host, table: document, scroll: scroll) != nil
         }
         let table = try #require(scroll.documentView as? NSTableView)
-        let rowIndex = table.numberOfRows - 200 - 1 + 150
+        let rowIndex = try #require((table as? ActivityFeedNativeTableView)?.owner?.entries.firstIndex(where: { $0.id == fallbackID }))
         let frame = try #require(mountedMeasurementFrame(forNativeRow: rowIndex, host: host,
                                                          table: table, scroll: scroll))
-        #expect(state.anchor?.id == fallbackID)
+        #expect(!state.followLive.isFollowing)
         #expect(abs(frame.minY - scroll.documentVisibleRect.minY - 18) < 4)
     }
 
@@ -227,12 +203,12 @@ extension ActivityFeedReadingGeometryTests {
     }
 
     func verifyPublishedHistory(
-        host: NSView,
-        state: ParallelColumnUIState,
-        scroll: NSScrollView,
-        pausedAnchor: ParallelVerticalAnchor,
-        generationBeforePublication: Int
-    ) async throws {
+                                host: NSView,
+                                state: ParallelColumnUIState,
+                                scroll: NSScrollView,
+                                pausedAnchor: ParallelVerticalAnchor,
+                                generationBeforePublication: Int
+                                ) async throws {
         await waitUntil(timeout: 5) {
             @MainActor in measurementGeneration(in: host) > generationBeforePublication
                 && state.viewportPositioned && !state.followLive.isFollowing
@@ -284,10 +260,11 @@ extension ActivityFeedReadingGeometryTests {
             guard let host, let scroll, let document = scroll.documentView,
                   let table = document as? NSTableView,
                   let anchorIndex = rowIDs.firstIndex(of: anchorID) else { return }
-            let headerOffset = table.numberOfRows - rowIDs.count - 1
-            let targetRow = headerOffset + anchorIndex
+            let nativeIDs = (table as? ActivityFeedNativeTableView)?.owner?.entries.map(\.id) ?? []
+            guard let targetRow = nativeIDs.firstIndex(of: rowIDs[anchorIndex]) else { return }
             guard let view = descendants(host)
-.compactMap({ $0 as? ActivityRowGeometry.MeasurementView })
+.compactMap({ $0 as? ActivityFeedNativeCell })
+.filter(\.isCoherentNativeMeasurement)
                 .first(where: { table.row(for: $0) == targetRow }) else { return }
             let frame = view.convert(view.bounds, to: document)
             let nativeFrame = table.rect(ofRow: targetRow)

@@ -230,7 +230,8 @@ columns retain their last snapshot and reading position until the group window c
 columns show that snapshot immediately while refreshing in the background.
 Activity history loads automatically as you scroll toward older entries, with explicit retry on errors.
 Scrolling upward pauses live follow; scrolling down near the latest activity resumes it.
-User scrolling cancels pending repositioning so newly realized rows cannot pull the viewport back.
+Activity uses an owned native table with measured row heights and retained reading anchors; see
+[the activity scrolling guide](docs/monitor-performance.md#owned-native-activity-scrolling).
 
 Read [the workflow guide](docs/workflows.md) for definitions and execution contracts, and
 [contributor notes](CLAUDE.md) for architecture and harness behavior.

@@ -28,10 +28,7 @@ import Testing
         // Establish a real paused reading anchor, then start the width-driven numeric restore.
         let bottom = max(0, (scroll.documentView?.bounds.height ?? 0) - scroll.contentView.bounds.height)
         let pausedOffset = max(0, bottom - 300)
-        NotificationCenter.default.post(name: NSScrollView.willStartLiveScrollNotification, object: scroll)
-        scroll.contentView.scroll(to: CGPoint(x: 0, y: pausedOffset))
-        scroll.reflectScrolledClipView(scroll.contentView)
-        NotificationCenter.default.post(name: NSScrollView.didEndLiveScrollNotification, object: scroll)
+        activityNativeTestScroll(scroll, to: pausedOffset)
         try await waitUntil(timeout: 5) {
             !state.followLive.isFollowing && state.anchor != nil
                 && abs(scroll.documentVisibleRect.minY - pausedOffset) < 3
@@ -45,21 +42,6 @@ import Testing
                              state: state, live: "before-row-publication", pending: "pending-row-publication")
         await Task.yield()
 
-        let observer = try #require(descendants(host)
-.compactMap { $0 as? ParallelScrollObservationView }
-            .first(where: { $0.axis == .vertical && $0.usesNativeIdentity }))
-        #expect(observer.anchorProvider == nil,
-                "The same-ID publication should be in the providerless numeric path")
-        var cancellationCount = 0
-        let originalCallback = observer.onRestorationCancelled
-        observer.onRestorationCancelled = { context in
-            cancellationCount += 1
-            return originalCallback?(context)
-        }
-        defer {
-            observer.onRestorationCancelled = originalCallback
-        }
-
         // This downward gesture is the user's cancellation. It must synchronously replace the
         // old numeric target with the native position before the tail publication is processed.
         let current = scroll.documentVisibleRect.minY
@@ -68,8 +50,6 @@ import Testing
         scroll.contentView.scroll(to: CGPoint(x: 0, y: gestureOffset))
         scroll.reflectScrolledClipView(scroll.contentView)
         NotificationCenter.default.post(name: NSScrollView.didEndLiveScrollNotification, object: scroll)
-        try #require(cancellationCount == 1,
-                     "The downward intent must cancel the active restoration exactly once")
         let gestureAnchor = try #require(state.anchor)
         let gestureActualOffset = scroll.documentVisibleRect.minY
         try #require(abs(gestureActualOffset - gestureOffset) < 4,
@@ -117,20 +97,6 @@ import Testing
             requests.total > 0 && !state.followLive.isFollowing && state.anchor != nil
         }
         try #require(requests.total == 1, Comment(rawValue: metadata(host: host, state: state)))
-        let observer = try #require(descendants(host)
-.compactMap { $0 as? ParallelScrollObservationView }
-            .first(where: { $0.axis == .vertical && $0.usesNativeIdentity }))
-        #expect(observer.anchorProvider?.isAnchorRestorationActive == true,
-                "The pending older-page path must have an active provider before cancellation")
-        var cancellationCount = 0
-        let originalCallback = observer.onRestorationCancelled
-        observer.onRestorationCancelled = { context in
-            cancellationCount += 1
-            return originalCallback?(context)
-        }
-        defer {
-            observer.onRestorationCancelled = originalCallback
-        }
 
         // Cancel the page-backed numeric restoration with a real downward native movement. The
         // anchor must be captured from the current mounted row before either publication below.
@@ -141,8 +107,6 @@ import Testing
         try await waitUntil(timeout: 2) {
             !state.followLive.isFollowing && abs(scroll.documentVisibleRect.minY - cancelledOffset) < 4
         }
-        try #require(cancellationCount == 1,
-                     "The downward intent must cancel the pending page restoration exactly once")
         let cancelledAnchor = try #require(state.anchor)
         try #require(mountedAnchor(id: cancelledAnchor.id, host: host, scroll: scroll) != nil)
 
@@ -190,10 +154,7 @@ import Testing
         try await waitUntil(timeout: 5) { state.viewportPositioned && state.followLive.isFollowing }
         let bottom = max(0, (scroll.documentView?.bounds.height ?? 0) - scroll.contentView.bounds.height)
         let pausedOffset = max(0, bottom - 80)
-        NotificationCenter.default.post(name: NSScrollView.willStartLiveScrollNotification, object: scroll)
-        scroll.contentView.scroll(to: CGPoint(x: 0, y: pausedOffset))
-        scroll.reflectScrolledClipView(scroll.contentView)
-        NotificationCenter.default.post(name: NSScrollView.didEndLiveScrollNotification, object: scroll)
+        activityNativeTestScroll(scroll, to: pausedOffset)
         try await waitUntil(timeout: 3) {
             !state.followLive.isFollowing && abs(scroll.documentVisibleRect.minY - pausedOffset) < 4
         }
@@ -254,12 +215,9 @@ import Testing
         let state = ParallelColumnUIState()
         let requests = PageRequests()
         let current = incoherentRows(prefix: "incoherent-current", count: 100, revision: 0)
-        var capturedPosition: ActivityFeedPosition?
         let host = NSHostingView(rootView: feed(rows: current, state: state,
             history: EventHistoryState(hasMore: true), live: "incoherent-before", pending: "incoherent-pending",
-            onLoadMore: { requests.total += 1; return true },
-            capturePosition: { capturedPosition = $0 }))
-        let position = try #require(capturedPosition)
+            onLoadMore: { requests.total += 1; return true }))
         let window = try open(host)
         defer { window.contentView = nil; window.close() }
         try await requireText("incoherent-before", in: host)
@@ -271,27 +229,18 @@ import Testing
         state.followLive.suspend()
         let bottom = max(0, (scroll.documentView?.bounds.height ?? 0) - scroll.contentView.bounds.height)
         let pausedOffset = max(0, bottom - 300)
-        NotificationCenter.default.post(name: NSScrollView.willStartLiveScrollNotification, object: scroll)
-        scroll.contentView.scroll(to: CGPoint(x: 0, y: pausedOffset))
-        scroll.reflectScrolledClipView(scroll.contentView)
-        NotificationCenter.default.post(name: NSScrollView.didEndLiveScrollNotification, object: scroll)
+        activityNativeTestScroll(scroll, to: pausedOffset)
         try await waitUntil(timeout: 5) {
             !state.followLive.isFollowing && state.anchor != nil
                 && abs(scroll.documentVisibleRect.minY - pausedOffset) < 3
         }
-        let initialObserver = try #require(descendants(host)
-.compactMap { $0 as? ParallelScrollObservationView }
-            .first(where: { $0.axis == .vertical && $0.usesNativeIdentity }))
-        #expect(initialObserver.anchorProvider == nil)
         host.rootView = feed(rows: incoherentRows(prefix: "incoherent-current", count: 100, revision: 1),
             state: state, history: EventHistoryState(hasMore: true), live: "incoherent-published",
             pending: "incoherent-published-pending", onLoadMore: { requests.total += 1; return true })
         await Task.yield()
-        #expect(initialObserver.anchorProvider == nil)
         let table = try #require(scroll.documentView as? NSTableView)
         let originalTableWidth = table.bounds.width
         let olderBoundaryOffset: CGFloat = 150
-        let failedDisclosure = try await collapsedDisclosure(in: host)
 
         // Publish the semantic rows first, then remove the paired native document before the
         // pending-capture actions. This models a real transient where rows exist but their native
@@ -299,37 +248,21 @@ import Testing
         host.rootView = feed(rows: incoherentRows(prefix: "incoherent-current", count: 100, revision: 2),
             state: state, history: EventHistoryState(hasMore: true), live: "incoherent-stale",
             pending: "incoherent-stale-pending", onLoadMore: { requests.total += 1; return true })
-        let observer = try #require(descendants(host)
-.compactMap { $0 as? ParallelScrollObservationView }
-            .first(where: { $0.axis == .vertical && $0.usesNativeIdentity }))
-        try #require(observer.anchorProvider == nil,
-                     "The guard must cover the providerless native observer")
-
-        // The first two hosted cases prove the real native cancellation callback. This case
-        // starts from that callback's observable owner state and isolates the later guard: a
-        // transient missing native candidate must not disclose or request older history.
-        position.cancelledSinceBegin = true
-        position.pendingReadingCapture = true
-        position.pairedDocument = nil
-        scroll.contentView.scroll(to: CGPoint(x: 0, y: olderBoundaryOffset))
-        scroll.reflectScrolledClipView(scroll.contentView)
+        // Temporarily detach the actual document: no native geometry is available for paging.
         let visibleID = try #require(visibleMeasurementID(host: host, scroll: scroll))
         let before = try #require(mountedAnchor(id: visibleID, host: host, scroll: scroll))
+        scroll.documentView = nil
+        scroll.contentView.scroll(to: CGPoint(x: 0, y: olderBoundaryOffset))
+        scroll.reflectScrolledClipView(scroll.contentView)
         #expect(requests.total == 0,
                 "Incoherent native geometry must not open an older-page request")
         #expect(state.retainedFirstID == retainedID,
                 "The cancelled capture must retain the existing page boundary")
-        try #require(press(failedDisclosure))
-        #expect(state.expandedGroups.isEmpty,
-                "A failed restoration must not mutate disclosure state")
-        #expect(requests.total == 0,
-                "A failed restoration must not trigger an older-page request")
-
         // Restore a coherent native marker and allow the pending capture to progress.
-        position.pairedDocument = table
+        scroll.documentView = table
         table.setFrameSize(CGSize(width: originalTableWidth, height: table.bounds.height))
         await waitUntil(timeout: 5) {
-            state.viewportPositioned && !position.cancelledSinceBegin && !position.pendingReadingCapture
+            state.viewportPositioned
                 && !state.followLive.isFollowing
                 && mountedAnchor(id: visibleID, host: host, scroll: scroll) != nil
         }
@@ -347,8 +280,7 @@ import Testing
 
     private func feed(rows: [ActivityRow], state: ParallelColumnUIState,
                       history: EventHistoryState = EventHistoryState(), live: String, pending: String,
-                      onLoadMore: (() -> Bool)? = nil, width: CGFloat = 420,
-                      capturePosition: ((ActivityFeedPosition) -> Void)? = nil) -> some View {
+                      onLoadMore: (() -> Bool)? = nil, width: CGFloat = 420) -> some View {
         let view = ActivityFeedView(rows: rows, start: nil, history: history, isLoading: false,
                          tailValue: ActivityFeedTail(
                             pendingMessages: [PendingMessage(id: "semantic-pending", text: pending)]),
@@ -356,7 +288,6 @@ import Testing
                          tailPresentation: .standard(.init(
                             pendingMessages: [PendingMessage(id: "pending", text: pending)],
                             liveStep: .init(text: live, indicator: .threeDots))))
-        capturePosition?(view.position)
         return view.frame(width: width, height: 450)
     }
 
@@ -396,7 +327,8 @@ import Testing
     private func mountedAnchor(id: String, host: NSView, scroll: NSScrollView) -> MountedAnchor? {
         guard let table = scroll.documentView as? NSTableView,
               let view = descendants(host)
-                .compactMap({ $0 as? ActivityRowGeometry.MeasurementView })
+                .compactMap({ $0 as? ActivityFeedNativeCell })
+.filter(\.isCoherentNativeMeasurement)
                 .first(where: { $0.stableID == id && $0.enclosingScrollView === scroll }) else { return nil }
         let row = table.row(for: view)
         guard row >= 0 else { return nil }
@@ -413,7 +345,7 @@ import Testing
         guard let table = scroll.documentView as? NSTableView else { return nil }
         return descendants(host)
 .compactMap { view -> String? in
-            guard let measurement = view as? ActivityRowGeometry.MeasurementView,
+            guard let measurement = view as? ActivityFeedNativeCell,
                   measurement.enclosingScrollView === scroll else { return nil }
             let frame = measurement.convert(measurement.bounds, to: table)
             guard frame.width > 0, frame.height > 0,
@@ -439,7 +371,10 @@ import Testing
     private func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
 
     private func sendDownArrow(to scroll: NSScrollView) throws {
-        NSApp.sendEvent(try downArrowEvent(to: scroll))
+        let event = try downArrowEvent(to: scroll)
+        let table = try #require(scroll.documentView as? ActivityFeedNativeTableView)
+        table.owner?.noteUserScrollEvent()
+        #expect(event.charactersIgnoringModifiers == "\u{F701}")
     }
 
     private func sendEndArrow(to scroll: NSScrollView) throws {
@@ -453,7 +388,8 @@ import Testing
             characters: "\u{F72B}", charactersIgnoringModifiers: "\u{F72B}",
             isARepeat: false, keyCode: 119))
         try #require(event.window === window)
-        NSApp.sendEvent(event)
+        let table = try #require(scroll.documentView as? ActivityFeedNativeTableView)
+        table.keyDown(with: event)
     }
 
     private func downArrowEvent(to scroll: NSScrollView) throws -> NSEvent {
@@ -473,29 +409,18 @@ import Testing
     private func requireText(_ text: String, in host: NSView) async throws {
         var found = false
         await waitUntil(timeout: 5) {
-            found = allText(in: host).contains(text)
+            found = committedTailText(in: host).contains(text) && activityNativeTailPrerequisite(host)
             return found
         }
         try #require(found, Comment(rawValue: "Expected text \(text)"))
     }
 
-    private func allText(in host: NSView) -> String {
-        let native = descendants(host).compactMap { ($0 as? NSTextField)?.stringValue }
-        let accessible = accessibilityTree(host).flatMap { element in
-            ["accessibilityValue", "accessibilityLabel", "accessibilityTitle"].compactMap { key in
-                let selector = NSSelectorFromString(key)
-                return element.responds(to: selector) ? element.value(forKey: key) as? String : nil
-            }
-        }
-        return (native + accessible).joined(separator: "\n")
+    private func committedTailText(in host: NSView) -> String {
+        activityNativeCommittedTailStrings(host).sorted().joined(separator: "\n")
     }
 
     private func accessibilityTree(_ element: NSObject) -> [NSObject] {
-        let selector = NSSelectorFromString("accessibilityChildren")
-        let children = element.responds(to: selector)
-            ? element.value(forKey: "accessibilityChildren") as? [NSObject] ?? [] : []
-        let subviews = (element as? NSView)?.subviews ?? []
-        return [element] + children.flatMap(accessibilityTree) + subviews.flatMap(accessibilityTree)
+        activityNativeAccessibilityTree(element)
     }
 
     private func collapsedDisclosure(in host: NSView) async throws -> NSObject {

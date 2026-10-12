@@ -109,7 +109,8 @@ import Testing
             guard let scroll = descendants(controller.view).compactMap({ $0 as? NSScrollView }).first(where: { $0.hasVerticalScroller }),
                   let document = scroll.documentView else { return false }
             let visible = descendants(document)
-.compactMap { $0 as? ActivityRowGeometry.MeasurementView }
+.compactMap { $0 as? ActivityFeedNativeCell }
+.filter(\.isCoherentNativeMeasurement)
                 .map { $0.convert($0.bounds, to: document) }
                 .filter { $0.intersects(scroll.documentVisibleRect) }
             return visible.count >= 1 && document.bounds.height > scroll.contentView.bounds.height
@@ -119,7 +120,8 @@ import Testing
         let scroll = try #require(descendants(controller.view).compactMap({ $0 as? NSScrollView }).first(where: { $0.hasVerticalScroller }))
         let document = try #require(scroll.documentView)
         let visible = descendants(document)
-.compactMap { $0 as? ActivityRowGeometry.MeasurementView }
+.compactMap { $0 as? ActivityFeedNativeCell }
+.filter(\.isCoherentNativeMeasurement)
             .map { $0.convert($0.bounds, to: document) }
             .filter { $0.intersects(scroll.documentVisibleRect) }
         #expect(document.bounds.height > scroll.contentView.bounds.height)
@@ -157,7 +159,8 @@ import Testing
             guard let scroll = descendants(controller.view).compactMap({ $0 as? NSScrollView }).first(where: { $0.hasVerticalScroller }),
                   let document = scroll.documentView else { return false }
             let measured = descendants(document)
-.compactMap { $0 as? ActivityRowGeometry.MeasurementView }
+.compactMap { $0 as? ActivityFeedNativeCell }
+.filter(\.isCoherentNativeMeasurement)
                 .map { $0.convert($0.bounds, to: document) }
             let visible = measured.filter { $0.intersects(scroll.documentVisibleRect) }
             return measured.count >= 2 && visible.count >= 2
@@ -166,15 +169,19 @@ import Testing
         let scroll = try #require(descendants(controller.view).compactMap({ $0 as? NSScrollView }).first(where: { $0.hasVerticalScroller }))
         let document = try #require(scroll.documentView)
         let visible = descendants(document)
-.compactMap { $0 as? ActivityRowGeometry.MeasurementView }
+.compactMap { $0 as? ActivityFeedNativeCell }
+.filter(\.isCoherentNativeMeasurement)
             .map { $0.convert($0.bounds, to: document) }
             .filter { $0.intersects(scroll.documentVisibleRect) }
         let allMeasured = descendants(document)
-.compactMap { $0 as? ActivityRowGeometry.MeasurementView }
+.compactMap { $0 as? ActivityFeedNativeCell }
+.filter(\.isCoherentNativeMeasurement)
             .map { $0.convert($0.bounds, to: document) }
         print("FDC synthetic long-then-finished: document=\(document.bounds), "
             + "visible=\(scroll.documentVisibleRect), measured=\(allMeasured)")
         #expect(visible.count >= 2, "Both the tall assistant row and following finished row must be measured in the initial viewport")
+        #expect(allMeasured.contains { $0.height >= scroll.documentVisibleRect.height * 3 },
+                "The complete known long markdown must occupy at least three viewports; a one-point native slot is not text evidence")
     }
 
     @Test func givenLatestTallRows_whenOlderHistoryIsPublished_thenLatestRowsRemainAtBottom() async throws {
@@ -302,8 +309,6 @@ import Testing
         private var observer: NSObjectProtocol?
         private var diagnosticViewIDs: Set<ObjectIdentifier> = []
         private var diagnosticAttachments: [DiagnosticAttachment] = []
-        private var diagnosticProviderIDs: Set<ObjectIdentifier> = []
-        private var diagnosticProviderAttachments: [DiagnosticProviderAttachment] = []
         private var diagnosticSequence = 0
         private(set) var droppedDiagnosticCount = 0
 
@@ -330,13 +335,8 @@ import Testing
             for attachment in diagnosticAttachments {
                 attachment.view?.restorationDiagnostic = attachment.original
             }
-            for attachment in diagnosticProviderAttachments {
-                attachment.provider?.diagnostic = attachment.original
-            }
             diagnosticAttachments.removeAll()
-            diagnosticProviderAttachments.removeAll()
             diagnosticViewIDs.removeAll()
-            diagnosticProviderIDs.removeAll()
         }
 
         @MainActor private func record(objectID: ObjectIdentifier, in controller: NSViewController) {
@@ -344,7 +344,8 @@ import Testing
             guard let scroll = Self.activityScroll(in: controller.view), let document = scroll.documentView,
                   document is NSTableView, ObjectIdentifier(scroll.contentView) == objectID else { return }
             let visible = Self.descendants(document)
-                .compactMap { $0 as? ActivityRowGeometry.MeasurementView }
+                .compactMap { $0 as? ActivityFeedNativeCell }
+.filter(\.isCoherentNativeMeasurement)
                 .compactMap { view -> (ObjectIdentifier, CGRect)? in
                     let frame = view.convert(view.bounds, to: document)
                     return frame.intersects(scroll.documentVisibleRect)
@@ -384,7 +385,9 @@ import Testing
                                     scroll.frame.width, scroll.contentView.bounds.width, scroll.contentView.bounds.height,
                                     sample.offset, sample.documentHeight, sample.rowIDs.count,
                                     Self.observerViews(in: controller.view).count,
-                                    Self.observerViews(in: controller.view).map { $0.anchorProvider?.isAnchorRestorationActive == true ? "1" : "0" }.joined(separator: ",")))
+                                    Self.observerViews(in: controller.view)
+.map { $0.anchorProvider?.isAnchorRestorationActive == true ? "1" : "0" }
+                                        .joined(separator: ",")))
             let hasOverflow = sample.documentHeight > sample.viewportHeight
             let hasMaterializedRows = !sample.rowFrames.isEmpty
             let isBottom = sample.documentHeight - sample.offset - sample.viewportHeight <= 3
@@ -419,19 +422,6 @@ import Testing
                     self?.appendDiagnostic("observer \(message)")
                 }
                 appendDiagnostic("observer-sink attached t=\(ProcessInfo.processInfo.systemUptime)")
-                if let provider = view.anchorProvider as? ActivityFeedReferenceRestoration {
-                    if diagnosticProviderIDs.insert(ObjectIdentifier(provider)).inserted {
-                        diagnosticProviderAttachments.append(
-                            DiagnosticProviderAttachment(provider: provider, original: provider.diagnostic)
-                        )
-                        provider.diagnostic = { [weak self] message in
-                            self?.appendDiagnostic("feed-restoration \(message)")
-                        }
-                        appendDiagnostic("feed-restoration-sink attached")
-                    }
-                } else {
-                    appendDiagnostic("feed-restoration-sink unavailable provider=\(String(describing: view.anchorProvider))")
-                }
             }
         }
 
@@ -451,16 +441,6 @@ import Testing
 
             init(view: ParallelScrollObservationView, original: ((String) -> Void)?) {
                 self.view = view
-                self.original = original
-            }
-        }
-
-        private final class DiagnosticProviderAttachment {
-            weak var provider: ActivityFeedReferenceRestoration?
-            let original: ((String) -> Void)?
-
-            init(provider: ActivityFeedReferenceRestoration, original: ((String) -> Void)?) {
-                self.provider = provider
                 self.original = original
             }
         }
@@ -540,7 +520,8 @@ import Testing
     private func visibleMeasurementCount(in view: NSView) -> Int {
         guard let scroll = activityScroll(in: view), let document = scroll.documentView else { return 0 }
         return descendants(document)
-            .compactMap { $0 as? ActivityRowGeometry.MeasurementView }
+            .compactMap { $0 as? ActivityFeedNativeCell }
+.filter(\.isCoherentNativeMeasurement)
             .map { $0.convert($0.bounds, to: document) }
             .filter { $0.intersects(scroll.documentVisibleRect) }
             .count

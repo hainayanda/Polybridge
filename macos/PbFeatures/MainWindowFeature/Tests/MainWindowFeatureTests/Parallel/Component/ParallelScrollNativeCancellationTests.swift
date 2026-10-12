@@ -17,10 +17,6 @@ import Testing
         var offsets: [CGFloat] = []
         var cancellations: [(generation: Int, isUpward: Bool)] = []
         view.onPosition = { offset, _, _ in offsets.append(offset) }
-        func actualReadingOffset() -> CGFloat {
-            guard let document = harness.targetA.documentView else { return .nan }
-            return document.bounds.maxY - harness.targetA.documentVisibleRect.maxY
-        }
         view.usesNativeIdentity = true
         view.followsLive = false
         view.onRestorationCancelled = { context in
@@ -48,8 +44,8 @@ import Testing
         #expect(!cancellations[0].isUpward)
 
         harness.move(harness.targetA, to: 640)
-        await waitUntil(timeout: 2) { abs(actualReadingOffset() - 200) < 2 }
-        try #require(abs(actualReadingOffset() - 200) < 2, "The downward move must settle at 200")
+        await waitUntil(timeout: 2) { abs(actualReadingOffset(harness.targetA) - 200) < 2 }
+        try #require(abs(actualReadingOffset(harness.targetA) - 200) < 2, "The downward move must settle at 200")
         for _ in 0 ..< 4 {
             view.configure(ids: ["changed"], stride: 0, restorationOffset: 100, restorationActive: true, generation: 1)
             identity.deliver(harness.targetA)
@@ -57,11 +53,11 @@ import Testing
         await withCheckedContinuation { continuation in
             DispatchQueue.main.async { continuation.resume() }
         }
-        #expect(abs(actualReadingOffset() - 200) < 2)
+        #expect(abs(actualReadingOffset(harness.targetA) - 200) < 2)
 
         view.configure(ids: ["changed"], stride: 0, restorationOffset: 100, restorationActive: true, generation: 2)
-        await waitUntil(timeout: 2) { abs(actualReadingOffset() - 100) < 2 }
-        #expect(abs(actualReadingOffset() - 100) < 2)
+        await waitUntil(timeout: 2) { abs(actualReadingOffset(harness.targetA) - 100) < 2 }
+        #expect(abs(actualReadingOffset(harness.targetA) - 100) < 2)
     }
 
     @Test func givenProviderlessNumericRestoration_whenDownArrowArrives_thenCancellationReportsCurrentGeneration() async throws {
@@ -171,10 +167,6 @@ import Testing
         var ownerGeneration = 2
         var contexts: [ParallelScrollRestorationCancellation] = []
         var offsets: [CGFloat] = []
-        func actualReadingOffset() -> CGFloat {
-            guard let document = harness.targetA.documentView else { return .nan }
-            return document.bounds.maxY - harness.targetA.documentVisibleRect.maxY
-        }
         view.axis = .vertical
         view.usesNativeIdentity = true
         view.followsLive = false
@@ -228,7 +220,13 @@ import Testing
 
         ownerGeneration = 3
         view.configure(ids: ["fresh"], stride: 0, restorationOffset: 100, restorationActive: true, generation: 3)
-        await waitUntil(timeout: 2) { abs(actualReadingOffset() - 100) < 2 }
-        #expect(abs(actualReadingOffset() - 100) < 2)
+        await waitUntil(timeout: 2) { abs(actualReadingOffset(harness.targetA) - 100) < 2 }
+        #expect(abs(actualReadingOffset(harness.targetA) - 100) < 2)
     }
+
+    private func actualReadingOffset(_ scroll: NSScrollView) -> CGFloat {
+        guard let document = scroll.documentView else { return .nan }
+        return document.bounds.maxY - scroll.documentVisibleRect.maxY
+    }
+
 }
