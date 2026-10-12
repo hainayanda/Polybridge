@@ -79,18 +79,28 @@ import Testing
             capture.openedURL = url
             return .handled
         }
+        // Read-only accessibility values belong to each host's system environment, not
+        // a detached EnvironmentValues default (CI may have Reduce Motion enabled).
+        let systemCapture = NativeEnvironmentCapture()
+        let systemHost = NSHostingView(rootView: NativeEnvironmentConsumer(capture: systemCapture)
+            .environment(\.openURL, OpenURLAction { _ in .handled }))
+        let systemWindow = open(systemHost)
         let host = NSHostingView(rootView: NativeEnvironmentConsumer(capture: capture)
             .modifier(ActivityFeedNativeInheritedEnvironment(environment: inherited)))
         let window = open(host)
-        defer { window.contentView = nil; window.close() }
-        await waitUntil(timeout: 3) { capture.values != nil }
+        defer {
+            window.contentView = nil; window.close()
+            systemWindow.contentView = nil; systemWindow.close()
+        }
+        await waitUntil(timeout: 3) { capture.values != nil && systemCapture.values != nil }
         let actual = try #require(capture.values)
+        let system = try #require(systemCapture.values)
         #expect(actual.locale.identifier == "ar")
         #expect(actual.layoutDirection == .rightToLeft)
         #expect(actual.colorScheme == .dark)
         #expect(actual.dynamicTypeSize == .accessibility3)
         #expect(!actual.isEnabled)
-        #expect(actual.accessibilityReduceMotion == inherited.accessibilityReduceMotion)
+        #expect(actual.accessibilityReduceMotion == system.accessibilityReduceMotion)
         #expect(actual.pbReduceMotionOverride == true)
         #expect(actual.shimmerReduceMotionOverride == true)
         #expect(capture.openedURL == URL(string: "https://example.invalid/tool"))
