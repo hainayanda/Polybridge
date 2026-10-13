@@ -57,11 +57,11 @@ struct MainWindowNavigationView<Coordinator: MainWindowNavigationCoordinator>: V
                 emptyDetailView
             }
         }
-        .sheet(isPresented: Binding(get: { coordinator.isNewSessionPresented }, set: { coordinator.isNewSessionPresented = $0 })) {
-            coordinator.buildNewSessionView()
-        }
-        .sheet(isPresented: Binding(get: { coordinator.isWorkflowRunnerPresented }, set: { coordinator.isWorkflowRunnerPresented = $0 })) {
-            coordinator.buildWorkflowRunnerView()
+        .sheet(item: Binding(get: { coordinator.presentedSheet }, set: { coordinator.presentedSheet = $0 })) { destination in
+            switch destination {
+            case .newSession: coordinator.buildNewSessionView()
+            case .workflowRunner: coordinator.buildWorkflowRunnerView()
+            }
         }
         .frame(minWidth: 1000, minHeight: 620)
         .modifier(HiddenWindowTitle())
