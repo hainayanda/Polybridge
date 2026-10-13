@@ -136,6 +136,27 @@ import Testing
         }
     }
 
+    @Test(arguments: [35, 55, 75] as [CGFloat])
+    func givenFanInWithPrecedingColumnNeighbor_whenRouting_thenFitsApproachInsideClearCorridor(approachInset: CGFloat) {
+        // given: an offset source and a neighboring step in the preceding default column.
+        let source = node("source", x: 40, y: 40)
+        let neighbor = node("neighbor", x: 300, y: 220)
+        let target = node("target", x: 560, y: 220)
+        let endpoint = WorkflowCanvasGeometry.connectionInput(target)
+        let paddedNeighbor = CGRect(origin: neighbor.position, size: WorkflowCanvasGeometry.size(neighbor))
+            .insetBy(dx: -20, dy: -20)
+        // when
+        let route = WorkflowConnectionRouter.route(source: source, target: target, endpoint: endpoint,
+                                                    nodes: [source, neighbor, target], approachInset: approachInset)
+        // then
+        #expect(route.first == WorkflowCanvasGeometry.connectionOutput(source))
+        #expect(route.last == endpoint)
+        #expect(WorkflowConnectionRouter.clear(route, obstacles: [paddedNeighbor]))
+        #expect(zip(route, route.dropFirst()).allSatisfy { $0.x == $1.x || $0.y == $1.y })
+        #expect(route[route.count - 2].y == endpoint.y)
+        #expect(endpoint.x - route[route.count - 2].x >= 17)
+    }
+
     @MainActor @Test func givenCachedFanInRoute_whenApproachOrTargetMoves_thenRecomputesAndRemainsAttached() {
         // given
         let source = node("source", x: 60, y: 100)

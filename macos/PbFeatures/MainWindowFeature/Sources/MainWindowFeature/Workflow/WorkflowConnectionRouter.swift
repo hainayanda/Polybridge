@@ -35,10 +35,22 @@ enum WorkflowConnectionRouter {
             finishGrid.x = sourceExit
         }
         let prefix = [start, startGrid]
-        let suffix = [finishGrid, finish]
         let obstacles = nodes.map { node in
             (node.id, CGRect(origin: node.position, size: WorkflowCanvasGeometry.size(node)).insetBy(dx: -clearance, dy: -clearance))
         }
+        // Fan-in lanes share the available corridor with every preceding node, not just
+        // their source. Shorten an approach when its anchor would enter another box.
+        let approachObstacles = obstacles.filter { $0.0 != target?.id }.map(\.1)
+        if let corridorEdge = approachObstacles.filter({ rectangle in
+            finish.y > rectangle.minY && finish.y < rectangle.maxY
+                && rectangle.minX < finish.x && rectangle.maxX > finishGrid.x
+        })
+.map(\.maxX)
+.max() {
+            let safeAnchor = ceil(corridorEdge / spacing) * spacing
+            if finish.x - safeAnchor >= 17 { finishGrid.x = max(finishGrid.x, safeAnchor) }
+        }
+        let suffix = [finishGrid, finish]
         let prefixClear = clear(prefix, obstacles: obstacles.filter { $0.0 != source.id }.map(\.1))
         let suffixClear = clear(suffix, obstacles: obstacles.filter { $0.0 != target?.id }.map(\.1))
         let rectangles = obstacles.map(\.1)
