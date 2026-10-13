@@ -4,14 +4,19 @@ import Foundation
 
 enum WorkflowConnectionRouter {
     private static let spacing = WorkflowCanvasGeometry.gridSpacing
-    private static let clearance: CGFloat = 10
+    // Other routes stay outside the destination arrowhead (7pt) and port rim.
+    private static let clearance: CGFloat = 20
     private static let expansionLimit = 5000
 
-    static func route(source: WorkflowNodeModel, target: WorkflowNodeModel?, endpoint: CGPoint, nodes: [WorkflowNodeModel]) -> [CGPoint] {
+    static func route(source: WorkflowNodeModel, target: WorkflowNodeModel?, endpoint: CGPoint,
+                      nodes: [WorkflowNodeModel], approachInset: CGFloat = 35) -> [CGPoint] {
         let start = WorkflowCanvasGeometry.connectionOutput(source)
         let finish = endpoint
         let startGrid = CGPoint(x: ceil((start.x + 15) / spacing) * spacing, y: start.y)
-        let finishGrid = CGPoint(x: floor((finish.x - 15) / spacing) * spacing, y: finish.y)
+        // Reserve 35pt before the tip: a rounded 10pt bend cannot consume the 7pt arrowhead.
+        // Keep fan-in lanes on the canvas when the destination is close to its leading edge.
+        let inset = min(max(35, approachInset), max(35, finish.x))
+        let finishGrid = CGPoint(x: floor((finish.x - inset) / spacing) * spacing, y: finish.y)
         let prefix = [start, startGrid]
         let suffix = [finishGrid, finish]
         let obstacles = nodes.map { node in

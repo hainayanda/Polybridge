@@ -93,4 +93,65 @@ import Testing
         #expect(zip(route, route.dropFirst()).allSatisfy { abs($0.x - $1.x) + abs($0.y - $1.y) >= 10 })
     }
 
+    @Test(arguments: [35, 75] as [CGFloat])
+    func givenSequentialNodesWithReturnEdge_whenRouting_thenFinalApproachClearsArrowheadAndRoundedCorner(approachInset: CGFloat) {
+        // given
+        let target = node("target", x: 60, y: 100)
+        let middle = node("middle", x: 360, y: 100)
+        let source = node("source", x: 660, y: 100)
+        let endpoint = WorkflowCanvasGeometry.connectionInput(target)
+        // when
+        let route = WorkflowConnectionRouter.route(source: source, target: target, endpoint: endpoint,
+                                                    nodes: [target, middle, source], approachInset: approachInset)
+        // then
+        #expect(route.last == endpoint)
+        #expect(route.allSatisfy { $0.x >= 0 })
+        #expect(endpoint.x - route[route.count - 2].x >= 35)
+        #expect(route[route.count - 2].y == endpoint.y)
+        #expect(WorkflowConnectionRouter.clear(route, obstacles: [CGRect(origin: middle.position, size: WorkflowCanvasGeometry.size(middle))]))
+    }
+
+    @Test func givenParallelFanIn_whenRouting_thenApproachesAreOrderedAndArrowheadCorridorStaysClear() {
+        // given
+        let sources = [node("upper", x: 60, y: 60), node("center", x: 60, y: 220), node("lower", x: 60, y: 380)]
+        let target = node("target", x: 560, y: 220)
+        let nodes = sources + [target]
+        let edges = sources.map { WorkflowEdgeModel(raw: ["id": .string($0.id), "source": .string($0.id), "target": .string(target.id)]) }
+        let endpoint = WorkflowCanvasGeometry.connectionInput(target)
+        // when
+        let insets = edges.map { WorkflowConnectionApproach.inset(for: $0, edges: edges, nodes: nodes) }
+        let routes = zip(sources, insets).map {
+            WorkflowConnectionRouter.route(source: $0, target: target, endpoint: endpoint, nodes: nodes, approachInset: $1)
+        }
+        // then
+        #expect(insets == [35, 55, 75])
+        #expect(edges.map { WorkflowConnectionApproach.inset(for: $0, edges: edges.reversed(), nodes: nodes) } == insets)
+        for route in routes {
+           #expect(route.last == endpoint)
+            #expect(endpoint.x - route[route.count - 2].x >= 35)
+            #expect(route[route.count - 2].y == endpoint.y)
+            #expect(WorkflowConnectionRouter.clear(Array(route.dropFirst()), obstacles: [
+                CGRect(origin: target.position, size: WorkflowCanvasGeometry.size(target))
+            ]))
+        }
+    }
+
+    @MainActor @Test func givenCachedFanInRoute_whenApproachOrTargetMoves_thenRecomputesAndRemainsAttached() {
+        // given
+        let source = node("source", x: 60, y: 100)
+        var target = node("target", x: 560, y: 240)
+        let cache = WorkflowRouteCache()
+        let endpoint = WorkflowCanvasGeometry.connectionInput(target)
+        _ = cache.route(id: "edge", source: source, target: target, endpoint: endpoint, nodes: [source, target], approachInset: 35)
+        // when
+        _ = cache.route(id: "edge", source: source, target: target, endpoint: endpoint, nodes: [source, target], approachInset: 75)
+        target.raw["position"] = .object(["x": .number(720), "y": .number(320)])
+        let movedEndpoint = WorkflowCanvasGeometry.connectionInput(target)
+        let route = cache.route(id: "edge", source: source, target: target, endpoint: movedEndpoint, nodes: [source, target], approachInset: 75)
+        // then
+        #expect(cache.computationCount == 3)
+        #expect(route.last == movedEndpoint)
+        #expect(movedEndpoint.x - route[route.count - 2].x >= 75)
+    }
+
 }
