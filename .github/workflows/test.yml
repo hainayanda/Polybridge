@@ -20,19 +20,29 @@ jobs:
   swift:
     if: github.event.pull_request.draft != true
     runs-on: macos-26
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        package:
-          - macos/PbFoundation/PbCommon
-          - macos/PbFoundation/PbUI
-          - macos/PbFoundation/PbUtilities
-          - macos/PbCore/MonitorCore
-          - macos/PbCore/PbRepository
-          - macos/PbFeatures/MainWindowFeature
-          - macos/PbFeatures/MenuBarFeature
-          - macos/PbFeatures/SettingsFeature
-          - macos/PolybridgeMonitor
+        include:
+          - package: macos/PbFoundation/PbCommon
+            mode: aggregate
+          - package: macos/PbFoundation/PbUI
+            mode: aggregate
+          - package: macos/PbFoundation/PbUtilities
+            mode: aggregate
+          - package: macos/PbCore/MonitorCore
+            mode: aggregate
+          - package: macos/PbCore/PbRepository
+            mode: aggregate
+          - package: macos/PbFeatures/MainWindowFeature
+            mode: suites
+          - package: macos/PbFeatures/MenuBarFeature
+            mode: aggregate
+          - package: macos/PbFeatures/SettingsFeature
+            mode: aggregate
+          - package: macos/PolybridgeMonitor
+            mode: aggregate
     steps:
       - uses: actions/checkout@v5
 
@@ -57,10 +67,27 @@ jobs:
           path: ${{ matrix.package }}/.build
           key: swift-build-${{ runner.arch }}-${{ steps.xcode.outputs.xcode }}-${{ matrix.package }}-${{ hashFiles('macos/**/Package.swift', 'macos/**/Package.resolved') }}
 
-      - name: swift test
-        working-directory: ${{ matrix.package }}
-        # AppKit layout fixtures share the main actor with async view-model tests.
-        run: swift test --no-parallel
+      - name: Guarded swift tests
+        env:
+          PB_NATIVE_BENCHMARK: "1"
+          PB_NATIVE_SIDEBAR_BENCHMARK: "1"
+        # AppKit layout fixtures share the main actor with async view-model tests:
+        # the runner serializes execution and fail-closed validates identity
+        # coverage, event streams, summaries and XCTest silence. MainWindow runs
+        # one fresh process per suite; every other package one guarded run.
+        run: |
+          python3 scripts/test-swift-package.py \
+            --package "${{ matrix.package }}" \
+            --mode "${{ matrix.mode }}" \
+            --output-dir "$RUNNER_TEMP/pb-swift-test-logs"
+
+      - name: Preserve Swift test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: swift-test-logs-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/pb-swift-test-logs
+          retention-days: 7
 
   app:
     if: github.event.pull_request.draft != true
