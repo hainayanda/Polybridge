@@ -5,7 +5,7 @@
 //  The main window's `NavigationSplitView`, moved here from the app target's `MainView.swift` with
 //  no behaviour change: the sidebar and the detail pane come from the coordinator, the detail switch
 //  mirrors the old `switch model.selection` exactly (same empty-detail state), and the New Session
-//  sheet is bound to `isNewSessionPresented`. Generic over `MainWindowNavigationCoordinator`, never
+//  and Run Workflow sheets share `presentedSheet`. Generic over `MainWindowNavigationCoordinator`, never
 //  the concrete `MainWindowCoordinator`, so a preview (or a future test) can supply a stub.
 //
 //  `withPresentationContext()` (PbUI) is applied exactly once, here at the window root — moved out of

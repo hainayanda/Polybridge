@@ -31,14 +31,14 @@ public enum MainWindowSheet: String, Identifiable {
 
 /// Navigation/view-building contract for the main window's split view. `MainWindowNavigationView`
 /// (this package) is generic over this protocol, never the concrete `MainWindowCoordinator` —
-/// `selection` and `isNewSessionPresented` are the single source of truth the settled plan's
+/// `selection` and `presentedSheet` are the single source of truth the settled plan's
 /// window/navigation seam formalises; the app target's root `AppCoordinator` (Phase 5) delegates
 /// `.task`/`.group`/`.newSession` straight onto `handle(path:)` for the URL/notification/Cmd-N
 /// paths it owns (see that file's header).
 @MainActor
 public protocol MainWindowNavigationCoordinator: ViewChildCoordinator {
     /// The currently selected task/group destination, or `nil`. Never set to
-    /// `.newSession`/`.openWindow` — those are handled separately (`isNewSessionPresented`, and the
+    /// `.newSession`/`.openWindow` — those are handled separately (`presentedSheet`, and the
     /// parent's own window-opening seam) — see `MainWindowCoordinator.handle(path:)`.
     var selection: MonitorDestination? { get set }
     func selectionPublisher() -> AnyPublisher<MonitorDestination?, Never>
@@ -46,13 +46,13 @@ public protocol MainWindowNavigationCoordinator: ViewChildCoordinator {
     /// The main window's mutually exclusive modal destination.
     var presentedSheet: MainWindowSheet? { get set }
 
-    /// Whether the New Session sheet is presented.
+    /// Compatibility projection of the New Session destination; false dismisses only that destination.
     var isNewSessionPresented: Bool { get set }
     func isNewSessionPresentedPublisher() -> AnyPublisher<Bool, Never>
 
     /// Presents the saved-workflow chooser and existing launch flow independently of editor focus.
     func presentWorkflowRunner()
-    /// Whether the saved-workflow launcher is presented.
+    /// Compatibility projection of the workflow runner destination; false dismisses only that destination.
     var isWorkflowRunnerPresented: Bool { get set }
     /// Builds the saved-workflow chooser and launch sheet.
     func buildWorkflowRunnerView() -> AnyView
