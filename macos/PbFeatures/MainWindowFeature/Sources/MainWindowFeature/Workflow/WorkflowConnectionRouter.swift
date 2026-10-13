@@ -24,7 +24,16 @@ enum WorkflowConnectionRouter {
         // Reserve 35pt before the tip: a rounded 10pt bend cannot consume the 7pt arrowhead.
         // Keep fan-in lanes on the canvas when the destination is close to its leading edge.
         let inset = min(max(35, approachInset), max(35, finish.x))
-        let finishGrid = CGPoint(x: floor((finish.x - inset) / spacing) * spacing, y: finish.y)
+        var finishGrid = CGPoint(x: floor((finish.x - inset) / spacing) * spacing, y: finish.y)
+        let sourceObstacle = CGRect(origin: source.position, size: WorkflowCanvasGeometry.size(source))
+            .insetBy(dx: -clearance, dy: -clearance)
+        let sourceExit = max(startGrid.x, ceil(sourceObstacle.maxX / spacing) * spacing)
+        // Short forward gaps can place the approach anchor inside the source's padding.
+        // Bound it to the exit lane while retaining room for the 10pt bend and 7pt tip.
+        if finish.x > start.x, finish.y > sourceObstacle.minY, finish.y < sourceObstacle.maxY,
+           finishGrid.x < sourceExit, finish.x - sourceExit >= 17 {
+            finishGrid.x = sourceExit
+        }
         let prefix = [start, startGrid]
         let suffix = [finishGrid, finish]
         let obstacles = nodes.map { node in

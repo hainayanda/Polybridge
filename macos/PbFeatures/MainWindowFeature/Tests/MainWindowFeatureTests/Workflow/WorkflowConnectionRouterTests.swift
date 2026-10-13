@@ -172,6 +172,27 @@ import Testing
         #expect(endpoint.x - start.x == 39.5)
     }
 
+    @Test func givenDefaultAgentAndEndPositions_whenRouting_thenUsesTwoBendsWithinShortForwardGap() {
+        // given: validate_definition assigns successive nodes x = 80 + 260 * index, y = 80.
+        let source = node("work", x: 340, y: 80)
+        let target = node("end", x: 600, y: 80, type: "end")
+        let start = WorkflowCanvasGeometry.connectionOutput(source)
+        let endpoint = WorkflowCanvasGeometry.connectionInput(target)
+        // when
+        let route = WorkflowConnectionRouter.route(source: source, target: target, endpoint: endpoint, nodes: [source, target])
+        // then
+        #expect(route.count == 4)
+        #expect(route.first == start)
+        #expect(route.last == endpoint)
+        #expect(route.allSatisfy { $0.x.isFinite && $0.y.isFinite && $0.y >= endpoint.y && $0.y <= start.y })
+        #expect(zip(route, route.dropFirst()).allSatisfy { $0.x == $1.x || $0.y == $1.y })
+        #expect(endpoint.x - route[route.count - 2].x >= 17)
+        #expect(WorkflowConnectionRouter.clear(route, obstacles: [
+            CGRect(origin: source.position, size: WorkflowCanvasGeometry.size(source)),
+            CGRect(origin: target.position, size: WorkflowCanvasGeometry.size(target))
+        ]))
+    }
+
     @Test func givenAlignedNodesWithInterveningBox_whenConsideringDirectConnection_thenStillRoutesAroundObstacle() {
         // given
         let source = node("source", x: 190, y: 100)
