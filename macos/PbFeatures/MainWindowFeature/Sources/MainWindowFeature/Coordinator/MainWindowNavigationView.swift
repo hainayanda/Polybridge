@@ -60,6 +60,9 @@ struct MainWindowNavigationView<Coordinator: MainWindowNavigationCoordinator>: V
         .sheet(isPresented: Binding(get: { coordinator.isNewSessionPresented }, set: { coordinator.isNewSessionPresented = $0 })) {
             coordinator.buildNewSessionView()
         }
+        .sheet(isPresented: Binding(get: { coordinator.isWorkflowRunnerPresented }, set: { coordinator.isWorkflowRunnerPresented = $0 })) {
+            coordinator.buildWorkflowRunnerView()
+        }
         .frame(minWidth: 1000, minHeight: 620)
         .modifier(HiddenWindowTitle())
         .withPresentationContext()

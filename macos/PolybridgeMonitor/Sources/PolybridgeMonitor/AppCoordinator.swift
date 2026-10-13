@@ -181,6 +181,18 @@ public final class AppCoordinator: ParentCoordinator, WindowPresenting, LaunchUR
         }
     }
     
+    /// Brings the main window forward before opening a fresh workflow canvas.
+    func createWorkflow() {
+        showWindow()
+        mainWindowCoordinator.handle(path: MonitorDestination.newWorkflow(UUID()))
+    }
+
+    /// Uses the main window coordinator’s saved-workflow chooser without requiring an editor.
+    func runWorkflow() {
+        showWindow()
+        mainWindowNavigationCoordinator?.presentWorkflowRunner()
+    }
+
     // MARK: - LaunchURLHandling
 
     @discardableResult

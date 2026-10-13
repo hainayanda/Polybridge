@@ -34,6 +34,13 @@ public protocol MainWindowNavigationCoordinator: ViewChildCoordinator {
     var isNewSessionPresented: Bool { get set }
     func isNewSessionPresentedPublisher() -> AnyPublisher<Bool, Never>
 
+    /// Presents the saved-workflow chooser and existing launch flow independently of editor focus.
+    func presentWorkflowRunner()
+    /// Whether the saved-workflow launcher is presented.
+    var isWorkflowRunnerPresented: Bool { get set }
+    /// Builds the saved-workflow chooser and launch sheet.
+    func buildWorkflowRunnerView() -> AnyView
+
     /// Builds the sidebar (task list, search/filter, parallel runs).
     func buildSidebarView() -> AnyView
     /// Builds the New Session sheet's content.
@@ -89,6 +96,10 @@ public final class MainWindowCoordinator: MainWindowNavigationCoordinator {
             isNewSessionPresentedSubject.send(isNewSessionPresented)
         }
     }
+
+    public var isWorkflowRunnerPresented = false
+
+    public func presentWorkflowRunner() { isWorkflowRunnerPresented = true }
 
     // MARK: - Private Properties
 
