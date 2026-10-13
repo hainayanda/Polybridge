@@ -12,6 +12,14 @@ enum WorkflowConnectionRouter {
                       nodes: [WorkflowNodeModel], approachInset: CGFloat = 35) -> [CGPoint] {
         let start = WorkflowCanvasGeometry.connectionOutput(source)
         let finish = endpoint
+        // An aligned short gap needs no bend corridor. Its approach anchor could otherwise
+        // land inside the source's clearance rectangle and force an unnecessary return loop.
+        let directObstacles = nodes.filter { $0.id != source.id && $0.id != target?.id }.map {
+            CGRect(origin: $0.position, size: WorkflowCanvasGeometry.size($0)).insetBy(dx: -clearance, dy: -clearance)
+        }
+        if start.y == finish.y, finish.x > start.x, clear([start, finish], obstacles: directObstacles) {
+            return [start, finish]
+        }
         let startGrid = CGPoint(x: ceil((start.x + 15) / spacing) * spacing, y: start.y)
         // Reserve 35pt before the tip: a rounded 10pt bend cannot consume the 7pt arrowhead.
         // Keep fan-in lanes on the canvas when the destination is close to its leading edge.

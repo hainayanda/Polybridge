@@ -154,4 +154,36 @@ import Testing
         #expect(movedEndpoint.x - route[route.count - 2].x >= 75)
     }
 
+    @Test(arguments: ["start", "agent"])
+    func givenStarterNodesWithFiftyPointGap_whenRouting_thenUsesDirectAttachedConnection(sourceType: String) {
+        // given
+        let source = sourceType == "start"
+            ? node("source", x: 68, y: 110, type: "start")
+            : node("source", x: 190, y: 100)
+        let target = node("target", x: sourceType == "start" ? 190 : 440, y: 100)
+        let start = WorkflowCanvasGeometry.connectionOutput(source)
+        let endpoint = WorkflowCanvasGeometry.connectionInput(target)
+        // when
+        let route = WorkflowConnectionRouter.route(source: source, target: target, endpoint: endpoint, nodes: [source, target])
+        // then
+        #expect(start.y == 146)
+        #expect(endpoint.y == 146)
+        #expect(route == [start, endpoint])
+        #expect(endpoint.x - start.x == 39.5)
+    }
+
+    @Test func givenAlignedNodesWithInterveningBox_whenConsideringDirectConnection_thenStillRoutesAroundObstacle() {
+        // given
+        let source = node("source", x: 190, y: 100)
+        let obstacle = node("obstacle", x: 440, y: 100)
+        let target = node("target", x: 690, y: 100)
+        let endpoint = WorkflowCanvasGeometry.connectionInput(target)
+        // when
+        let route = WorkflowConnectionRouter.route(source: source, target: target, endpoint: endpoint, nodes: [source, obstacle, target])
+        // then
+        #expect(route.count > 2)
+        #expect(route.last == endpoint)
+        #expect(WorkflowConnectionRouter.clear(route, obstacles: [CGRect(origin: obstacle.position, size: WorkflowCanvasGeometry.size(obstacle))]))
+    }
+
 }
