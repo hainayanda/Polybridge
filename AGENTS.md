@@ -756,7 +756,8 @@ created inside a main-actor context does not by itself move computation into the
 Reject stale results after cancellation or a newer data, search or selection generation. Unchanged
 polling must not republish rendering state; explicit time-dependent presentation changes still do.
 
-`macos/PolybridgeMonitor` reads `polybridge-ctl --json` (`CTL_JSON_VERSION`, now 9 — adds durable usage-limit diagnostics and recovery choices;
+`macos/PolybridgeMonitor` reads `polybridge-ctl --json` (`CTL_JSON_VERSION`, now 10 — adds bounded extra-path grants and capability/enforcement metadata;
+v9 added durable usage-limit diagnostics and recovery choices;
 v8 added pinned owner permissions and guarded launch previews;
 v7 added separate Monitor cancellation eligibility;
 v6 added native execution metadata, v5 added Run workflow links,
