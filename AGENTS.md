@@ -179,6 +179,16 @@ Measured on this machine. Do not "tidy" these away:
   `unrestricted` did *not* permit an ordinary `git commit` despite its name.
 
 **Codex (codex-cli 0.153.2)**
+- **Extra writable paths, macOS codex-cli 0.162.0-alpha.17.2, 2026-10-14.** Actual isolated
+  fake Responses API probes verified directory/existing-file grants with workspace-write,
+  fresh/resume/CLI-child inheritance, hostile ambient roots and both network settings. Pin
+  `sandbox_workspace_write.writable_roots=[]`, `exclude_slash_tmp=true` and
+  `exclude_tmpdir_env_var=true` with canonical `--add-dir` grants. Ambient roots otherwise merge.
+  Exact-file replacement is permitted during execution; saved identity changes reject later
+  reuse. Unrelated/sibling/symlink-escape writes were OS-denied. Ordinary CLI children inherit
+  these boundaries; guessed disable flags did not suppress spawning. Polybridge's separate native
+  adapter remains uncertified for these grants. See `docs/extra-writable-paths.md` and the no-paid
+  `tests/test_extra_path_cli.py`; do not extrapolate to another CLI/platform/configuration.
 - **`codex exec` waits for EOF when reading stdin.** Small prompts use DEVNULL. Prompts over
   32 KiB use the documented `-` positional with `Invocation.stdin_mode="pipe_once"`: deliver the
   full UTF-8 assignment and immediately close stdin, with no live-input pump. A fake executable
