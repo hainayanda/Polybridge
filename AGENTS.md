@@ -74,6 +74,11 @@ capability, the seam is missing a method.
 `max_turns` on Codex raises rather than being dropped, checked both in `server.py` and again in the
 backend itself.
 
+`artifact_configuration_namespaces(repo)` declares backend-owned configuration paths excluded
+from task artifact references. Keep it separate from execution qualification: inline configuration
+that prevents certifying a writable launch is not itself a file namespace. Registration is
+bridge-owned metadata bookkeeping, not a new backend execution or filesystem permission.
+
 ## Installing is a second seam: `clients/`
 
 `backends/` is *who we dispatch to*. `clients/` is *who can launch us* — the Claude desktop app,
@@ -756,7 +761,8 @@ created inside a main-actor context does not by itself move computation into the
 Reject stale results after cancellation or a newer data, search or selection generation. Unchanged
 polling must not republish rendering state; explicit time-dependent presentation changes still do.
 
-`macos/PolybridgeMonitor` reads `polybridge-ctl --json` (`CTL_JSON_VERSION`, now 10 — adds bounded extra-path grants and capability/enforcement metadata;
+`macos/PolybridgeMonitor` reads `polybridge-ctl --json` (`CTL_JSON_VERSION`, now 11 — adds standalone task artifact metadata and bounded artifact reads;
+v10 added bounded extra-path grants and capability/enforcement metadata;
 v9 added durable usage-limit diagnostics and recovery choices;
 v8 added pinned owner permissions and guarded launch previews;
 v7 added separate Monitor cancellation eligibility;
