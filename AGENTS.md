@@ -496,6 +496,34 @@ Measured on this machine. Do not "tidy" these away:
   - `result.usage` and `num_turns` are cumulative per process: the second result's usage is roughly
     twice the first's, and a resumed live run reported `num_turns: 3`.
 
+**MCP client request deadlines (measured 2026-10-17 with `scripts/probe-mcp-client-deadlines.py`)**
+A stub stdio MCP server whose tool holds the request open, driven through a localhost fake model
+API, with isolated HOME/CLAUDE_CONFIG_DIR/CODEX_HOME and no model calls. Measured on these versions
+only.
+- **Claude Code 2.1.302** (`claude -p --strict-mcp-config`) sends a `progressToken` on `tools/call`.
+  Default settings: holds of 70, 130 and 330 s returned normally, with progress every 5 s and
+  without; **no deadline was observed up to 330 s** (longer not measured). With
+  `MCP_TOOL_TIMEOUT=30000` the call fails at exactly 30 s, with or without progress, so progress
+  does not extend that deadline; the server's handler got `CancelledError` at the deadline.
+- **Codex codex-cli 0.163.0** (`codex exec`) sends a `progressToken`. MCP tools are reachable only
+  through code-mode `exec` (`tools.mcp__<server>__<tool>`), which yields with "Script running with
+  cell ID N" after ~30 s; the model must call `wait` on the cell (model behaviour, not a failure).
+  Under `approval_policy="never"` the server entry needs `default_tools_approval_mode = "approve"`
+  or the call is refused ("MCP tool call requires approval, but approval policy is never"); that is
+  how the probe was configured, not something the installer sets. **Default `tool_timeout_sec` is
+  300 s**: 70 and 130 s holds completed with and without progress; a 330 s hold with progress
+  failed at exactly 300 s ("timed out awaiting tools/call after 300s"), so progress does not extend
+  it. `tool_timeout_sec = 600` let a 330 s hold complete; `= 30` failed a 70 s hold at 30 s with and
+  without progress; `= 90` failed a 130 s hold with progress at 90 s. **Codex sent no cancellation
+  to the server at the deadline**: the request stayed open server-side until the client exited, so
+  an abandoned polybridge wait keeps observing until its own timeout or the ceiling. That is
+  harmless (waits are read-only) and is why `until="terminal"` has a server ceiling.
+- Caller guidance: on Codex a wait over 300 s needs `tool_timeout_sec` raised on the polybridge
+  server entry, otherwise repeat the wait with the same arguments or keep bounded waits at or
+  below 270 s; on Claude Code `MCP_TOOL_TIMEOUT`, if set, bounds every wait. Polybridge still sends
+  progress every 5 s (cheap, other clients may honour it), but neither measured client extends its
+  deadline on progress.
+
 **GitHub Copilot CLI (1.0.89) — not supported yet, because nothing can be measured here.** On this
 machine every `copilot -p` run fails with `Access denied by policy settings`, exit 1, and the stream
 warns `Third-party MCP servers are disabled by your organization's Copilot policy`, so a polybridge
@@ -901,5 +929,10 @@ a resumed run. Three rules keep that honest:
   change an outcome. The probes run off the event loop, since they are blocking calls inside an
   async `_spawn`.
 
-`wait_for_task`'s default stays under 60s because MCP clients time out requests around there and
-report `-32001` while the run continues unharmed.
+`wait_for_task`'s default (55s) and the other waits' defaults stay short because a client's request
+deadline is not discoverable from the server (see the measured block below); an explicit
+`timeout_seconds` up to 3600, or `until="terminal"` (6 hour ceiling), is honoured as asked, never
+clamped. A request that outlives the client's deadline fails the *call* while the run continues
+unharmed, so every wait is resumable by calling it again. The measured deadlines are under "MCP
+client request deadlines" in "Verified CLI facts"; waits are read-only and never write, signal or
+resume (`wait_policy.py` is the shared contract).
