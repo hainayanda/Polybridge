@@ -743,6 +743,32 @@ it holds the lock — correctness over liveness, since closing without it could 
 after the last forward. Nothing blocks the event loop (acquisition is `LOCK_NB` retried on it), so
 only that task waits; cancellation still works.
 
+**Queued follow-ups for tasks without live input (`followups.py`) are a separate ledger that never
+touches the inbox, its `flock` or the close protocol above.** `send_message` on a standalone task
+whose `live_input` is false appends to `<id>.followups.json` under `<id>.followups.lock` — an empty,
+permanent lock file that retention leaves in place, like the other two. The state is one bounded
+document replaced atomically under that lock (32 KiB per message, 16 outstanding, 960 KiB admission
+budget inside a 1 MiB read budget; unreadable reads as `unavailable`, never guessed). It answers
+`queued` with `delivery: "next_continuation"`, never "delivered". Consumption happens only through
+explicit flags: `TaskRegistry.resume`/`resume_record` take `consume_followups` (set by MCP
+`resume_task` and `polybridge-ctl resume`) and `continue_task` takes it (MCP and ctl); the flag is
+never inferred from `task_id`, which keeps meaning supervisor-owned for `pause_for_task`, and an
+automatic continuation or a workflow resume never consumes. The sequence is reserve (sealing the
+ledger, last step before the build), compose, build and spawn, then `consumed`; a failure is
+`released` only when provably not started (`polybridge_not_started`, or raised before `_spawn`),
+`consumed` when the successor is registered or on disk, else `delivery_unknown`, which seals
+permanently and is never re-queued. A terminal write that fails never changes the launch outcome:
+`followups.finish` remembers it and the next lock acquisition in this process retries it first.
+Read-time resolution (`reserved` with a successor record is `consumed`; with a dead owner or an
+abandoned in-process attempt `delivery_unknown`; `queued` with a same-session successor
+`undeliverable`) only repairs leftovers. Retention protects a task with queued or reserved items
+(and a successor a reservation names) and holds the follow-up lock across re-reading the ledger,
+deleting its state file and unlinking the record.
+
+**Lock order, extended:** session lock (or the `continuation-<root>` chain lock), then the task's
+`<id>.followups.lock`, never the reverse; the reaper takes its catalog locks and then the follow-up
+lock, and never a session lock while holding it.
+
 ## Takeover, ctl control commands, open-app (A4)
 
 - **Takeover is humans-only and ctl-only.** Never expose it over MCP. `ctl takeover` and
@@ -762,7 +788,9 @@ only that task waits; cancellation still works.
   test-pinned divergence from the plan, so a slow cascade cannot let a resume in before `.ready`),
   or the attached
   process confirmed `dead`. `undecidable` is busy. Retention keeps a task exactly while it is busy.
-- **Lock order is session lock, then `<id>.lock`**, everywhere (`takeover-attach` takes both).
+- **Lock order is session lock, then `<id>.lock`**, everywhere (`takeover-attach` takes both). The
+  follow-up lock (`<id>.followups.lock`) comes after the session or chain lock and never before it; see
+  the queued follow-ups paragraph above.
 - The interactive commands were checked against each CLI's `--help` only (2026-09-25,
   `tests/test_interactive_resume_real.py`); each backend's `interactive_resume_argv` docstring
   records what was measured. Never run them from a test: they open a TUI, and codex's writes a trust entry to
@@ -789,7 +817,8 @@ created inside a main-actor context does not by itself move computation into the
 Reject stale results after cancellation or a newer data, search or selection generation. Unchanged
 polling must not republish rendering state; explicit time-dependent presentation changes still do.
 
-`macos/PolybridgeMonitor` reads `polybridge-ctl --json` (`CTL_JSON_VERSION`, now 11 — adds standalone task artifact metadata and bounded artifact reads;
+`macos/PolybridgeMonitor` reads `polybridge-ctl --json` (`CTL_JSON_VERSION`, now 12 — adds `queued_followups` to full task snapshots, `queued_followup_count` to briefs and `delivery` to `send` results;
+v11 added standalone task artifact metadata and bounded artifact reads;
 v10 added bounded extra-path grants and capability/enforcement metadata;
 v9 added durable usage-limit diagnostics and recovery choices;
 v8 added pinned owner permissions and guarded launch previews;
