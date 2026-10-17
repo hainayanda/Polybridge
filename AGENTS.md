@@ -782,8 +782,19 @@ rather than guessing), and a new event kind means `events.EVENT_KINDS` and
 `.unknown` and is ignored, so an old app degrades quietly). The app's tests use fake
 `polybridge-ctl`/`polybridge-setup` scripts, never the real binaries. Backend names appear in the
 app only for display styling; every fact it shows comes from polybridge. A new ctl command (like
-`backends`) is additive under the current `v` — it changes no existing document's shape, so no
-bump; the Monitor treats an older ctl's usage error for it as "unsupported".
+`backends`, or `status-batch`) is additive under the current `v` — it changes no existing
+document's shape, so no bump; the Monitor treats an older ctl's usage error for it as
+"unsupported". `status-batch --task-ids a,b,... --json` answers up to 100 ids in one document —
+`{"v": 11, "tasks": [<snapshot>...], "errors": {"<id>": {"code", "message"}}}` — with the same
+`code` values single `status` reports (`unknown_task`, refusal codes, invalid ids), and it fails
+whole (the `status` error shape) when caller authority is undecidable, never partially.
+
+ctl itself never starts retention and never starts the notification worker: `workflow inspect` /
+`assigned-input` resolve managed authority and share the server's checks through
+`workflow_node_reads` without importing `server` (or its MCP stack), and the ctl paths that do
+need registry-backed helpers (`permission-preview`, mutating workflow actions) install one with
+`server.install_cli_registry`, which starts neither. `run`/`resume` still build their own
+registry deliberately — see `retention.py` for why the sweep is a live-server job.
 
 The app's UI layer follows a coordinator/VM/use-case architecture (a SwiftPM package per module, wired by path,
 under `macos/PbFoundation/`, `macos/PbCore/` and `macos/PbFeatures/`, with the root
