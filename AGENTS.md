@@ -817,7 +817,8 @@ created inside a main-actor context does not by itself move computation into the
 Reject stale results after cancellation or a newer data, search or selection generation. Unchanged
 polling must not republish rendering state; explicit time-dependent presentation changes still do.
 
-`macos/PolybridgeMonitor` reads `polybridge-ctl --json` (`CTL_JSON_VERSION`, now 12 — adds `queued_followups` to full task snapshots, `queued_followup_count` to briefs and `delivery` to `send` results;
+`macos/PolybridgeMonitor` reads `polybridge-ctl --json` (`CTL_JSON_VERSION`, now 13 — adds the optional `workflow` binding to `task-artifacts` items, bound-task artifact summaries and the run-level `workflow-artifacts` page;
+v12 added `queued_followups` to full task snapshots, `queued_followup_count` to briefs and `delivery` to `send` results;
 v11 added standalone task artifact metadata and bounded artifact reads;
 v10 added bounded extra-path grants and capability/enforcement metadata;
 v9 added durable usage-limit diagnostics and recovery choices;
